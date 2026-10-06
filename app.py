@@ -423,6 +423,169 @@ def evaluar_cara(peticion: PeticionCara):
     return informe
 
 
+# ------------------------------------------ Informe FINAL (fusión) ------------
+# Las notas se calculan aquí, con código, a partir de las áreas de los 3 jueces
+# (así son consistentes y auditables). La IA solo redacta: comentarios por área,
+# resumen y LA recomendación más importante (cruzando las 3 fuentes).
+
+# (área final, [(fuente, [áreas del juez que alimentan esa nota])])
+AREAS_FINALES = [
+    ("Expresión", [("cara", ["Serenidad y control", "Seguridad y presencia", "Naturalidad y expresividad"])]),
+    ("Tono de voz", [("voz", ["Modulación del tono", "Ritmo y pausas", "Proyección y volumen"])]),
+    ("Coherencia", [("contenido", ["Claridad del mensaje", "Transparencia vs. evasión", "Manejo de la presión"])]),
+    ("Empatía", [
+        ("contenido", ["Responsabilidad y tono"]),
+        ("cara", ["Adecuación emocional"]),
+        ("voz", ["Modulación del tono"]),
+    ]),
+]
+CLAVES_PUNTAJE = {"contenido": "puntaje_global", "voz": "puntaje_global_voz", "cara": "puntaje_global_cara"}
+
+
+class PeticionFinal(BaseModel):
+    contenido: Optional[dict] = None
+    voz: Optional[dict] = None
+    cara: Optional[dict] = None
+
+
+def _texto_corto(x, limite=600):
+    return str(x)[:limite] if x is not None else ""
+
+
+def limpiar_informe(inf, fuente):
+    """Deja solo los campos esperados (y con tamaño acotado) de un informe de un juez."""
+    if not isinstance(inf, dict) or not isinstance(inf.get("areas"), list):
+        return None
+    areas = []
+    for a in inf["areas"][:8]:
+        if not isinstance(a, dict):
+            continue
+        try:
+            puntaje = float(a.get("puntaje"))
+        except (TypeError, ValueError):
+            continue
+        areas.append({"nombre": _texto_corto(a.get("nombre"), 80), "puntaje": puntaje, "comentario": _texto_corto(a.get("comentario"))})
+    if not areas:
+        return None
+    return {
+        "puntaje_global": inf.get(CLAVES_PUNTAJE[fuente]),
+        "areas": areas,
+        "resumen": _texto_corto(inf.get("resumen")),
+        "recomendacion_principal": _texto_corto(inf.get("recomendacion_principal")),
+    }
+
+
+def calcular_areas_finales(fuentes):
+    areas = []
+    for nombre, partes in AREAS_FINALES:
+        valores, usadas = [], []
+        for fuente, nombres_juez in partes:
+            inf = fuentes.get(fuente)
+            vs = [a["puntaje"] for a in (inf or {}).get("areas", []) if a["nombre"] in nombres_juez]
+            if vs:
+                valores += vs
+                usadas.append(fuente)
+        areas.append({
+            "nombre": nombre,
+            "puntaje": round(_media(valores), 1) if valores else None,
+            "fuentes": usadas,
+        })
+    return areas
+
+
+RUBRICA_FINAL = """
+Eres un coach de comunicación de crisis. Recibes tres informes de jueces
+automáticos sobre una misma práctica de entrevista de un vocero: contenido (lo
+que dijo), voz (cómo sonó) e imagen (cómo se vio). Tu trabajo es FUSIONARLOS en
+un solo informe coach, dirigido al vocero (háblale de "tú").
+
+Ya se calcularon las notas finales (areas_finales). NO las cambies, no las
+recalcules y no inventes otras. Las 4 áreas finales son: Expresión, Tono de voz,
+Coherencia y Empatía. Si un área tiene puntaje null es que esa fuente no tuvo
+datos: dilo claramente en su comentario ("sin datos de ...") y no la evalúes.
+
+Reglas:
+- Cada comentario de área: 1 a 2 frases que sinteticen lo más relevante de los
+  informes que la alimentan (campo "fuentes"), con una observación concreta.
+- Cruza las fuentes cuando aporte valor (por ejemplo, contenido transparente
+  pero voz insegura, o buen mensaje con expresión facial fuera de lugar).
+- NO listes todas las recomendaciones de los jueces. Elige UNA sola, la que más
+  mejoraría el desempeño global, y explica en una frase por qué pesa más que las demás.
+- La fortaleza principal debe ser algo que de verdad salga de los informes.
+- Las métricas de voz e imagen son estimaciones automáticas aproximadas: describe
+  cómo se ve o suena, sin afirmar qué siente la persona.
+- Si solo hay una o dos fuentes, dilo en el resumen y no rellenes lo que falta.
+
+Responde ÚNICAMENTE con este JSON, sin texto adicional ni bloques markdown:
+{
+  "resumen": "3-4 frases con la lectura global, en segunda persona",
+  "areas": [
+    {"nombre": "Expresión", "comentario": "..."},
+    {"nombre": "Tono de voz", "comentario": "..."},
+    {"nombre": "Coherencia", "comentario": "..."},
+    {"nombre": "Empatía", "comentario": "..."}
+  ],
+  "fortaleza_principal": "1 frase",
+  "recomendacion_principal": "1 a 2 frases: la acción más importante a practicar",
+  "por_que_esta_prioridad": "1 frase: por qué esta recomendación pesa más que las otras"
+}
+"""
+
+
+@app.post("/api/informe_final", dependencies=[Depends(limitar)])
+def informe_final(peticion: PeticionFinal):
+    if len(json.dumps(peticion.model_dump(), ensure_ascii=False)) > 40000:
+        raise HTTPException(status_code=413, detail="Los informes son demasiado grandes.")
+
+    fuentes = {
+        "contenido": limpiar_informe(peticion.contenido, "contenido"),
+        "voz": limpiar_informe(peticion.voz, "voz"),
+        "cara": limpiar_informe(peticion.cara, "cara"),
+    }
+    disponibles = [k for k, v in fuentes.items() if v]
+    if not disponibles:
+        raise HTTPException(status_code=400, detail="No hay ninguna evaluación válida para combinar.")
+
+    areas = calcular_areas_finales(fuentes)
+    con_nota = [a["puntaje"] for a in areas if a["puntaje"] is not None]
+    puntaje_global = round(_media(con_nota), 1) if con_nota else None
+
+    entrada = {
+        "areas_finales": areas,
+        "puntaje_global": puntaje_global,
+        "fuentes_disponibles": disponibles,
+        "fuentes_sin_datos": [k for k in fuentes if k not in disponibles],
+        "informes": {k: v for k, v in fuentes.items() if v},
+    }
+    bruto = llamar_ia(
+        [
+            {"role": "system", "content": RUBRICA_FINAL},
+            {"role": "user", "content": json.dumps(entrada, ensure_ascii=False, indent=2)},
+        ],
+        temperature=0.4,
+        max_tokens=1500,
+        esfuerzo="high",
+    )
+    redactado = extraer_json(bruto)
+
+    comentarios = {}
+    for a in redactado.get("areas", []) if isinstance(redactado.get("areas"), list) else []:
+        if isinstance(a, dict) and a.get("nombre"):
+            comentarios[a["nombre"]] = _texto_corto(a.get("comentario"), 700)
+    for a in areas:  # las notas son las calculadas por código; la IA solo aporta el texto
+        a["comentario"] = comentarios.get(a["nombre"], "")
+
+    return {
+        "puntaje_global": puntaje_global,
+        "areas": areas,
+        "resumen": _texto_corto(redactado.get("resumen"), 900),
+        "fortaleza_principal": _texto_corto(redactado.get("fortaleza_principal"), 400),
+        "recomendacion_principal": _texto_corto(redactado.get("recomendacion_principal"), 600),
+        "por_que_esta_prioridad": _texto_corto(redactado.get("por_que_esta_prioridad"), 400),
+        "fuentes_disponibles": disponibles,
+    }
+
+
 # --------------------------------------------- Página web en local ------------
 # En Vercel, la carpeta public/ la sirve la plataforma (CDN). Solo en tu
 # computadora (sin la variable VERCEL) la servimos nosotros, para que

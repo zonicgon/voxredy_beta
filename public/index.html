@@ -195,6 +195,23 @@
   #informe-cara .titulo-area { display: flex; justify-content: space-between; font-weight: bold; color: var(--navy); margin-bottom: 6px; }
   #informe-cara .recomendacion { margin-top: 12px; padding: 10px 12px; background: var(--fondo); border-left: 4px solid var(--orange); border-radius: 6px; }
 
+  /* Informe final del coach */
+  .informe-final { display: grid; gap: 16px; }
+  .areas-finales { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .area-final { background: white; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06); }
+  .area-final .cab { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .area-final .nombre { font-weight: 700; color: var(--navy); font-size: 16px; }
+  .area-final .nota { font-size: 26px; font-weight: 800; color: var(--orange); }
+  .area-final .nota.sin-datos { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .area-final .barra { height: 6px; background: #E5E7EB; border-radius: 999px; overflow: hidden; margin-bottom: 10px; }
+  .area-final .barra > div { height: 100%; background: var(--orange); border-radius: 999px; }
+  .area-final .comentario { font-size: 13.5px; line-height: 1.5; }
+  .area-final .fuentes { margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+  .bloque-coach { background: white; border-radius: 14px; padding: 18px 22px; box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06); font-size: 15px; line-height: 1.6; }
+  .bloque-coach h3 { margin: 0 0 6px 0; color: var(--navy); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .bloque-coach.prioridad { border-left: 6px solid var(--orange); background: #FFF6EF; }
+  .bloque-coach .porque { margin-top: 8px; font-size: 13.5px; color: var(--muted); }
+  .subtitulo-detalle { color: var(--navy); font-size: 18px; margin: 26px 0 12px 0; }
   #transcripcion-final { margin-top: 18px; }
   #transcripcion-final .linea { padding: 10px 14px; border-radius: 8px; margin: 8px 0; font-size: 14px; line-height: 1.5; }
   #transcripcion-final .linea.entrevistador { background: var(--light); }
@@ -217,8 +234,8 @@
     #panel-resultados, #panel-resultados * { visibility: visible; }
     #panel-resultados { position: absolute; left: 0; top: 0; width: 100%; display: block; }
     #boton-pdf { display: none !important; }
-    .encabezado-informe, .area, .tarjeta-general, .mini, .linea { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .seccion-informe { box-shadow: none; border: 1px solid var(--light); page-break-inside: avoid; }
+    .encabezado-informe, .area, .tarjeta-general, .mini, .linea, .bloque-coach { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .seccion-informe, .area-final, .bloque-coach { box-shadow: none; border: 1px solid var(--light); page-break-inside: avoid; }
     #informe-cara { grid-template-columns: 1fr; }
   }
 </style>
@@ -298,6 +315,7 @@
       <button id="boton-pdf" type="button" style="display:none; background: var(--navy);">Descargar informes como PDF</button>
     </div>
     <div id="resumen-general"></div>
+    <h3 class="subtitulo-detalle" id="titulo-detalle" style="display:none;">Detalle por evaluación</h3>
     <div id="informe-cara"></div>
     <div id="transcripcion-final" class="panel"></div>
   </section>
@@ -1003,55 +1021,151 @@
     return { barra, cuerpo };
   }
 
-  // ---------- Puntaje general y transcripción ----------
-  let puntajesInforme = {};
+  // ---------- Informe final (fusión de los 3 jueces) ----------
+  let informesCrudos = {};      // lo que devolvió cada juez: {contenido, voz, cara}
+  const ESTADO_FINAL = { generando: false };
 
-  function pintarResumenGeneral() {
-    const cont = document.getElementById("resumen-general");
-    const lista = Object.values(puntajesInforme).filter((x) => Number.isFinite(x.valor));
-    if (!lista.length) { cont.style.display = "none"; return; }
-    const prom = lista.reduce((s, x) => s + x.valor, 0) / lista.length;
-    const nivel = prom >= 4.2 ? "Excelente" : prom >= 3.5 ? "Buen desempeño" : prom >= 2.5 ? "En desarrollo" : "Necesita más práctica";
+  function nivelDe(nota) {
+    return nota >= 4.2 ? "Excelente" : nota >= 3.5 ? "Buen desempeño" : nota >= 2.5 ? "En desarrollo" : "Necesita más práctica";
+  }
 
+  function bloqueTexto(titulo, texto, clase, extra) {
+    const d = document.createElement("div");
+    d.className = "bloque-coach" + (clase ? " " + clase : "");
+    const h = document.createElement("h3");
+    h.textContent = titulo;
+    const p = document.createElement("div");
+    p.textContent = texto;
+    d.appendChild(h);
+    d.appendChild(p);
+    if (extra) {
+      const e = document.createElement("div");
+      e.className = "porque";
+      e.textContent = extra;
+      d.appendChild(e);
+    }
+    return d;
+  }
+
+  function renderizarInformeFinal(cont, f) {
     cont.textContent = "";
+    const wrap = document.createElement("div");
+    wrap.className = "informe-final";
+
+    // Encabezado con la nota global
     const caja = document.createElement("div");
     caja.className = "tarjeta-general";
-
-    const izq = document.createElement("div");
     const num = document.createElement("div");
     num.className = "puntaje-enorme";
-    num.textContent = prom.toFixed(1);
-    izq.appendChild(num);
-
+    num.textContent = f.puntaje_global != null ? Number(f.puntaje_global).toFixed(1) : "–";
     const centro = document.createElement("div");
     const et = document.createElement("div");
     et.className = "etiqueta";
-    et.textContent = `Puntaje general · ${nivel}`;
+    et.textContent = f.puntaje_global != null ? `Informe del coach · ${nivelDe(f.puntaje_global)}` : "Informe del coach";
     const nota = document.createElement("div");
     nota.className = "nota";
-    nota.textContent = `Promedio simple de ${lista.length} evaluación(es), sobre 5.`;
+    const nombresFuente = { contenido: "contenido", voz: "voz", cara: "imagen" };
+    nota.textContent = `Nota global sobre 5 · basada en: ${(f.fuentes_disponibles || []).map((x) => nombresFuente[x] || x).join(", ")}`;
     centro.appendChild(et);
     centro.appendChild(nota);
-
-    const minis = document.createElement("div");
-    minis.className = "mini-puntajes";
-    lista.forEach((x) => {
-      const m = document.createElement("div");
-      m.className = "mini";
-      const b = document.createElement("b");
-      b.textContent = x.valor.toFixed(1);
-      const sp = document.createElement("span");
-      sp.textContent = x.nombre;
-      m.appendChild(b);
-      m.appendChild(sp);
-      minis.appendChild(m);
-    });
-
-    caja.appendChild(izq);
+    caja.appendChild(num);
     caja.appendChild(centro);
-    caja.appendChild(minis);
-    cont.appendChild(caja);
+    wrap.appendChild(caja);
+
+    if (f.resumen) wrap.appendChild(bloqueTexto("Lectura global", f.resumen));
+
+    // Las 4 áreas finales
+    const grid = document.createElement("div");
+    grid.className = "areas-finales";
+    (f.areas || []).forEach((a) => {
+      const card = document.createElement("div");
+      card.className = "area-final";
+      const cab = document.createElement("div");
+      cab.className = "cab";
+      const n = document.createElement("span");
+      n.className = "nombre";
+      n.textContent = a.nombre;
+      const pt = document.createElement("span");
+      pt.className = "nota" + (a.puntaje == null ? " sin-datos" : "");
+      pt.textContent = a.puntaje == null ? "Sin datos" : `${Number(a.puntaje).toFixed(1)} / 5`;
+      cab.appendChild(n);
+      cab.appendChild(pt);
+      card.appendChild(cab);
+      if (a.puntaje != null) {
+        const barra = document.createElement("div");
+        barra.className = "barra";
+        const rel = document.createElement("div");
+        rel.style.width = Math.max(0, Math.min(100, (a.puntaje / 5) * 100)) + "%";
+        barra.appendChild(rel);
+        card.appendChild(barra);
+      }
+      const c = document.createElement("div");
+      c.className = "comentario";
+      c.textContent = a.comentario || "";
+      card.appendChild(c);
+      if (a.fuentes && a.fuentes.length) {
+        const fu = document.createElement("div");
+        fu.className = "fuentes";
+        fu.textContent = "Fuentes: " + a.fuentes.map((x) => nombresFuente[x] || x).join(" + ");
+        card.appendChild(fu);
+      }
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid);
+
+    if (f.fortaleza_principal) wrap.appendChild(bloqueTexto("Tu mayor fortaleza", f.fortaleza_principal));
+    if (f.recomendacion_principal) {
+      wrap.appendChild(bloqueTexto("Lo más importante para mejorar", f.recomendacion_principal, "prioridad", f.por_que_esta_prioridad));
+    }
+    cont.appendChild(wrap);
     cont.style.display = "block";
+  }
+
+  async function generarInformeFinal() {
+    const cont = document.getElementById("resumen-general");
+    if (ESTADO_FINAL.generando) return;
+    if (!Object.keys(informesCrudos).length) { cont.style.display = "none"; return; }
+    ESTADO_FINAL.generando = true;
+
+    cont.textContent = "";
+    cont.style.display = "block";
+    const barra = document.createElement("div");
+    barra.className = "barra-carga";
+    const cuerpo = document.createElement("div");
+    cont.appendChild(barra);
+    cont.appendChild(cuerpo);
+    const carga = iniciarCarga(barra, "informe_final", ["Reuniendo tus 3 evaluaciones", "El coach está cruzando contenido, voz e imagen", "Redactando tu informe final"], 20);
+    let ok = false;
+    try {
+      const respuesta = await fetch(`${URL_BACKEND}/informe_final`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contenido: informesCrudos.contenido || null,
+          voz: informesCrudos.voz || null,
+          cara: informesCrudos.cara || null,
+        }),
+      });
+      let datos = {};
+      try { datos = await respuesta.json(); } catch (e) { /* sin JSON */ }
+      if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
+      ok = true;
+      renderizarInformeFinal(cont, datos);
+    } catch (error) {
+      cuerpo.textContent = "";
+      const p = document.createElement("p");
+      p.className = "estado error";
+      p.textContent = "No se pudo generar el informe final: " + error.message;
+      const reintentar = document.createElement("button");
+      reintentar.type = "button";
+      reintentar.textContent = "Reintentar informe final";
+      reintentar.addEventListener("click", () => { ESTADO_FINAL.generando = false; generarInformeFinal(); });
+      cuerpo.appendChild(p);
+      cuerpo.appendChild(reintentar);
+    } finally {
+      carga.terminar(ok);
+      ESTADO_FINAL.generando = false;
+    }
   }
 
   function renderizarTranscripcion() {
@@ -1088,8 +1202,7 @@
       if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
       ok = true;
       renderizarInforme(seccion.cuerpo, tarea.titulo, datos, tarea.clavePuntaje);
-      puntajesInforme[tarea.clave] = { nombre: tarea.corto, valor: Number(datos[tarea.clavePuntaje]) };
-      pintarResumenGeneral();
+      informesCrudos[tarea.fuente] = datos;
     } catch (error) {
       const p = document.createElement("p");
       p.textContent = `No se pudo generar "${tarea.titulo}": ${error.message}`;
@@ -1097,7 +1210,7 @@
       reintentar.type = "button";
       reintentar.textContent = "Reintentar";
       reintentar.style.padding = "6px 12px";
-      reintentar.addEventListener("click", () => ejecutarTarea(tarea, seccion));
+      reintentar.addEventListener("click", async () => { await ejecutarTarea(tarea, seccion); generarInformeFinal(); });
       seccion.cuerpo.appendChild(p);
       seccion.cuerpo.appendChild(reintentar);
     } finally {
@@ -1109,8 +1222,9 @@
     botonEvaluar.style.display = "none";
     contenedorInformes.textContent = "";
     contenedorInformes.style.display = "block";
-    puntajesInforme = {};
+    informesCrudos = {};
     document.getElementById("resumen-general").style.display = "none";
+    document.getElementById("titulo-detalle").style.display = "block";
     document.getElementById("boton-pdf").style.display = "none";
     renderizarTranscripcion();
     document.body.classList.add("con-resultados");
@@ -1120,21 +1234,21 @@
     const tareas = [
       {
         titulo: "Contenido de tus respuestas", corto: "Contenido", url: "/evaluar", clavePuntaje: "puntaje_global",
-        clave: "eval_contenido", esperado: 20, cuerpo: { conversacion: historial },
+        fuente: "contenido", clave: "eval_contenido", esperado: 20, cuerpo: { conversacion: historial.slice(1) }, // se omite el "Estoy listo para empezar"
         fases: ["Enviando tu entrevista", "Analizando lo que respondiste", "Redactando el informe"],
       },
     ];
     if (resultadoVoz && resultadoVoz.metricas) {
       tareas.push({
         titulo: "Tu voz", corto: "Voz", url: "/evaluar_voz", clavePuntaje: "puntaje_global_voz",
-        clave: "eval_voz", esperado: 15, cuerpo: { metricas: resultadoVoz.metricas },
+        fuente: "voz", clave: "eval_voz", esperado: 15, cuerpo: { metricas: resultadoVoz.metricas },
         fases: ["Enviando las métricas de tu voz", "Analizando tono, ritmo y volumen", "Redactando el informe"],
       });
     }
     if (datosCara) {
       tareas.push({
         titulo: "Tu expresión facial", corto: "Cara", url: "/evaluar_cara", clavePuntaje: "puntaje_global_cara",
-        clave: "eval_cara", esperado: 15, cuerpo: datosCara,
+        fuente: "cara", clave: "eval_cara", esperado: 15, cuerpo: datosCara,
         fases: ["Enviando los datos de tu cara", "Analizando tu expresión facial", "Redactando el informe"],
       });
     }
@@ -1154,6 +1268,7 @@
       contenedorInformes.appendChild(aviso);
     }
     await Promise.allSettled(tareas.map((t, i) => ejecutarTarea(t, secciones[i])));
+    await generarInformeFinal();
     document.getElementById("boton-pdf").style.display = "inline-block";
   });
 
