@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>VoxReady — Entrevista de práctica</title>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<style>
+  :root {
+    --navy: #17354F;
+    --orange: #DB6427;
+    --light: #E4EAF1;
+    --ink: #22303C;
+    --muted: #5B6670;
+    --fondo: #F2F5F9;
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, "Segoe UI", Calibri, sans-serif;
+    background: var(--fondo);
+    color: var(--ink);
+  }
+
+  /* ---------- Barra superior con los 3 pasos ---------- */
+  .barra-superior {
+    background: var(--navy);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 28px;
+  }
+  .logo { font-size: 21px; font-weight: 700; letter-spacing: 0.3px; }
+  .logo span { color: var(--orange); }
+  .pasos { display: flex; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+  .paso { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #C9D6E3; }
+  .paso.activo { background: var(--orange); color: white; font-weight: 600; }
+  .paso.hecho { background: rgba(255,255,255,0.28); color: white; }
+
+  /* ---------- Pantalla completa: 2 columnas ---------- */
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 24px 28px 48px;
+  }
+  #escenario {
+    display: grid;
+    grid-template-columns: minmax(340px, 5fr) 7fr;
+    gap: 24px;
+    align-items: start;
+  }
+  body:not(.con-camara) #escenario { grid-template-columns: minmax(0, 820px); justify-content: center; }
+  body:not(.con-camara) #columna-camara { display: none; }
+  #columna-camara { position: sticky; top: 16px; }
+  #columna-principal { align-self: stretch; }
+  #columna-camara { align-self: start; }
+
+  .panel {
+    background: white;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06);
+  }
+
+  h1 { color: var(--navy); font-size: 28px; margin: 0 0 4px 0; }
+  h2 { color: var(--navy); font-size: 20px; margin: 0 0 12px 0; }
+  p.subtitulo { color: var(--muted); margin: 0 0 22px 0; }
+
+  .caja-consentimiento {
+    background: var(--light);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .caja-consentimiento label { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; }
+
+  button {
+    background: var(--orange);
+    color: white;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button:disabled { background: #C9C9C9; cursor: not-allowed; }
+  button:hover:not(:disabled) { opacity: 0.9; }
+  .fila-botones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+
+  .estado { margin: 12px 0 0 0; font-size: 14px; color: var(--muted); }
+  .estado.ok { color: #1E8E3E; font-weight: bold; }
+  .estado.error { color: #C0392B; font-weight: bold; }
+
+  /* Se oculta el bloque de permisos cuando la cámara ya funciona */
+  body.con-camara #bloque-consentimiento { display: none; }
+
+  /* ---------- Cámara ---------- */
+  #contenedor-video { position: relative; display: none; }
+  #video-vista {
+    width: 100%;
+    border-radius: 10px;
+    background: black;
+    display: block;
+    transform: scaleX(-1); /* efecto espejo, solo visual */
+  }
+  #canvas-caras {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    transform: scaleX(-1);
+    pointer-events: none;
+  }
+  #estado-facial { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  #medidor-audio-contenedor {
+    width: 100%; height: 14px; background: var(--light);
+    border-radius: 7px; margin-top: 10px; overflow: hidden; display: none;
+  }
+  #medidor-audio-barra { height: 100%; width: 0%; background: var(--orange); transition: width 0.05s linear; }
+
+  /* ---------- Entrevista ---------- */
+  #seccion-entrevista { display: none; }
+  #pregunta-actual {
+    background: var(--navy);
+    color: white;
+    padding: 20px 22px;
+    border-radius: 12px;
+    font-size: 18px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+    min-height: 64px;
+  }
+  #campo-respuesta {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid #C9D6E3;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 110px;
+  }
+  #historial-conversacion {
+    margin-top: 18px;
+    font-size: 14px;
+    max-height: 32vh;
+    overflow-y: auto;
+  }
+  #historial-conversacion p { margin: 6px 0; padding: 10px 12px; border-radius: 8px; background: var(--fondo); }
+  #historial-conversacion b { color: var(--navy); }
+
+  .barra-carga { display: none; margin-top: 12px; margin-bottom: 12px; }
+  .carga-etiqueta { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .carga-pista { height: 10px; background: #E5E7EB; border-radius: 999px; overflow: hidden; }
+  .carga-relleno { height: 100%; width: 0; background: var(--orange); border-radius: 999px; transition: width 0.15s linear; }
+
+  /* ---------- Resultados: ancho completo ---------- */
+  #panel-resultados { display: none; margin-top: 24px; }
+  body.con-resultados #panel-resultados { display: block; }
+  .cabecera-resultados { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .cabecera-resultados h2 { margin: 0; font-size: 24px; }
+
+  #resumen-general { display: none; margin-bottom: 18px; }
+  .tarjeta-general {
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    background: var(--navy); color: white; border-radius: 14px; padding: 22px 26px;
+  }
+  .tarjeta-general .puntaje-enorme { font-size: 64px; font-weight: 800; color: var(--orange); line-height: 1; }
+  .tarjeta-general .etiqueta { font-size: 18px; font-weight: 600; }
+  .tarjeta-general .nota { font-size: 12.5px; color: #C9D6E3; margin-top: 4px; }
+  .mini-puntajes { display: flex; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+  .mini { background: rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 16px; text-align: center; min-width: 110px; }
+  .mini b { display: block; font-size: 22px; }
+  .mini span { font-size: 12px; color: #C9D6E3; }
+
+  #informe-cara {
+    display: grid !important; /* el JS le pone display:block; aquí lo mantenemos en cuadrícula */
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 18px;
+    align-items: start;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  #informe-cara > p.estado { grid-column: 1 / -1; margin: 0; }
+  .seccion-informe { background: white; border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06); }
+  .encabezado-informe { background: var(--navy); color: white; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+  .encabezado-informe .puntaje-grande { font-size: 38px; font-weight: bold; color: var(--orange); line-height: 1.1; }
+  #informe-cara .area { background: var(--light); margin: 10px 0; padding: 12px 14px; border-radius: 8px; }
+  #informe-cara .titulo-area { display: flex; justify-content: space-between; font-weight: bold; color: var(--navy); margin-bottom: 6px; }
+  #informe-cara .recomendacion { margin-top: 12px; padding: 10px 12px; background: var(--fondo); border-left: 4px solid var(--orange); border-radius: 6px; }
+
+  #transcripcion-final { margin-top: 18px; }
+  #transcripcion-final .linea { padding: 10px 14px; border-radius: 8px; margin: 8px 0; font-size: 14px; line-height: 1.5; }
+  #transcripcion-final .linea.entrevistador { background: var(--light); }
+  #transcripcion-final .linea.vocero { background: #FFF1E8; border-left: 4px solid var(--orange); }
+  #transcripcion-final .quien { font-weight: bold; color: var(--navy); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  /* ---------- Celulares / pantallas angostas ---------- */
+  @media (max-width: 960px) {
+    #escenario { grid-template-columns: 1fr; }
+    #columna-camara { position: static; }
+    main { padding: 16px 14px 36px; }
+    .barra-superior { padding: 10px 14px; }
+    .mini-puntajes { margin-left: 0; }
+  }
+
+  /* ---------- Al imprimir / guardar PDF: solo los resultados ---------- */
+  @media print {
+    body { background: white; }
+    body * { visibility: hidden; }
+    #panel-resultados, #panel-resultados * { visibility: visible; }
+    #panel-resultados { position: absolute; left: 0; top: 0; width: 100%; display: block; }
+    #boton-pdf { display: none !important; }
+    .encabezado-informe, .area, .tarjeta-general, .mini, .linea { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .seccion-informe { box-shadow: none; border: 1px solid var(--light); page-break-inside: avoid; }
+    #informe-cara { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="barra-superior">
+  <div class="logo">Vox<span>Ready</span></div>
+  <div class="pasos" id="pasos">
+    <div class="paso activo" data-paso="1">1 · Comprobación</div>
+    <div class="paso" data-paso="2">2 · Entrevista</div>
+    <div class="paso" data-paso="3">3 · Evaluación</div>
+  </div>
+</header>
+
+<main>
+  <div id="escenario">
+
+    <!-- Columna izquierda: cámara (aparece al conceder el permiso) -->
+    <aside id="columna-camara" class="panel">
+      <div id="contenedor-video">
+        <video id="video-vista" autoplay muted playsinline></video>
+        <canvas id="canvas-caras"></canvas>
+      </div>
+      <p class="estado" id="estado-facial">Cargando modelo de expresión facial...</p>
+      <div id="medidor-audio-contenedor">
+        <div id="medidor-audio-barra"></div>
+      </div>
+      <div class="fila-botones">
+        <button id="boton-recalibrar" type="button" style="display:none; background: var(--navy); padding: 8px 14px; font-size: 13px;">Recalibrar cara neutra</button>
+      </div>
+    </aside>
+
+    <!-- Columna derecha: permisos, entrevista -->
+    <section class="panel" id="columna-principal">
+
+      <div id="bloque-consentimiento">
+        <h1>Comprobación técnica</h1>
+        <p class="subtitulo">Antes de la entrevista, verificamos que tu cámara y micrófono funcionen.</p>
+
+        <div class="caja-consentimiento">
+          <label>
+            <input type="checkbox" id="check-consentimiento" />
+            Acepto que esta sesión use mi cámara y micrófono únicamente para la
+            práctica de entrenamiento en VoxReady. El video y el audio se procesan
+            en mi navegador y no se guardan: a la IA solo se envía el texto de mis
+            respuestas y métricas numéricas de mi voz y mi expresión. Si uso el botón
+            de hablar, el reconocimiento de voz de Chrome/Edge envía mi audio al
+            servicio de voz del navegador para transcribirlo.
+          </label>
+        </div>
+
+        <button id="boton-solicitar" disabled>Solicitar acceso a cámara y micrófono</button>
+        <p class="estado" id="mensaje-estado">Marca la casilla para habilitar el botón.</p>
+      </div>
+
+      <div id="seccion-entrevista">
+        <h2>Entrevista de práctica</h2>
+        <div id="pregunta-actual">Presiona "Comenzar entrevista" para empezar.</div>
+        <div id="barra-carga" class="barra-carga"></div>
+        <textarea id="campo-respuesta" placeholder="Escribe aquí tu respuesta, o usa el micrófono..."></textarea>
+        <div class="fila-botones">
+          <button id="boton-comenzar">Comenzar entrevista</button>
+          <button id="boton-hablar" type="button" style="display:none; background: var(--navy);">🎤 Hablar</button>
+          <button id="boton-responder" style="display:none;">Responder</button>
+          <button id="boton-evaluar" type="button" style="display:none; background: var(--navy);">Ver mi evaluación completa</button>
+        </div>
+        <div id="historial-conversacion"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Resultados: ancho completo, aparece al terminar -->
+  <section id="panel-resultados">
+    <div class="cabecera-resultados">
+      <h2>Tu evaluación</h2>
+      <button id="boton-pdf" type="button" style="display:none; background: var(--navy);">Descargar informes como PDF</button>
+    </div>
+    <div id="resumen-general"></div>
+    <div id="informe-cara"></div>
+    <div id="transcripcion-final" class="panel"></div>
+  </section>
+</main>
+
+<script>
+  // --- Dirección de tu backend. Si usas otro puerto, cámbialo aquí. ---
+  const URL_BACKEND = "/api"; // mismo dominio: funciona igual en Vercel y en local
+
+  const checkConsentimiento = document.getElementById("check-consentimiento");
+  const botonSolicitar = document.getElementById("boton-solicitar");
+  const contenedorVideo = document.getElementById("contenedor-video");
+  const videoVista = document.getElementById("video-vista");
+  const canvasCaras = document.getElementById("canvas-caras");
+  const estadoFacial = document.getElementById("estado-facial");
+  const medidorContenedor = document.getElementById("medidor-audio-contenedor");
+  const medidorBarra = document.getElementById("medidor-audio-barra");
+  const mensajeEstado = document.getElementById("mensaje-estado");
+  const seccionEntrevista = document.getElementById("seccion-entrevista");
+  const preguntaActual = document.getElementById("pregunta-actual");
+  const campoRespuesta = document.getElementById("campo-respuesta");
+  const botonComenzar = document.getElementById("boton-comenzar");
+  const botonResponder = document.getElementById("boton-responder");
+  const botonHablar = document.getElementById("boton-hablar");
+  const historialConversacion = document.getElementById("historial-conversacion");
+
+  // Indicador de pasos (barra superior) y clases de pantalla
+  function setPaso(n) {
+    document.querySelectorAll("#pasos .paso").forEach((el) => {
+      const k = Number(el.dataset.paso);
+      el.classList.toggle("activo", k === n);
+      el.classList.toggle("hecho", k < n);
+    });
+  }
+
+  // Aquí guardamos la conversación completa, igual que la lista "historial"
+  // que usábamos en Python. Se la mandamos completa al backend en cada turno.
+  let historial = [];
+  let numPregunta = 0;
+  const MAX_PREGUNTAS = 5; // debe coincidir con lo que usábamos en entrevista.py
+
+  // Para la grabación de audio real (para el análisis de voz más adelante).
+  let flujoMedios = null;       // el stream de cámara/mic ya autorizado
+
+  // El botón solo se habilita si la persona marcó el consentimiento.
+  // Esto es justo el flujo de "consentimiento antes de capturar" del producto.
+  checkConsentimiento.addEventListener("change", () => {
+    botonSolicitar.disabled = !checkConsentimiento.checked;
+    if (checkConsentimiento.checked) {
+      mensajeEstado.textContent = "Listo. Presiona el botón para pedir permiso al navegador.";
+      mensajeEstado.className = "estado";
+    }
+  });
+
+  botonSolicitar.addEventListener("click", async () => {
+    mensajeEstado.textContent = "Pidiendo permiso al navegador...";
+    mensajeEstado.className = "estado";
+
+    try {
+      // getUserMedia es la función del navegador que pide cámara y micrófono.
+      // Esto reemplaza lo que antes hacíamos por separado en Python.
+      const flujo = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+      });
+
+      // Mostramos el video en vivo, para que la persona vea que la cámara funciona.
+      contenedorVideo.style.display = "block";
+      medidorContenedor.style.display = "block";
+      document.body.classList.add("con-camara"); // activa el diseño de dos columnas
+
+      // Iniciamos la detección cuando el video REALMENTE está reproduciendo
+      // cuadros (evento "playing"), y el listener va ANTES de asignar el stream.
+      videoVista.addEventListener("playing", () => iniciarDeteccionFacial(), { once: true });
+      videoVista.srcObject = flujo;
+      try { await videoVista.play(); } catch (e) { console.warn("play() falló:", e); }
+
+      // Medidor de audio: usamos la Web Audio API para leer el volumen del
+      // micrófono en tiempo real y mostrarlo como una barra que se mueve.
+      const contextoAudio = new AudioContext();
+      const fuente = contextoAudio.createMediaStreamSource(flujo);
+      const analizador = contextoAudio.createAnalyser();
+      analizador.fftSize = 512;
+      fuente.connect(analizador);
+
+      const datos = new Uint8Array(analizador.frequencyBinCount);
+
+      function actualizarMedidor() {
+        analizador.getByteFrequencyData(datos);
+        const promedio = datos.reduce((suma, valor) => suma + valor, 0) / datos.length;
+        const porcentaje = Math.min(100, (promedio / 128) * 100);
+        medidorBarra.style.width = porcentaje + "%";
+        requestAnimationFrame(actualizarMedidor);
+      }
+      actualizarMedidor();
+
+      mensajeEstado.textContent = "Cámara y micrófono funcionando correctamente.";
+      mensajeEstado.className = "estado ok";
+      botonSolicitar.textContent = "Acceso concedido";
+      botonSolicitar.disabled = true;
+
+      // Ya comprobamos cámara/mic: mostramos la sección de la entrevista.
+      seccionEntrevista.style.display = "block";
+      setPaso(2);
+
+      // Guardamos el flujo para poder grabar el audio real más adelante.
+      flujoMedios = flujo;
+
+    } catch (error) {
+      // Esto se dispara si la persona rechaza el permiso, o si no hay
+      // cámara/micrófono disponible en el equipo.
+      mensajeEstado.textContent = "No se pudo acceder a la cámara/micrófono: " + error.message;
+      mensajeEstado.className = "estado error";
+    }
+  });
+
+  // --- Lógica de la entrevista: habla con el backend en /entrevistar ---
+
+  function agregarAlHistorialVisual(rol, texto) {
+    const etiqueta = rol === "assistant" ? "Entrevistador" : "Tú";
+    const parrafo = document.createElement("p");
+    const negrita = document.createElement("b");
+    negrita.textContent = etiqueta + ": ";
+    parrafo.appendChild(negrita);
+    parrafo.appendChild(document.createTextNode(texto));
+    historialConversacion.appendChild(parrafo);
+    historialConversacion.scrollTop = historialConversacion.scrollHeight;
+  }
+
+  // ================================================================
+  // Barra de carga con tiempo ESTIMADO (aprende de tus tiempos reales)
+  // La IA no avisa cuánto le falta, así que estimamos con la mediana de
+  // las últimas respuestas. La barra llega a ~90% en el tiempo esperado,
+  // se frena en 99% si tarda más, y solo marca 100% cuando llega la respuesta.
+  // ================================================================
+  function leerTiempos(clave) {
+    try { return JSON.parse(localStorage.getItem("voxready_t_" + clave) || "[]"); } catch (e) { return []; }
+  }
+  function guardarTiempo(clave, segundos) {
+    try {
+      const a = leerTiempos(clave);
+      a.push(segundos);
+      localStorage.setItem("voxready_t_" + clave, JSON.stringify(a.slice(-8)));
+    } catch (e) { /* sin almacenamiento: no pasa nada */ }
+  }
+  function esperadoDe(clave, porDefecto) {
+    const a = leerTiempos(clave);
+    if (!a.length) return porDefecto;
+    const o = [...a].sort((x, y) => x - y);
+    return o[Math.floor(o.length / 2)];
+  }
+
+  function iniciarCarga(contenedor, clave, fases, esperadoPorDefecto) {
+    const esperado = Math.max(1, esperadoDe(clave, esperadoPorDefecto));
+    contenedor.textContent = "";
+    contenedor.style.display = "block";
+    const etiqueta = document.createElement("div");
+    etiqueta.className = "carga-etiqueta";
+    const pista = document.createElement("div");
+    pista.className = "carga-pista";
+    const relleno = document.createElement("div");
+    relleno.className = "carga-relleno";
+    pista.appendChild(relleno);
+    contenedor.appendChild(etiqueta);
+    contenedor.appendChild(pista);
+
+    const inicio = performance.now();
+    const progreso = (t) => (t <= esperado ? (0.9 * t) / esperado : 0.9 + 0.09 * (1 - Math.exp(-(t - esperado) / esperado)));
+
+    function pintar() {
+      const t = (performance.now() - inicio) / 1000;
+      const p = progreso(t);
+      relleno.style.width = (p * 100).toFixed(1) + "%";
+      const fase = p < 0.25 ? fases[0] : p < 0.85 ? fases[1] : fases[2];
+      const texto = t > esperado * 2 ? "Está tardando más de lo normal, sigue trabajando" : fase;
+      const resto = t < esperado ? `  ·  ≈ ${Math.max(1, Math.round(esperado - t))} s restantes` : "";
+      etiqueta.textContent = `${texto}…  ${Math.round(p * 100)}%  ·  ${t.toFixed(1)} s${resto}`;
+    }
+    pintar();
+    const reloj = setInterval(pintar, 100);
+
+    return {
+      terminar(exito) {
+        clearInterval(reloj);
+        if (exito) {
+          guardarTiempo(clave, (performance.now() - inicio) / 1000);
+          relleno.style.width = "100%";
+          etiqueta.textContent = "¡Listo!";
+          setTimeout(() => { contenedor.style.display = "none"; }, 400);
+        } else {
+          contenedor.style.display = "none";
+        }
+      },
+    };
+  }
+
+  const barraCarga = document.getElementById("barra-carga");
+  const FASES_PREGUNTA = ["Enviando tu respuesta", "El entrevistador está pensando", "Redactando la pregunta"];
+
+  async function pedirPreguntaAlBackend() {
+    preguntaActual.textContent = "El entrevistador está preparando la siguiente pregunta...";
+    botonResponder.disabled = true; // evita mandar dos respuestas mientras la IA piensa
+    const carga = iniciarCarga(barraCarga, "pregunta", FASES_PREGUNTA, 6);
+
+    let respuesta;
+    try {
+      respuesta = await fetch(`${URL_BACKEND}/entrevistar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historial }),
+      });
+    } catch (error) {
+      carga.terminar(false);
+      botonResponder.disabled = false;
+      throw error;
+    }
+
+    if (!respuesta.ok) {
+      carga.terminar(false);
+      botonResponder.disabled = false;
+      preguntaActual.textContent = "Error al conectar con el servidor. Recarga la página e intenta de nuevo.";
+      return;
+    }
+
+    const datos = await respuesta.json();
+    carga.terminar(true);
+    botonResponder.disabled = false;
+    iniciarVentanaVoz(); // a partir de aquí medimos tu voz, hasta que envíes la respuesta
+    historial.push({ role: "assistant", content: datos.pregunta });
+    numPregunta++;
+    preguntaActual.textContent = `(${numPregunta}/${MAX_PREGUNTAS}) ${datos.pregunta}`;
+    agregarAlHistorialVisual("assistant", datos.pregunta);
+  }
+
+  // ================================================================
+  // Análisis de VOZ dentro del navegador (reemplaza librosa + ffmpeg)
+  // Medimos volumen y tono ~20 veces por segundo, solo mientras respondes.
+  // No se sube ni se guarda ningún audio: solo se envían números.
+  // ================================================================
+  const VOZ_INTERVALO_MS = 50;
+  let vozCtx = null, vozAnalizador = null, vozBuffer = null, vozTimer = null;
+  let vozMuestras = [];          // {v: ventana, dt: segundos, rms, f0}
+  let vozMidiendo = false;
+  let vozVentana = 0;
+  let vozUltimo = 0;
+  let errorVoz = null;
+
+  function iniciarAnalisisVoz() {
+    vozMuestras = [];
+    vozVentana = 0;
+    errorVoz = null;
+    try {
+      if (!flujoMedios) throw new Error("no hay stream de micrófono");
+      const pistas = flujoMedios.getAudioTracks();
+      if (pistas.length === 0) throw new Error("el stream no tiene pista de audio");
+      vozCtx = new AudioContext();
+      if (vozCtx.state === "suspended") vozCtx.resume();
+      const fuente = vozCtx.createMediaStreamSource(new MediaStream(pistas));
+      vozAnalizador = vozCtx.createAnalyser();
+      vozAnalizador.fftSize = 2048;
+      fuente.connect(vozAnalizador);
+      vozBuffer = new Float32Array(vozAnalizador.fftSize);
+      vozTimer = setInterval(muestrearVoz, VOZ_INTERVALO_MS);
+    } catch (error) {
+      console.error("No se pudo iniciar el análisis de voz:", error);
+      errorVoz = error.message;
+    }
+  }
+
+  function iniciarVentanaVoz() { vozVentana++; vozUltimo = performance.now(); vozMidiendo = true; }
+  function detenerVentanaVoz() { vozMidiendo = false; }
+
+  // Tono por autocorrelación normalizada (rango de voz humana: 70 a 400 Hz)
+  function estimarTono(buf, sr) {
+    const minLag = Math.floor(sr / 400), maxLag = Math.floor(sr / 70);
+    const n = buf.length - maxLag;
+    if (n <= 0) return 0;
+    let e0 = 0;
+    for (let i = 0; i < n; i++) e0 += buf[i] * buf[i];
+    if (e0 < 1e-9) return 0;
+    const corr = new Float32Array(maxLag + 2);
+    let mejor = 0, mejorLag = 0;
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let s = 0, e1 = 0;
+      for (let i = 0; i < n; i++) { const y = buf[i + lag]; s += buf[i] * y; e1 += y * y; }
+      const c = s / Math.sqrt(e0 * e1 + 1e-12);
+      corr[lag] = c;
+      if (c > mejor) { mejor = c; mejorLag = lag; }
+    }
+    if (mejor < 0.6) return 0; // no hay tono claro (ruido o consonante)
+    // Evita errores de octava: el primer pico local casi tan fuerte como el máximo
+    for (let lag = minLag + 1; lag < maxLag; lag++) {
+      if (corr[lag] >= 0.9 * mejor && corr[lag] > corr[lag - 1] && corr[lag] >= corr[lag + 1]) { mejorLag = lag; break; }
+    }
+    return sr / mejorLag;
+  }
+
+  function muestrearVoz() {
+    if (!vozMidiendo || !vozAnalizador) return;
+    const ahora = performance.now();
+    const dt = Math.min(0.25, (ahora - vozUltimo) / 1000);
+    vozUltimo = ahora;
+    vozAnalizador.getFloatTimeDomainData(vozBuffer);
+    let suma = 0;
+    for (let i = 0; i < vozBuffer.length; i++) suma += vozBuffer[i] * vozBuffer[i];
+    const rms = Math.sqrt(suma / vozBuffer.length);
+    const f0 = rms > 0.01 ? estimarTono(vozBuffer, vozCtx.sampleRate) : 0;
+    vozMuestras.push({ v: vozVentana, dt, rms, f0 });
+  }
+
+  // Convierte las muestras en las mismas métricas que antes calculaba librosa
+  function resumirVoz() {
+    if (vozTimer) { clearInterval(vozTimer); vozTimer = null; }
+    vozMidiendo = false;
+    if (vozCtx) { try { vozCtx.close(); } catch (e) { /* nada */ } }
+    if (errorVoz) return { error: errorVoz };
+    if (vozMuestras.length === 0) return { error: "no se midió ninguna muestra de voz" };
+
+    const umbral = vozMuestras.reduce((m, x) => Math.max(m, x.rms), 0) * Math.pow(10, -30 / 20); // igual que top_db=30
+    const porVentana = {};
+    vozMuestras.forEach((x) => { (porVentana[x.v] = porVentana[x.v] || []).push(x); });
+
+    let duracion = 0, silencio = 0, pausas = 0, hablado = 0;
+    const rmsTodos = [], tonos = [], demoras = [];
+    let respuestasConVoz = 0;
+
+    Object.values(porVentana).forEach((muestras) => {
+      const conVoz = muestras.map((x) => x.rms >= umbral && x.rms > 0.005);
+      const primero = conVoz.indexOf(true);
+      const ultimo = conVoz.lastIndexOf(true);
+      if (primero === -1) return; // esa respuesta no tuvo voz (¿la escribiste?)
+      respuestasConVoz++;
+      demoras.push(muestras.slice(0, primero).reduce((s, x) => s + x.dt, 0));
+
+      // Solo consideramos desde que empezaste a hablar hasta que terminaste
+      let tramo = 0;
+      for (let i = primero; i <= ultimo; i++) {
+        const x = muestras[i];
+        duracion += x.dt;
+        rmsTodos.push(x.rms);
+        if (conVoz[i]) {
+          hablado += x.dt;
+          if (tramo >= 0.4) pausas++;   // silencio de 0,4 s o más entre frases = pausa
+          tramo = 0;
+          if (x.f0 > 0) tonos.push(x.f0);
+        } else {
+          silencio += x.dt;
+          tramo += x.dt;
+        }
+      }
+    });
+
+    if (respuestasConVoz === 0 || hablado < 3) {
+      return { error: "no se detectó suficiente voz (¿escribiste tus respuestas en vez de hablarlas?)" };
+    }
+
+    const media = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+    const desv = (a) => { const m = media(a); return Math.sqrt(media(a.map((x) => (x - m) ** 2))); };
+
+    // Quitamos saltos de octava del tono (valores lejos de la mediana)
+    let tonoMedio = 0, tonoVar = 0;
+    if (tonos.length >= 10) {
+      const orden = [...tonos].sort((a, b) => a - b);
+      const mediana = orden[Math.floor(orden.length / 2)];
+      const limpios = tonos.filter((t) => t > mediana * 0.6 && t < mediana * 1.6);
+      tonoMedio = media(limpios);
+      tonoVar = desv(limpios);
+    }
+
+    return {
+      metricas: {
+        duracion_segundos: Math.round(duracion * 10) / 10,
+        tono_promedio_hz: Math.round(tonoMedio * 10) / 10,
+        tono_variabilidad_hz: Math.round(tonoVar * 10) / 10,
+        volumen_promedio: Math.round(media(rmsTodos) * 10000) / 10000,
+        volumen_variabilidad: Math.round(desv(rmsTodos) * 10000) / 10000,
+        proporcion_silencio: Math.round((silencio / Math.max(duracion, 0.001)) * 100) / 100,
+        numero_pausas: pausas,
+        demora_media_antes_de_hablar_s: Math.round(media(demoras) * 10) / 10,
+        respuestas_con_voz: respuestasConVoz,
+      },
+    };
+  }
+
+  // Datos que se mandarán a evaluar cuando termine la entrevista
+  let resultadoVoz = null;
+  let datosCara = null;
+
+  async function finalizarEntrevista() {
+    botonHablar.style.display = "none";
+    botonResponder.style.display = "none";
+    campoRespuesta.style.display = "none";
+    detenerVentanaVoz();
+    resultadoVoz = resumirVoz();
+    datosCara = datosCaraSesion();
+    preguntaActual.textContent = "Entrevista completa. Presiona el botón para ver tu evaluación.";
+    botonEvaluar.style.display = "inline-block";
+  }
+
+  botonComenzar.addEventListener("click", async () => {
+    botonComenzar.style.display = "none";
+    botonHablar.style.display = "inline-block";
+    botonResponder.style.display = "inline-block"; // por si prefiere escribir en vez de hablar
+    historial = [{ role: "user", content: "Estoy listo para empezar." }];
+    numPregunta = 0;
+
+    iniciarAnalisisVoz();    // mide tu voz EN EL NAVEGADOR (no se sube ningún audio)
+    iniciarGrabacionCara();  // registra la expresión facial durante la entrevista
+
+    try {
+      await pedirPreguntaAlBackend();
+    } catch (error) {
+      preguntaActual.textContent = "Error al conectar con el backend: " + error.message;
+      console.error(error);
+    }
+  });
+
+  botonResponder.addEventListener("click", async () => {
+    const texto = campoRespuesta.value.trim();
+    if (!texto) return;
+    detenerVentanaVoz();
+
+    historial.push({ role: "user", content: texto });
+    agregarAlHistorialVisual("user", texto);
+    campoRespuesta.value = "";
+
+    // Si ya hicimos la última pregunta permitida, esta respuesta es la
+    // última: cerramos la entrevista en vez de pedir una pregunta más.
+    if (numPregunta >= MAX_PREGUNTAS) {
+      await finalizarEntrevista();
+    } else {
+      await pedirPreguntaAlBackend();
+    }
+  });
+
+  // --- Reconocimiento de voz del navegador (Chrome/Edge) ---
+  // A diferencia de la versión en Python, aquí NO se manda audio a ningún
+  // servidor: el propio navegador convierte tu voz a texto y nos entrega
+  // el resultado ya escrito, directo en el cuadro de respuesta.
+  const ClaseReconocimiento = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let reconocimiento = null;
+  let escuchando = false;
+
+  if (ClaseReconocimiento) {
+    reconocimiento = new ClaseReconocimiento();
+    reconocimiento.lang = "es-CL";
+    reconocimiento.continuous = true;   // sigue escuchando hasta que lo detengamos
+    reconocimiento.interimResults = true; // muestra texto parcial mientras hablas
+
+    reconocimiento.onresult = (evento) => {
+      let textoNuevo = "";
+      for (let i = evento.resultIndex; i < evento.results.length; i++) {
+        if (evento.results[i].isFinal) {
+          textoNuevo += evento.results[i][0].transcript + " ";
+        }
+      }
+      if (textoNuevo) {
+        campoRespuesta.value += textoNuevo;
+      }
+    };
+
+    reconocimiento.onerror = (evento) => {
+      console.error("Error de reconocimiento de voz:", evento.error);
+    };
+  }
+
+  botonHablar.addEventListener("click", () => {
+    if (!ClaseReconocimiento) {
+      alert("Tu navegador no soporta reconocimiento de voz. Prueba con Chrome o Edge.");
+      return;
+    }
+
+    if (!escuchando) {
+      // Primer clic: empieza a escuchar (equivalente al primer Enter en Python)
+      campoRespuesta.value = "";
+      reconocimiento.start();
+      escuchando = true;
+      botonHablar.textContent = "⏹ Detener y usar este texto";
+      botonHablar.style.background = "var(--orange)";
+    } else {
+      // Segundo clic: deja de escuchar (equivalente al segundo Enter)
+      reconocimiento.stop();
+      escuchando = false;
+      botonHablar.textContent = "🎤 Hablar";
+      botonHablar.style.background = "var(--navy)";
+    }
+  });
+
+
+  // ================================================================
+  // Motor de alta precisión: MediaPipe Face Landmarker (blendshapes)
+  // Mide 52 movimientos musculares de la cara (ceño, comisuras de la
+  // boca, cejas, ojos...) en vez de adivinar la emoción de un solo golpe.
+  // Además: calibración con tu cara neutra + suavizado en el tiempo.
+  // ================================================================
+  const MP_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  const MP_MODELO = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+  const FRAMES_CALIBRACION = 40;   // ~1.5 s con la cara relajada
+  const ALFA_SUAVIZADO = 0.35;     // 0 = muy suave/lento, 1 = sin suavizar
+  const UMBRAL_NEUTRAL = 0.30;     // bajo esto, se considera cara neutra
+
+  let faceLandmarker = null;
+  let baselineCara = null;
+  let acumuladoBase = {};
+  let framesBase = 0;
+  let emocionesSuaves = {};
+  let ultimoTiempoVideo = -1;
+  let acumPose = { yaw: 0, pitch: 0 };
+  let baselinePose = { yaw: 0, pitch: 0 };
+
+  const botonRecalibrar = document.getElementById("boton-recalibrar");
+  botonRecalibrar.addEventListener("click", () => {
+    baselineCara = null; acumuladoBase = {}; framesBase = 0; emocionesSuaves = {}; acumPose = { yaw: 0, pitch: 0 };
+  });
+
+  const prom = (b, ...n) => n.reduce((s, k) => s + (b[k] || 0), 0) / n.length;
+  const tope = (x) => Math.max(0, Math.min(1, x));
+
+  // b = cuánto se movió cada músculo respecto a tu cara neutra (0 a 1)
+  function calcularEmociones(b) {
+    return {
+      feliz: tope(prom(b, "mouthSmileLeft", "mouthSmileRight") * 1.8 + prom(b, "cheekSquintLeft", "cheekSquintRight") * 0.5),
+      triste: tope(
+        prom(b, "mouthFrownLeft", "mouthFrownRight") * 2.4 +
+        (b.browInnerUp || 0) * 1.7 +
+        (b.mouthShrugLower || 0) * 0.8 +
+        prom(b, "mouthPressLeft", "mouthPressRight") * 0.4 +
+        (b.mouthRollLower || 0) * 0.4
+      ),
+      enojo: tope(
+        prom(b, "browDownLeft", "browDownRight") * 1.7 +
+        prom(b, "noseSneerLeft", "noseSneerRight") * 1.0 +
+        prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.8 +
+        prom(b, "mouthPressLeft", "mouthPressRight") * 0.8
+      ),
+      sorpresa: tope(
+        prom(b, "eyeWideLeft", "eyeWideRight") * 1.5 +
+        prom(b, "browOuterUpLeft", "browOuterUpRight") * 1.2 +
+        (b.jawOpen || 0) * 1.3
+      ),
+      miedo: tope(
+        prom(b, "eyeWideLeft", "eyeWideRight") * 1.0 +
+        (b.browInnerUp || 0) * 1.0 +
+        prom(b, "mouthStretchLeft", "mouthStretchRight") * 1.6
+      ),
+      asco: tope(
+        prom(b, "noseSneerLeft", "noseSneerRight") * 1.9 +
+        prom(b, "mouthUpperUpLeft", "mouthUpperUpRight") * 1.2 +
+        (b.mouthShrugUpper || 0) * 0.6
+      ),
+    };
+  }
+
+  // ================================================================
+  // Registro de la cara DURANTE la entrevista (para la evaluación)
+  // Guardamos ~5 muestras por segundo: emociones, giro/inclinación de
+  // cabeza y desvío de mirada, más un conteo exacto de parpadeos.
+  // ================================================================
+  let grabandoCara = false;
+  let muestrasCara = [];
+  let ultimoMuestreoCara = 0;
+  let inicioCara = 0;
+  let framesTotalesCara = 0;
+  let framesConRostroCara = 0;
+  let parpadeosCara = 0;
+  let ojosCerrados = false;
+  let errorGrabacionCara = null;
+
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+
+  // Giro (yaw) e inclinación (pitch) de la cabeza, como índices relativos
+  // calculados con puntos de la cara (nariz vs. mejillas / frente / mentón).
+  function calcularPose(pts) {
+    const nariz = pts[1], izq = pts[234], der = pts[454], frente = pts[10], menton = pts[152];
+    const ancho = Math.abs(der.x - izq.x) || 1e-6;
+    const alto = Math.abs(menton.y - frente.y) || 1e-6;
+    return {
+      yaw: (nariz.x - (izq.x + der.x) / 2) / ancho,
+      pitch: (nariz.y - (frente.y + menton.y) / 2) / alto,
+    };
+  }
+
+  function contarParpadeo(crudo) {
+    const v = prom(crudo, "eyeBlinkLeft", "eyeBlinkRight");
+    if (!ojosCerrados && v > 0.5) { ojosCerrados = true; parpadeosCara++; }
+    else if (ojosCerrados && v < 0.3) { ojosCerrados = false; }
+  }
+
+  function registrarMuestra(emo, delta, pts) {
+    const ahora = performance.now();
+    if (ahora - ultimoMuestreoCara < 200) return; // ~5 muestras por segundo
+    ultimoMuestreoCara = ahora;
+
+    const pose = calcularPose(pts);
+    const horiz = Math.max(
+      prom(delta, "eyeLookInLeft", "eyeLookOutRight"),
+      prom(delta, "eyeLookOutLeft", "eyeLookInRight")
+    );
+    const vert = Math.max(
+      prom(delta, "eyeLookUpLeft", "eyeLookUpRight"),
+      prom(delta, "eyeLookDownLeft", "eyeLookDownRight")
+    );
+
+    muestrasCara.push({
+      t: Math.round((ahora - inicioCara) / 100) / 10,
+      feliz: r3(emo.feliz), triste: r3(emo.triste), enojo: r3(emo.enojo),
+      sorpresa: r3(emo.sorpresa), miedo: r3(emo.miedo), asco: r3(emo.asco),
+      yaw: r3(pose.yaw - baselinePose.yaw),
+      pitch: r3(pose.pitch - baselinePose.pitch),
+      mirada: r3(Math.max(horiz, vert)),
+    });
+  }
+
+  function iniciarGrabacionCara() {
+    muestrasCara = [];
+    ultimoMuestreoCara = 0;
+    framesTotalesCara = 0;
+    framesConRostroCara = 0;
+    parpadeosCara = 0;
+    ojosCerrados = false;
+    inicioCara = performance.now();
+    if (faceLandmarker) {
+      errorGrabacionCara = null;
+      grabandoCara = true;
+    } else {
+      errorGrabacionCara = "el motor de alta precisión (MediaPipe) no está activo";
+      grabandoCara = false;
+    }
+  }
+
+  // Reúne las muestras de la cara para mandarlas a evaluar (nada se guarda en disco)
+  function datosCaraSesion() {
+    grabandoCara = false;
+    if (muestrasCara.length === 0) return null;
+    let muestras = muestrasCara;
+    while (muestras.length > 4000) muestras = muestras.filter((_, i) => i % 2 === 0);
+    return {
+      muestras,
+      parpadeos: parpadeosCara,
+      frames_totales: framesTotalesCara,
+      frames_con_rostro: framesConRostroCara,
+      duracion_segundos: (performance.now() - inicioCara) / 1000,
+    };
+  }
+
+  // ---------- Evaluación final: contenido + voz + cara, en paralelo ----------
+  const botonEvaluar = document.getElementById("boton-evaluar");
+  const contenedorInformes = document.getElementById("informe-cara");
+
+  function renderizarInforme(destino, titulo, d, clavePuntaje) {
+    destino.textContent = "";
+    const enc = document.createElement("div");
+    enc.className = "encabezado-informe";
+    const grande = document.createElement("div");
+    grande.className = "puntaje-grande";
+    grande.textContent = `${d[clavePuntaje]} / 5`;
+    const t = document.createElement("div");
+    t.textContent = titulo;
+    enc.appendChild(grande);
+    enc.appendChild(t);
+    destino.appendChild(enc);
+
+    (d.areas || []).forEach((a) => {
+      const div = document.createElement("div");
+      div.className = "area";
+      const fila = document.createElement("div");
+      fila.className = "titulo-area";
+      const n = document.createElement("span");
+      n.textContent = a.nombre;
+      const pt = document.createElement("span");
+      pt.textContent = `${a.puntaje} / 5`;
+      fila.appendChild(n);
+      fila.appendChild(pt);
+      const c = document.createElement("div");
+      c.textContent = a.comentario; // textContent: el texto de la IA nunca se interpreta como HTML
+      div.appendChild(fila);
+      div.appendChild(c);
+      destino.appendChild(div);
+    });
+
+    const resumen = document.createElement("p");
+    const rb = document.createElement("b");
+    rb.textContent = "Resumen: ";
+    resumen.appendChild(rb);
+    resumen.appendChild(document.createTextNode(d.resumen || ""));
+    destino.appendChild(resumen);
+
+    const rec = document.createElement("div");
+    rec.className = "recomendacion";
+    rec.textContent = "Lo más importante a mejorar: " + (d.recomendacion_principal || "");
+    destino.appendChild(rec);
+  }
+
+  function crearSeccionInforme() {
+    const seccion = document.createElement("div");
+    seccion.className = "seccion-informe";
+    const barra = document.createElement("div");
+    barra.className = "barra-carga";
+    const cuerpo = document.createElement("div");
+    seccion.appendChild(barra);
+    seccion.appendChild(cuerpo);
+    contenedorInformes.appendChild(seccion);
+    return { barra, cuerpo };
+  }
+
+  // ---------- Puntaje general y transcripción ----------
+  let puntajesInforme = {};
+
+  function pintarResumenGeneral() {
+    const cont = document.getElementById("resumen-general");
+    const lista = Object.values(puntajesInforme).filter((x) => Number.isFinite(x.valor));
+    if (!lista.length) { cont.style.display = "none"; return; }
+    const prom = lista.reduce((s, x) => s + x.valor, 0) / lista.length;
+    const nivel = prom >= 4.2 ? "Excelente" : prom >= 3.5 ? "Buen desempeño" : prom >= 2.5 ? "En desarrollo" : "Necesita más práctica";
+
+    cont.textContent = "";
+    const caja = document.createElement("div");
+    caja.className = "tarjeta-general";
+
+    const izq = document.createElement("div");
+    const num = document.createElement("div");
+    num.className = "puntaje-enorme";
+    num.textContent = prom.toFixed(1);
+    izq.appendChild(num);
+
+    const centro = document.createElement("div");
+    const et = document.createElement("div");
+    et.className = "etiqueta";
+    et.textContent = `Puntaje general · ${nivel}`;
+    const nota = document.createElement("div");
+    nota.className = "nota";
+    nota.textContent = `Promedio simple de ${lista.length} evaluación(es), sobre 5.`;
+    centro.appendChild(et);
+    centro.appendChild(nota);
+
+    const minis = document.createElement("div");
+    minis.className = "mini-puntajes";
+    lista.forEach((x) => {
+      const m = document.createElement("div");
+      m.className = "mini";
+      const b = document.createElement("b");
+      b.textContent = x.valor.toFixed(1);
+      const sp = document.createElement("span");
+      sp.textContent = x.nombre;
+      m.appendChild(b);
+      m.appendChild(sp);
+      minis.appendChild(m);
+    });
+
+    caja.appendChild(izq);
+    caja.appendChild(centro);
+    caja.appendChild(minis);
+    cont.appendChild(caja);
+    cont.style.display = "block";
+  }
+
+  function renderizarTranscripcion() {
+    const cont = document.getElementById("transcripcion-final");
+    cont.textContent = "";
+    const h = document.createElement("h2");
+    h.textContent = "Transcripción de la entrevista";
+    cont.appendChild(h);
+    historial.slice(1).forEach((m) => { // se omite el "Estoy listo para empezar."
+      const linea = document.createElement("div");
+      linea.className = "linea " + (m.role === "assistant" ? "entrevistador" : "vocero");
+      const quien = document.createElement("span");
+      quien.className = "quien";
+      quien.textContent = m.role === "assistant" ? "Entrevistador" : "Tú (vocero)";
+      linea.appendChild(quien);
+      linea.appendChild(document.createTextNode(m.content));
+      cont.appendChild(linea);
+    });
+  }
+
+  // tarea = {titulo, corto, url, cuerpo, clavePuntaje, clave, esperado, fases}
+  async function ejecutarTarea(tarea, seccion) {
+    seccion.cuerpo.textContent = "";
+    const carga = iniciarCarga(seccion.barra, tarea.clave, tarea.fases, tarea.esperado);
+    let ok = false;
+    try {
+      const respuesta = await fetch(`${URL_BACKEND}${tarea.url}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tarea.cuerpo),
+      });
+      let datos = {};
+      try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON */ }
+      if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
+      ok = true;
+      renderizarInforme(seccion.cuerpo, tarea.titulo, datos, tarea.clavePuntaje);
+      puntajesInforme[tarea.clave] = { nombre: tarea.corto, valor: Number(datos[tarea.clavePuntaje]) };
+      pintarResumenGeneral();
+    } catch (error) {
+      const p = document.createElement("p");
+      p.textContent = `No se pudo generar "${tarea.titulo}": ${error.message}`;
+      const reintentar = document.createElement("button");
+      reintentar.type = "button";
+      reintentar.textContent = "Reintentar";
+      reintentar.style.padding = "6px 12px";
+      reintentar.addEventListener("click", () => ejecutarTarea(tarea, seccion));
+      seccion.cuerpo.appendChild(p);
+      seccion.cuerpo.appendChild(reintentar);
+    } finally {
+      carga.terminar(ok);
+    }
+  }
+
+  botonEvaluar.addEventListener("click", async () => {
+    botonEvaluar.style.display = "none";
+    contenedorInformes.textContent = "";
+    contenedorInformes.style.display = "block";
+    puntajesInforme = {};
+    document.getElementById("resumen-general").style.display = "none";
+    document.getElementById("boton-pdf").style.display = "none";
+    renderizarTranscripcion();
+    document.body.classList.add("con-resultados");
+    setPaso(3);
+    document.getElementById("panel-resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+
+    const tareas = [
+      {
+        titulo: "Contenido de tus respuestas", corto: "Contenido", url: "/evaluar", clavePuntaje: "puntaje_global",
+        clave: "eval_contenido", esperado: 20, cuerpo: { conversacion: historial },
+        fases: ["Enviando tu entrevista", "Analizando lo que respondiste", "Redactando el informe"],
+      },
+    ];
+    if (resultadoVoz && resultadoVoz.metricas) {
+      tareas.push({
+        titulo: "Tu voz", corto: "Voz", url: "/evaluar_voz", clavePuntaje: "puntaje_global_voz",
+        clave: "eval_voz", esperado: 15, cuerpo: { metricas: resultadoVoz.metricas },
+        fases: ["Enviando las métricas de tu voz", "Analizando tono, ritmo y volumen", "Redactando el informe"],
+      });
+    }
+    if (datosCara) {
+      tareas.push({
+        titulo: "Tu expresión facial", corto: "Cara", url: "/evaluar_cara", clavePuntaje: "puntaje_global_cara",
+        clave: "eval_cara", esperado: 15, cuerpo: datosCara,
+        fases: ["Enviando los datos de tu cara", "Analizando tu expresión facial", "Redactando el informe"],
+      });
+    }
+
+    const secciones = tareas.map(() => crearSeccionInforme());
+    const avisos = [];
+    if (!resultadoVoz || !resultadoVoz.metricas) {
+      avisos.push("Voz: " + ((resultadoVoz && resultadoVoz.error) || "no disponible") + ".");
+    }
+    if (!datosCara) {
+      avisos.push("Cara: no se registró (¿tu rostro salió de cuadro o MediaPipe no cargó?).");
+    }
+    if (avisos.length) {
+      const aviso = document.createElement("p");
+      aviso.className = "estado";
+      aviso.textContent = "Sin evaluar: " + avisos.join(" ");
+      contenedorInformes.appendChild(aviso);
+    }
+    await Promise.allSettled(tareas.map((t, i) => ejecutarTarea(t, secciones[i])));
+    document.getElementById("boton-pdf").style.display = "inline-block";
+  });
+
+  document.getElementById("boton-pdf").addEventListener("click", () => window.print());
+
+  async function iniciarMediaPipe() {
+    estadoFacial.textContent = "Cargando modelo de alta precisión (puede tardar unos segundos)...";
+    estadoFacial.className = "estado";
+
+    const { FaceLandmarker, FilesetResolver } = await import(`${MP_BASE}/vision_bundle.mjs`);
+    const fileset = await FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+    const opciones = (delegate) => ({
+      baseOptions: { modelAssetPath: MP_MODELO, delegate },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      outputFaceBlendshapes: true,
+    });
+    try {
+      faceLandmarker = await FaceLandmarker.createFromOptions(fileset, opciones("GPU"));
+    } catch (e) {
+      console.warn("GPU no disponible para MediaPipe, usando CPU:", e);
+      faceLandmarker = await FaceLandmarker.createFromOptions(fileset, opciones("CPU"));
+    }
+
+    let intentos = 0;
+    while ((videoVista.videoWidth === 0 || videoVista.readyState < 2) && intentos < 50) {
+      await new Promise((r) => setTimeout(r, 100));
+      intentos++;
+    }
+    if (videoVista.videoWidth === 0) throw new Error("El video no entregó imagen.");
+
+    canvasCaras.width = videoVista.videoWidth;
+    canvasCaras.height = videoVista.videoHeight;
+    botonRecalibrar.style.display = "inline-block";
+    console.log("MediaPipe listo. Motor de alta precisión activo.");
+    bucleMediaPipe();
+  }
+
+  function bucleMediaPipe() {
+    try {
+      // Solo procesamos cuando llegó un cuadro nuevo de video.
+      if (videoVista.currentTime !== ultimoTiempoVideo) {
+        ultimoTiempoVideo = videoVista.currentTime;
+        const res = faceLandmarker.detectForVideo(videoVista, performance.now());
+        if (grabandoCara) framesTotalesCara++;
+        const ctx = canvasCaras.getContext("2d");
+        ctx.clearRect(0, 0, canvasCaras.width, canvasCaras.height);
+
+        if (res.faceLandmarks && res.faceLandmarks.length && res.faceBlendshapes && res.faceBlendshapes.length) {
+          // 1) Dibujamos el recuadro de la cara
+          const pts = res.faceLandmarks[0];
+          let minX = 1, minY = 1, maxX = 0, maxY = 0;
+          for (const p of pts) {
+            if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+          }
+          const W = canvasCaras.width, H = canvasCaras.height;
+          ctx.strokeStyle = "#1E8E3E";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(minX * W, minY * H, (maxX - minX) * W, (maxY - minY) * H);
+
+          // 2) Leemos los 52 movimientos faciales
+          const crudo = {};
+          res.faceBlendshapes[0].categories.forEach((c) => (crudo[c.categoryName] = c.score));
+          if (grabandoCara) { framesConRostroCara++; contarParpadeo(crudo); }
+
+          // 3) Calibración: aprendemos tu cara neutra en los primeros cuadros
+          if (!baselineCara) {
+            for (const k in crudo) acumuladoBase[k] = (acumuladoBase[k] || 0) + crudo[k];
+            const pose0 = calcularPose(pts);
+            acumPose.yaw += pose0.yaw; acumPose.pitch += pose0.pitch;
+            framesBase++;
+            estadoFacial.textContent =
+              `Calibrando: mantén la cara relajada y neutra... (${Math.round((framesBase / FRAMES_CALIBRACION) * 100)}%)`;
+            estadoFacial.className = "estado";
+            if (framesBase >= FRAMES_CALIBRACION) {
+              baselineCara = {};
+              for (const k in acumuladoBase) baselineCara[k] = acumuladoBase[k] / framesBase;
+              baselinePose = { yaw: acumPose.yaw / framesBase, pitch: acumPose.pitch / framesBase };
+            }
+          } else {
+            // 4) Movimiento real = lo actual menos tu cara neutra
+            const delta = {};
+            for (const k in crudo) delta[k] = Math.max(0, crudo[k] - (baselineCara[k] || 0));
+            const emo = calcularEmociones(delta);
+
+            // 5) Suavizado en el tiempo (evita que salte de una a otra)
+            for (const k in emo) {
+              emocionesSuaves[k] = k in emocionesSuaves
+                ? emocionesSuaves[k] * (1 - ALFA_SUAVIZADO) + emo[k] * ALFA_SUAVIZADO
+                : emo[k];
+            }
+
+            if (grabandoCara) registrarMuestra(emocionesSuaves, delta, pts);
+
+            const orden = Object.entries(emocionesSuaves).sort((a, b) => b[1] - a[1]);
+            const [nombreTop, valorTop] = orden[0];
+            const ganadora = valorTop < UMBRAL_NEUTRAL ? "neutral" : nombreTop;
+            const pct = ganadora === "neutral" ? Math.round((1 - valorTop) * 100) : Math.round(valorTop * 100);
+            const detalle = orden.slice(0, 3).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(" · ");
+
+            estadoFacial.textContent = `Rostro detectado — expresión: ${ganadora} (${pct}%)  |  ${detalle}`;
+            estadoFacial.className = "estado ok";
+          }
+        } else {
+          estadoFacial.textContent = "No se detecta tu rostro. Mira a la cámara con buena luz de frente.";
+          estadoFacial.className = "estado";
+        }
+      }
+    } catch (error) {
+      estadoFacial.textContent = "Error durante la detección: " + error.message;
+      estadoFacial.className = "estado error";
+      console.error("Error en MediaPipe:", error);
+    }
+    requestAnimationFrame(bucleMediaPipe);
+  }
+
+  // --- Detección de expresión facial (face-api.js) — RESPALDO ---
+  // Todo esto corre en el navegador; no se manda ningún video a ningún
+  // servidor. Solo detectamos la cara y su expresión cuadro a cuadro, acá,
+  // como validación técnica (el mismo patrón que usamos con el medidor de audio).
+
+  // Usamos la fuente OFICIAL de los modelos (GitHub Pages del propio
+  // proyecto), que es más confiable que los CDN genéricos para archivos
+  // binarios grandes como estos.
+  const MODELOS_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+  let modelosFacialesListos = false;
+
+  async function iniciarDeteccionFacial() {
+    // Primero intentamos el motor de alta precisión (MediaPipe). Si no carga
+    // (sin internet, bloqueo, etc.), seguimos con face-api.js como respaldo.
+    try {
+      await iniciarMediaPipe();
+      return;
+    } catch (e) {
+      console.warn("MediaPipe no disponible, usando face-api.js como respaldo:", e);
+    }
+
+    try {
+      if (typeof faceapi === "undefined") {
+        throw new Error("No se pudo cargar la librería face-api.js (revisa tu conexión a internet).");
+      }
+
+      if (!modelosFacialesListos) {
+        estadoFacial.textContent = "Cargando modelo de expresión facial (puede tardar unos segundos)...";
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODELOS_URL);
+        await faceapi.nets.faceExpressionNet.loadFromUri(MODELOS_URL);
+        modelosFacialesListos = true;
+
+        // Diagnóstico: confirmamos en la consola que los modelos quedaron
+        // realmente cargados (con parámetros adentro, no vacíos).
+        console.log("tinyFaceDetector cargado:", faceapi.nets.tinyFaceDetector.isLoaded);
+        console.log("faceExpressionNet cargado:", faceapi.nets.faceExpressionNet.isLoaded);
+      }
+
+      // Esperamos a que el video realmente tenga cuadros de imagen
+      // (videoWidth/videoHeight en 0 significa que todavía no hay imagen).
+      let intentos = 0;
+      while ((videoVista.videoWidth === 0 || videoVista.videoHeight === 0 || videoVista.readyState < 2) && intentos < 50) {
+        await new Promise((r) => setTimeout(r, 100));
+        intentos++;
+      }
+      console.log(`Video listo: ${videoVista.videoWidth}x${videoVista.videoHeight} (esperé ${intentos * 100}ms)`);
+
+      if (videoVista.videoWidth === 0) {
+        throw new Error("El video nunca entregó imagen (videoWidth sigue en 0).");
+      }
+
+      canvasCaras.width = videoVista.videoWidth;
+      canvasCaras.height = videoVista.videoHeight;
+      console.log("Backend de TensorFlow:", faceapi.tf && faceapi.tf.getBackend && faceapi.tf.getBackend());
+
+      estadoFacial.textContent = "Buscando tu cara en la imagen...";
+      estadoFacial.className = "estado";
+
+      detectarCaraEnBucle();
+    } catch (error) {
+      estadoFacial.textContent = "No se pudo iniciar la detección facial: " + error.message;
+      estadoFacial.className = "estado error";
+      console.error(error);
+    }
+  }
+
+  let contadorCuadros = 0;
+  let algunaVezDetectado = false;
+  let yaProbeCPU = false;
+
+  async function detectarCaraEnBucle() {
+    try {
+      contadorCuadros++;
+
+      if (contadorCuadros === 60 && !algunaVezDetectado && !yaProbeCPU && faceapi.tf) {
+        yaProbeCPU = true;
+        try {
+          console.warn("Sin detecciones con WebGL, probando backend CPU...");
+          await faceapi.tf.setBackend("cpu");
+          await faceapi.tf.ready();
+        } catch (e) { console.error("No se pudo cambiar a CPU:", e); }
+      }
+
+      // Probamos con detectAllFaces y un umbral MUY bajo, para distinguir
+      // "no encuentra nada de nada" de "encuentra algo, pero con poca
+      // confianza". Esto queda visible en pantalla, no solo en consola.
+      const todasLasDetecciones = await faceapi
+        .detectAllFaces(
+          videoVista,
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 })
+        )
+        .withFaceExpressions();
+
+      const ctx = canvasCaras.getContext("2d");
+      ctx.clearRect(0, 0, canvasCaras.width, canvasCaras.height);
+
+      // Cada 30 cuadros (~1 vez por segundo) dejamos un rastro en consola,
+      // para no inundarla.
+      if (contadorCuadros % 30 === 0) {
+        console.log(
+          `Cuadro ${contadorCuadros}: ${todasLasDetecciones.length} rostro(s) encontrado(s), ` +
+          `video=${videoVista.videoWidth}x${videoVista.videoHeight}`
+        );
+      }
+
+      if (todasLasDetecciones.length > 0) {
+        algunaVezDetectado = true;
+        const deteccion = todasLasDetecciones[0]; // usamos el primero/más grande
+
+        const medidas = faceapi.matchDimensions(canvasCaras, videoVista, true);
+        const redimensionada = faceapi.resizeResults(deteccion, medidas);
+        faceapi.draw.drawDetections(canvasCaras, redimensionada);
+
+        const expresiones = deteccion.expressions;
+        const nombreExpresion = Object.keys(expresiones).reduce((a, b) =>
+          expresiones[a] > expresiones[b] ? a : b
+        );
+        const confianza = Math.round(expresiones[nombreExpresion] * 100);
+        const confianzaDeteccion = Math.round(deteccion.detection.score * 100);
+
+        estadoFacial.textContent =
+          `Rostro detectado (confianza ${confianzaDeteccion}%) — expresión: ${nombreExpresion} (${confianza}%)`;
+        estadoFacial.className = "estado ok";
+      } else {
+        estadoFacial.textContent =
+          `No se detecta tu rostro (cuadro ${contadorCuadros}, video ${videoVista.videoWidth}x${videoVista.videoHeight}). ` +
+          `Revisa la consola (F12) para más detalle.`;
+        estadoFacial.className = "estado";
+      }
+    } catch (error) {
+      estadoFacial.textContent = "Error durante la detección: " + error.message;
+      estadoFacial.className = "estado error";
+      console.error("Error en un cuadro de detección facial:", error);
+    }
+
+    requestAnimationFrame(detectarCaraEnBucle);
+  }
+</script>
+
+</body>
+</html>
