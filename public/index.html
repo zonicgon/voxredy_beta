@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<title>VoxReady — Comprobación técnica</title>
+<title>VoxReady — Entrevista de práctica</title>
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <style>
   :root {
@@ -11,44 +11,77 @@
     --light: #E4EAF1;
     --ink: #22303C;
     --muted: #5B6670;
+    --fondo: #F2F5F9;
   }
   * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
   body {
     margin: 0;
-    font-family: -apple-system, "Segoe UI", Calibri, sans-serif;
-    background: #FFFFFF;
-    color: var(--ink);
+    min-height: 100vh;
     display: flex;
-    justify-content: center;
-    padding: 40px 20px;
+    flex-direction: column;
+    font-family: -apple-system, "Segoe UI", Calibri, sans-serif;
+    background: var(--fondo);
+    color: var(--ink);
   }
-  .tarjeta {
-    max-width: 640px;
+
+  /* ---------- Barra superior con los 3 pasos ---------- */
+  .barra-superior {
+    background: var(--navy);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 28px;
+  }
+  .logo { font-size: 21px; font-weight: 700; letter-spacing: 0.3px; }
+  .logo span { color: var(--orange); }
+  .pasos { display: flex; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+  .paso { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #C9D6E3; }
+  .paso.activo { background: var(--orange); color: white; font-weight: 600; }
+  .paso.hecho { background: rgba(255,255,255,0.28); color: white; }
+
+  /* ---------- Pantalla completa: 2 columnas ---------- */
+  main {
+    flex: 1;
     width: 100%;
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 24px 28px 48px;
   }
-  h1 {
-    color: var(--navy);
-    font-size: 28px;
-    margin-bottom: 4px;
+  #escenario {
+    display: grid;
+    grid-template-columns: minmax(340px, 5fr) 7fr;
+    gap: 24px;
+    align-items: start;
   }
-  p.subtitulo {
-    color: var(--muted);
-    margin-top: 0;
-    margin-bottom: 28px;
+  body:not(.con-camara) #escenario { grid-template-columns: minmax(0, 820px); justify-content: center; }
+  body:not(.con-camara) #columna-camara { display: none; }
+  #columna-camara { position: sticky; top: 16px; }
+  #columna-principal { align-self: stretch; }
+  #columna-camara { align-self: start; }
+
+  .panel {
+    background: white;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06);
   }
+
+  h1 { color: var(--navy); font-size: 28px; margin: 0 0 4px 0; }
+  h2 { color: var(--navy); font-size: 20px; margin: 0 0 12px 0; }
+  p.subtitulo { color: var(--muted); margin: 0 0 22px 0; }
+
   .caja-consentimiento {
     background: var(--light);
     border-radius: 10px;
     padding: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
   }
-  .caja-consentimiento label {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    font-size: 14px;
-    line-height: 1.5;
-  }
+  .caja-consentimiento label { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; }
+
   button {
     background: var(--orange);
     color: white;
@@ -57,177 +90,218 @@
     border-radius: 8px;
     font-size: 15px;
     cursor: pointer;
-    margin-top: 10px;
   }
-  button:disabled {
-    background: #C9C9C9;
-    cursor: not-allowed;
-  }
-  button:hover:not(:disabled) {
-    opacity: 0.9;
-  }
+  button:disabled { background: #C9C9C9; cursor: not-allowed; }
+  button:hover:not(:disabled) { opacity: 0.9; }
+  .fila-botones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+
+  .estado { margin: 12px 0 0 0; font-size: 14px; color: var(--muted); }
+  .estado.ok { color: #1E8E3E; font-weight: bold; }
+  .estado.error { color: #C0392B; font-weight: bold; }
+
+  /* Se oculta el bloque de permisos cuando la cámara ya funciona */
+  body.con-camara #bloque-consentimiento { display: none; }
+
+  /* ---------- Cámara ---------- */
+  #contenedor-video { position: relative; display: none; }
   #video-vista {
     width: 100%;
     border-radius: 10px;
     background: black;
-    margin-top: 20px;
     display: block;
     transform: scaleX(-1); /* efecto espejo, solo visual */
   }
-  #medidor-audio-contenedor {
-    width: 100%;
-    height: 14px;
-    background: var(--light);
-    border-radius: 7px;
-    margin-top: 10px;
-    overflow: hidden;
-    display: none;
-  }
-  #medidor-audio-barra {
-    height: 100%;
-    width: 0%;
-    background: var(--orange);
-    transition: width 0.05s linear;
-  }
-  .estado {
-    margin-top: 16px;
-    font-size: 14px;
-    color: var(--muted);
-  }
-  .estado.ok { color: #1E8E3E; font-weight: bold; }
-  .estado.error { color: #C0392B; font-weight: bold; }
-
-  #seccion-entrevista {
-    display: none;
-    margin-top: 30px;
-    border-top: 1px solid var(--light);
-    padding-top: 24px;
-  }
-  #pregunta-actual {
-    background: var(--navy);
-    color: white;
-    padding: 16px 18px;
-    border-radius: 10px;
-    font-size: 15px;
-    margin-bottom: 14px;
-    min-height: 24px;
-  }
-  #campo-respuesta {
-    width: 100%;
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid #C9D6E3;
-    font-size: 14px;
-    font-family: inherit;
-    resize: vertical;
-    min-height: 70px;
-  }
-  #historial-conversacion {
-    margin-top: 16px;
-    font-size: 13px;
-    color: var(--muted);
-    max-height: 220px;
-    overflow-y: auto;
-  }
-  #historial-conversacion p { margin: 6px 0; }
-  #historial-conversacion b { color: var(--ink); }
-
-  #contenedor-video {
-    position: relative;
-    display: none;
-  }
   #canvas-caras {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
     transform: scaleX(-1);
     pointer-events: none;
   }
-  .barra-carga { display: none; margin-top: 12px; }
+  #estado-facial { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  #medidor-audio-contenedor {
+    width: 100%; height: 14px; background: var(--light);
+    border-radius: 7px; margin-top: 10px; overflow: hidden; display: none;
+  }
+  #medidor-audio-barra { height: 100%; width: 0%; background: var(--orange); transition: width 0.05s linear; }
+
+  /* ---------- Entrevista ---------- */
+  #seccion-entrevista { display: none; }
+  #pregunta-actual {
+    background: var(--navy);
+    color: white;
+    padding: 20px 22px;
+    border-radius: 12px;
+    font-size: 18px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+    min-height: 64px;
+  }
+  #campo-respuesta {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid #C9D6E3;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 110px;
+  }
+  #historial-conversacion {
+    margin-top: 18px;
+    font-size: 14px;
+    max-height: 32vh;
+    overflow-y: auto;
+  }
+  #historial-conversacion p { margin: 6px 0; padding: 10px 12px; border-radius: 8px; background: var(--fondo); }
+  #historial-conversacion b { color: var(--navy); }
+
+  .barra-carga { display: none; margin-top: 12px; margin-bottom: 12px; }
   .carga-etiqueta { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .carga-pista { height: 10px; background: #E5E7EB; border-radius: 999px; overflow: hidden; }
   .carga-relleno { height: 100%; width: 0; background: var(--orange); border-radius: 999px; transition: width 0.15s linear; }
+
+  /* ---------- Resultados: ancho completo ---------- */
+  #panel-resultados { display: none; margin-top: 24px; }
+  body.con-resultados #panel-resultados { display: block; }
+  .cabecera-resultados { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .cabecera-resultados h2 { margin: 0; font-size: 24px; }
+
+  #resumen-general { display: none; margin-bottom: 18px; }
+  .tarjeta-general {
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    background: var(--navy); color: white; border-radius: 14px; padding: 22px 26px;
+  }
+  .tarjeta-general .puntaje-enorme { font-size: 64px; font-weight: 800; color: var(--orange); line-height: 1; }
+  .tarjeta-general .etiqueta { font-size: 18px; font-weight: 600; }
+  .tarjeta-general .nota { font-size: 12.5px; color: #C9D6E3; margin-top: 4px; }
+  .mini-puntajes { display: flex; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+  .mini { background: rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 16px; text-align: center; min-width: 110px; }
+  .mini b { display: block; font-size: 22px; }
+  .mini span { font-size: 12px; color: #C9D6E3; }
+
   #informe-cara {
-    display: none;
-    margin-top: 20px;
-    background: var(--light);
-    border-radius: 10px;
-    padding: 16px 18px;
+    display: grid !important; /* el JS le pone display:block; aquí lo mantenemos en cuadrícula */
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 18px;
+    align-items: start;
     font-size: 14px;
     line-height: 1.5;
   }
-  .encabezado-informe { background: var(--navy); color: white; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; }
+  #informe-cara > p.estado { grid-column: 1 / -1; margin: 0; }
+  .seccion-informe { background: white; border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06); }
+  .encabezado-informe { background: var(--navy); color: white; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
   .encabezado-informe .puntaje-grande { font-size: 38px; font-weight: bold; color: var(--orange); line-height: 1.1; }
-  #informe-cara .area { background: var(--light); }
+  #informe-cara .area { background: var(--light); margin: 10px 0; padding: 12px 14px; border-radius: 8px; }
   #informe-cara .titulo-area { display: flex; justify-content: space-between; font-weight: bold; color: var(--navy); margin-bottom: 6px; }
-  @media print {
-    body * { visibility: hidden; }
-    #informe-cara, #informe-cara * { visibility: visible; }
-    #informe-cara { position: absolute; left: 0; top: 0; width: 100%; background: white; }
-    #informe-cara button { display: none !important; }
-    .encabezado-informe, .area { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .seccion-informe { page-break-inside: avoid; }
+  #informe-cara .recomendacion { margin-top: 12px; padding: 10px 12px; background: var(--fondo); border-left: 4px solid var(--orange); border-radius: 6px; }
+
+  #transcripcion-final { margin-top: 18px; }
+  #transcripcion-final .linea { padding: 10px 14px; border-radius: 8px; margin: 8px 0; font-size: 14px; line-height: 1.5; }
+  #transcripcion-final .linea.entrevistador { background: var(--light); }
+  #transcripcion-final .linea.vocero { background: #FFF1E8; border-left: 4px solid var(--orange); }
+  #transcripcion-final .quien { font-weight: bold; color: var(--navy); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  /* ---------- Celulares / pantallas angostas ---------- */
+  @media (max-width: 960px) {
+    #escenario { grid-template-columns: 1fr; }
+    #columna-camara { position: static; }
+    main { padding: 16px 14px 36px; }
+    .barra-superior { padding: 10px 14px; }
+    .mini-puntajes { margin-left: 0; }
   }
-  .seccion-informe { margin-bottom: 22px; }
-  #informe-cara .area { margin: 10px 0; padding: 12px 14px; border-radius: 8px; }
-  #informe-cara .recomendacion { margin-top: 12px; padding: 10px 12px; background: white; border-left: 4px solid var(--orange); border-radius: 6px; }
-  #estado-facial {
-    margin-top: 8px;
-    font-size: 13px;
-    color: var(--muted);
+
+  /* ---------- Al imprimir / guardar PDF: solo los resultados ---------- */
+  @media print {
+    body { background: white; }
+    body * { visibility: hidden; }
+    #panel-resultados, #panel-resultados * { visibility: visible; }
+    #panel-resultados { position: absolute; left: 0; top: 0; width: 100%; display: block; }
+    #boton-pdf { display: none !important; }
+    .encabezado-informe, .area, .tarjeta-general, .mini, .linea { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .seccion-informe { box-shadow: none; border: 1px solid var(--light); page-break-inside: avoid; }
+    #informe-cara { grid-template-columns: 1fr; }
   }
 </style>
 </head>
 <body>
 
-<div class="tarjeta">
-  <h1>Comprobación técnica</h1>
-  <p class="subtitulo">Antes de la entrevista, verificamos que tu cámara y micrófono funcionen.</p>
+<header class="barra-superior">
+  <div class="logo">Vox<span>Ready</span></div>
+  <div class="pasos" id="pasos">
+    <div class="paso activo" data-paso="1">1 · Comprobación</div>
+    <div class="paso" data-paso="2">2 · Entrevista</div>
+    <div class="paso" data-paso="3">3 · Evaluación</div>
+  </div>
+</header>
 
-  <div class="caja-consentimiento">
-    <label>
-      <input type="checkbox" id="check-consentimiento" />
-      Acepto que esta sesión use mi cámara y micrófono únicamente para la
-      práctica de entrenamiento en VoxReady. El video y el audio se procesan
-      en mi navegador y no se guardan: a la IA solo se envía el texto de mis
-      respuestas y métricas numéricas de mi voz y mi expresión. Si uso el botón
-      de hablar, el reconocimiento de voz de Chrome/Edge envía mi audio al
-      servicio de voz del navegador para transcribirlo.
-    </label>
+<main>
+  <div id="escenario">
+
+    <!-- Columna izquierda: cámara (aparece al conceder el permiso) -->
+    <aside id="columna-camara" class="panel">
+      <div id="contenedor-video">
+        <video id="video-vista" autoplay muted playsinline></video>
+        <canvas id="canvas-caras"></canvas>
+      </div>
+      <p class="estado" id="estado-facial">Cargando modelo de expresión facial...</p>
+      <div id="medidor-audio-contenedor">
+        <div id="medidor-audio-barra"></div>
+      </div>
+      <div class="fila-botones">
+        <button id="boton-recalibrar" type="button" style="display:none; background: var(--navy); padding: 8px 14px; font-size: 13px;">Recalibrar cara neutra</button>
+      </div>
+    </aside>
+
+    <!-- Columna derecha: permisos, entrevista -->
+    <section class="panel" id="columna-principal">
+
+      <div id="bloque-consentimiento">
+        <h1>Comprobación técnica</h1>
+        <p class="subtitulo">Antes de la entrevista, verificamos que tu cámara y micrófono funcionen.</p>
+
+        <div class="caja-consentimiento">
+          <label>
+            <input type="checkbox" id="check-consentimiento" />
+            Acepto que esta sesión use mi cámara y micrófono únicamente para la
+            práctica de entrenamiento en VoxReady. El video y el audio se procesan
+            en mi navegador y no se guardan: a la IA solo se envía el texto de mis
+            respuestas y métricas numéricas de mi voz y mi expresión. Si uso el botón
+            de hablar, el reconocimiento de voz de Chrome/Edge envía mi audio al
+            servicio de voz del navegador para transcribirlo.
+          </label>
+        </div>
+
+        <button id="boton-solicitar" disabled>Solicitar acceso a cámara y micrófono</button>
+        <p class="estado" id="mensaje-estado">Marca la casilla para habilitar el botón.</p>
+      </div>
+
+      <div id="seccion-entrevista">
+        <h2>Entrevista de práctica</h2>
+        <div id="pregunta-actual">Presiona "Comenzar entrevista" para empezar.</div>
+        <div id="barra-carga" class="barra-carga"></div>
+        <textarea id="campo-respuesta" placeholder="Escribe aquí tu respuesta, o usa el micrófono..."></textarea>
+        <div class="fila-botones">
+          <button id="boton-comenzar">Comenzar entrevista</button>
+          <button id="boton-hablar" type="button" style="display:none; background: var(--navy);">🎤 Hablar</button>
+          <button id="boton-responder" style="display:none;">Responder</button>
+          <button id="boton-evaluar" type="button" style="display:none; background: var(--navy);">Ver mi evaluación completa</button>
+        </div>
+        <div id="historial-conversacion"></div>
+      </div>
+    </section>
   </div>
 
-  <button id="boton-solicitar" disabled>Solicitar acceso a cámara y micrófono</button>
-
-  <div id="contenedor-video">
-    <video id="video-vista" autoplay muted playsinline></video>
-    <canvas id="canvas-caras"></canvas>
-  </div>
-  <p class="estado" id="estado-facial">Cargando modelo de expresión facial...</p>
-  <button id="boton-recalibrar" type="button" style="display:none; background: var(--navy); padding: 8px 14px; font-size: 13px;">Recalibrar cara neutra</button>
-
-  <div id="medidor-audio-contenedor">
-    <div id="medidor-audio-barra"></div>
-  </div>
-
-  <p class="estado" id="mensaje-estado">Marca la casilla para habilitar el botón.</p>
-
-  <div id="seccion-entrevista">
-    <h2 style="color: var(--navy); font-size: 18px;">Entrevista de práctica</h2>
-    <div id="pregunta-actual">Presiona "Comenzar entrevista" para empezar.</div>
-    <div id="barra-carga" class="barra-carga"></div>
-    <textarea id="campo-respuesta" placeholder="Escribe aquí tu respuesta, o usa el micrófono..."></textarea>
-    <br />
-    <button id="boton-comenzar">Comenzar entrevista</button>
-    <button id="boton-hablar" type="button" style="display:none; background: var(--navy);">🎤 Hablar</button>
-    <button id="boton-responder" style="display:none;">Responder</button>
-    <div id="historial-conversacion"></div>
-    <button id="boton-evaluar" type="button" style="display:none; background: var(--navy);">Ver mi evaluación completa</button>
+  <!-- Resultados: ancho completo, aparece al terminar -->
+  <section id="panel-resultados">
+    <div class="cabecera-resultados">
+      <h2>Tu evaluación</h2>
+      <button id="boton-pdf" type="button" style="display:none; background: var(--navy);">Descargar informes como PDF</button>
+    </div>
+    <div id="resumen-general"></div>
     <div id="informe-cara"></div>
-    <button id="boton-pdf" type="button" class="secundario" style="display:none; background: var(--navy);">Descargar informes como PDF</button>
-  </div>
-</div>
+    <div id="transcripcion-final" class="panel"></div>
+  </section>
+</main>
 
 <script>
   // --- Dirección de tu backend. Si usas otro puerto, cámbialo aquí. ---
@@ -249,6 +323,15 @@
   const botonResponder = document.getElementById("boton-responder");
   const botonHablar = document.getElementById("boton-hablar");
   const historialConversacion = document.getElementById("historial-conversacion");
+
+  // Indicador de pasos (barra superior) y clases de pantalla
+  function setPaso(n) {
+    document.querySelectorAll("#pasos .paso").forEach((el) => {
+      const k = Number(el.dataset.paso);
+      el.classList.toggle("activo", k === n);
+      el.classList.toggle("hecho", k < n);
+    });
+  }
 
   // Aquí guardamos la conversación completa, igual que la lista "historial"
   // que usábamos en Python. Se la mandamos completa al backend en cada turno.
@@ -284,6 +367,7 @@
       // Mostramos el video en vivo, para que la persona vea que la cámara funciona.
       contenedorVideo.style.display = "block";
       medidorContenedor.style.display = "block";
+      document.body.classList.add("con-camara"); // activa el diseño de dos columnas
 
       // Iniciamos la detección cuando el video REALMENTE está reproduciendo
       // cuadros (evento "playing"), y el listener va ANTES de asignar el stream.
@@ -317,6 +401,7 @@
 
       // Ya comprobamos cámara/mic: mostramos la sección de la entrevista.
       seccionEntrevista.style.display = "block";
+      setPaso(2);
 
       // Guardamos el flujo para poder grabar el audio real más adelante.
       flujoMedios = flujo;
@@ -334,7 +419,10 @@
   function agregarAlHistorialVisual(rol, texto) {
     const etiqueta = rol === "assistant" ? "Entrevistador" : "Tú";
     const parrafo = document.createElement("p");
-    parrafo.innerHTML = `<b>${etiqueta}:</b> ${texto}`;
+    const negrita = document.createElement("b");
+    negrita.textContent = etiqueta + ": ";
+    parrafo.appendChild(negrita);
+    parrafo.appendChild(document.createTextNode(texto));
     historialConversacion.appendChild(parrafo);
     historialConversacion.scrollTop = historialConversacion.scrollHeight;
   }
@@ -915,7 +1003,76 @@
     return { barra, cuerpo };
   }
 
-  // tarea = {titulo, url, cuerpo, clavePuntaje, clave, esperado, fases}
+  // ---------- Puntaje general y transcripción ----------
+  let puntajesInforme = {};
+
+  function pintarResumenGeneral() {
+    const cont = document.getElementById("resumen-general");
+    const lista = Object.values(puntajesInforme).filter((x) => Number.isFinite(x.valor));
+    if (!lista.length) { cont.style.display = "none"; return; }
+    const prom = lista.reduce((s, x) => s + x.valor, 0) / lista.length;
+    const nivel = prom >= 4.2 ? "Excelente" : prom >= 3.5 ? "Buen desempeño" : prom >= 2.5 ? "En desarrollo" : "Necesita más práctica";
+
+    cont.textContent = "";
+    const caja = document.createElement("div");
+    caja.className = "tarjeta-general";
+
+    const izq = document.createElement("div");
+    const num = document.createElement("div");
+    num.className = "puntaje-enorme";
+    num.textContent = prom.toFixed(1);
+    izq.appendChild(num);
+
+    const centro = document.createElement("div");
+    const et = document.createElement("div");
+    et.className = "etiqueta";
+    et.textContent = `Puntaje general · ${nivel}`;
+    const nota = document.createElement("div");
+    nota.className = "nota";
+    nota.textContent = `Promedio simple de ${lista.length} evaluación(es), sobre 5.`;
+    centro.appendChild(et);
+    centro.appendChild(nota);
+
+    const minis = document.createElement("div");
+    minis.className = "mini-puntajes";
+    lista.forEach((x) => {
+      const m = document.createElement("div");
+      m.className = "mini";
+      const b = document.createElement("b");
+      b.textContent = x.valor.toFixed(1);
+      const sp = document.createElement("span");
+      sp.textContent = x.nombre;
+      m.appendChild(b);
+      m.appendChild(sp);
+      minis.appendChild(m);
+    });
+
+    caja.appendChild(izq);
+    caja.appendChild(centro);
+    caja.appendChild(minis);
+    cont.appendChild(caja);
+    cont.style.display = "block";
+  }
+
+  function renderizarTranscripcion() {
+    const cont = document.getElementById("transcripcion-final");
+    cont.textContent = "";
+    const h = document.createElement("h2");
+    h.textContent = "Transcripción de la entrevista";
+    cont.appendChild(h);
+    historial.slice(1).forEach((m) => { // se omite el "Estoy listo para empezar."
+      const linea = document.createElement("div");
+      linea.className = "linea " + (m.role === "assistant" ? "entrevistador" : "vocero");
+      const quien = document.createElement("span");
+      quien.className = "quien";
+      quien.textContent = m.role === "assistant" ? "Entrevistador" : "Tú (vocero)";
+      linea.appendChild(quien);
+      linea.appendChild(document.createTextNode(m.content));
+      cont.appendChild(linea);
+    });
+  }
+
+  // tarea = {titulo, corto, url, cuerpo, clavePuntaje, clave, esperado, fases}
   async function ejecutarTarea(tarea, seccion) {
     seccion.cuerpo.textContent = "";
     const carga = iniciarCarga(seccion.barra, tarea.clave, tarea.fases, tarea.esperado);
@@ -931,6 +1088,8 @@
       if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
       ok = true;
       renderizarInforme(seccion.cuerpo, tarea.titulo, datos, tarea.clavePuntaje);
+      puntajesInforme[tarea.clave] = { nombre: tarea.corto, valor: Number(datos[tarea.clavePuntaje]) };
+      pintarResumenGeneral();
     } catch (error) {
       const p = document.createElement("p");
       p.textContent = `No se pudo generar "${tarea.titulo}": ${error.message}`;
@@ -950,24 +1109,31 @@
     botonEvaluar.style.display = "none";
     contenedorInformes.textContent = "";
     contenedorInformes.style.display = "block";
+    puntajesInforme = {};
+    document.getElementById("resumen-general").style.display = "none";
+    document.getElementById("boton-pdf").style.display = "none";
+    renderizarTranscripcion();
+    document.body.classList.add("con-resultados");
+    setPaso(3);
+    document.getElementById("panel-resultados").scrollIntoView({ behavior: "smooth", block: "start" });
 
     const tareas = [
       {
-        titulo: "Contenido de tus respuestas", url: "/evaluar", clavePuntaje: "puntaje_global",
+        titulo: "Contenido de tus respuestas", corto: "Contenido", url: "/evaluar", clavePuntaje: "puntaje_global",
         clave: "eval_contenido", esperado: 20, cuerpo: { conversacion: historial },
         fases: ["Enviando tu entrevista", "Analizando lo que respondiste", "Redactando el informe"],
       },
     ];
     if (resultadoVoz && resultadoVoz.metricas) {
       tareas.push({
-        titulo: "Tu voz", url: "/evaluar_voz", clavePuntaje: "puntaje_global_voz",
+        titulo: "Tu voz", corto: "Voz", url: "/evaluar_voz", clavePuntaje: "puntaje_global_voz",
         clave: "eval_voz", esperado: 15, cuerpo: { metricas: resultadoVoz.metricas },
         fases: ["Enviando las métricas de tu voz", "Analizando tono, ritmo y volumen", "Redactando el informe"],
       });
     }
     if (datosCara) {
       tareas.push({
-        titulo: "Tu expresión facial", url: "/evaluar_cara", clavePuntaje: "puntaje_global_cara",
+        titulo: "Tu expresión facial", corto: "Cara", url: "/evaluar_cara", clavePuntaje: "puntaje_global_cara",
         clave: "eval_cara", esperado: 15, cuerpo: datosCara,
         fases: ["Enviando los datos de tu cara", "Analizando tu expresión facial", "Redactando el informe"],
       });
