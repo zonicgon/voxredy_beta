@@ -30,10 +30,11 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
+VERSION = "25"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 MODELO = os.getenv("MODELO_IA", "z-ai/glm-5.3")
 BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
-app = FastAPI(title="VoxReady")
+app = FastAPI(title="VoxReady", version=VERSION)
 
 # ---------------------------------------------------------------- IA ---------
 
@@ -135,6 +136,8 @@ class MetricasVoz(BaseModel):
     numero_pausas: int
     demora_media_antes_de_hablar_s: Optional[float] = None
     respuestas_con_voz: Optional[int] = None
+    habla_total_segundos: Optional[float] = None
+    fiabilidad_muestra: Optional[str] = None
 
 
 class PeticionVoz(BaseModel):
@@ -185,7 +188,7 @@ def entrevistar(peticion: PeticionEntrevista):
 
 @app.get("/api/salud")
 def salud():
-    return {"estado": "ok", "clave_configurada": bool(os.getenv("NVIDIA_API_KEY")), "modelo": MODELO}
+    return {"estado": "ok", "version": VERSION, "clave_configurada": bool(os.getenv("NVIDIA_API_KEY")), "modelo": MODELO}
 
 
 # ------------------------------------------------ Evaluación: CONTENIDO -------
@@ -258,6 +261,11 @@ Te entrego:
 - demora_media_antes_de_hablar_s: segundos que tardó en empezar a responder
   (menos de 3 s transmite seguridad; más de 6 s transmite duda)
 - respuestas_con_voz: cuántas respuestas fueron habladas
+- habla_total_segundos y fiabilidad_muestra ("baja" si habló menos de 10 s,
+  "media" hasta 30 s, "alta" más): si la fiabilidad es baja o media, EVALÚA IGUAL
+  con lo que hay, pero dilo en el resumen (por ejemplo "respuestas muy cortas, la
+  medición es orientativa"), usa notas moderadas salvo que algo sea muy evidente
+  y no inventes tendencias que no se puedan ver en una muestra tan corta.
 
 Evalúa 3 áreas (nota de 1 a 5, donde 5 es excelente):
 1. Modulación del tono: ¿suena expresivo o monótono?
@@ -515,6 +523,7 @@ Reglas:
 - Las métricas de voz e imagen son estimaciones automáticas aproximadas: describe
   cómo se ve o suena, sin afirmar qué siente la persona.
 - Si solo hay una o dos fuentes, dilo en el resumen y no rellenes lo que falta.
+- Si un informe advierte que la muestra fue muy corta o poco fiable, menciónalo y no le des demasiado peso al elegir la recomendación prioritaria.
 
 Responde ÚNICAMENTE con este JSON, sin texto adicional ni bloques markdown:
 {

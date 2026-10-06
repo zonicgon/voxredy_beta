@@ -38,6 +38,8 @@
   }
   .logo { font-size: 21px; font-weight: 700; letter-spacing: 0.3px; }
   .logo span { color: var(--orange); }
+  .logo .version { font-size: 12px; font-weight: 600; color: #C9D6E3; background: rgba(255,255,255,0.14); padding: 3px 9px; border-radius: 999px; margin-left: 10px; vertical-align: middle; letter-spacing: 0; }
+  .logo .version.desajuste { background: #C0392B; color: white; }
   .pasos { display: flex; gap: 8px; font-size: 13px; flex-wrap: wrap; }
   .paso { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #C9D6E3; }
   .paso.activo { background: var(--orange); color: white; font-weight: 600; }
@@ -243,7 +245,7 @@
 <body>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v25</span></div>
   <div class="pasos" id="pasos">
     <div class="paso activo" data-paso="1">1 · Comprobación</div>
     <div class="paso" data-paso="2">2 · Entrevista</div>
@@ -622,7 +624,7 @@
     let suma = 0;
     for (let i = 0; i < vozBuffer.length; i++) suma += vozBuffer[i] * vozBuffer[i];
     const rms = Math.sqrt(suma / vozBuffer.length);
-    const f0 = rms > 0.01 ? estimarTono(vozBuffer, vozCtx.sampleRate) : 0;
+    const f0 = rms > 0.004 ? estimarTono(vozBuffer, vozCtx.sampleRate) : 0;
     vozMuestras.push({ v: vozVentana, dt, rms, f0 });
   }
 
@@ -634,7 +636,11 @@
     if (errorVoz) return { error: errorVoz };
     if (vozMuestras.length === 0) return { error: "no se midió ninguna muestra de voz" };
 
-    const umbral = vozMuestras.reduce((m, x) => Math.max(m, x.rms), 0) * Math.pow(10, -30 / 20); // igual que top_db=30
+    const maximo = vozMuestras.reduce((m, x) => Math.max(m, x.rms), 0);
+    const ordenados = vozMuestras.map((x) => x.rms).sort((a, b) => a - b);
+    const pisoRuido = ordenados[Math.floor(ordenados.length * 0.1)] || 0;
+    // Voz = al menos 30 dB sobre el máximo (como antes), 3 veces el ruido de fondo, y un mínimo absoluto bajo
+    const umbral = Math.max(maximo * Math.pow(10, -30 / 20), pisoRuido * 3, 0.003);
     const porVentana = {};
     vozMuestras.forEach((x) => { (porVentana[x.v] = porVentana[x.v] || []).push(x); });
 
@@ -643,7 +649,7 @@
     let respuestasConVoz = 0;
 
     Object.values(porVentana).forEach((muestras) => {
-      const conVoz = muestras.map((x) => x.rms >= umbral && x.rms > 0.005);
+      const conVoz = muestras.map((x) => x.rms >= umbral);
       const primero = conVoz.indexOf(true);
       const ultimo = conVoz.lastIndexOf(true);
       if (primero === -1) return; // esa respuesta no tuvo voz (¿la escribiste?)
@@ -668,16 +674,18 @@
       }
     });
 
-    if (respuestasConVoz === 0 || hablado < 3) {
-      return { error: "no se detectó suficiente voz (¿escribiste tus respuestas en vez de hablarlas?)" };
+    if (respuestasConVoz === 0 || hablado < 0.3) {
+      return { error: "no se detectó voz en tus respuestas (¿las escribiste en vez de hablarlas?)" };
     }
+    // Respuestas cortas SÍ se evalúan; solo avisamos qué tan fiable es la medición
+    const fiabilidad = hablado < 10 ? "baja" : hablado < 30 ? "media" : "alta";
 
     const media = (a) => a.reduce((s, x) => s + x, 0) / a.length;
     const desv = (a) => { const m = media(a); return Math.sqrt(media(a.map((x) => (x - m) ** 2))); };
 
     // Quitamos saltos de octava del tono (valores lejos de la mediana)
     let tonoMedio = 0, tonoVar = 0;
-    if (tonos.length >= 10) {
+    if (tonos.length >= 4) {
       const orden = [...tonos].sort((a, b) => a - b);
       const mediana = orden[Math.floor(orden.length / 2)];
       const limpios = tonos.filter((t) => t > mediana * 0.6 && t < mediana * 1.6);
@@ -696,6 +704,8 @@
         numero_pausas: pausas,
         demora_media_antes_de_hablar_s: Math.round(media(demoras) * 10) / 10,
         respuestas_con_voz: respuestasConVoz,
+        habla_total_segundos: Math.round(hablado * 10) / 10,
+        fiabilidad_muestra: fiabilidad,
       },
     };
   }
@@ -1523,6 +1533,26 @@
 
     requestAnimationFrame(detectarCaraEnBucle);
   }
+
+  // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
+  const VERSION_APP = "25";
+  (async function mostrarVersion() {
+    const el = document.getElementById("version-app");
+    el.textContent = "v" + VERSION_APP;
+    try {
+      const r = await fetch(`${URL_BACKEND}/salud`);
+      const d = await r.json();
+      if (d.version && String(d.version) !== VERSION_APP) {
+        el.textContent = `v${VERSION_APP} · servidor v${d.version}`;
+        el.classList.add("desajuste");
+        el.title = "La página y el servidor son de versiones distintas: sube y despliega todos los archivos.";
+      } else {
+        el.title = `Página v${VERSION_APP} · servidor v${d.version || "?"}`;
+      }
+    } catch (e) {
+      el.title = `Página v${VERSION_APP} · no se pudo consultar la versión del servidor`;
+    }
+  })();
 </script>
 
 </body>

@@ -41,3 +41,12 @@ Abre http://localhost:8000 (no abras el HTML con doble clic: necesita el servido
 - 502 "No se pudo contactar a la IA" -> revisa cuota/clave en build.nvidia.com y los logs en Vercel (Deployments -> Logs).
 - 429 -> demasiadas solicitudes desde la misma IP; espera unos minutos o sube LIMITE_LLAMADAS.
 - La cámara no pide permiso -> usa la URL https de Vercel, en Chrome o Edge.
+
+## Versiones
+La versión se ve junto al logo (por ejemplo "v25"). Si la página y el servidor no coinciden, la etiqueta se pone roja y dice "servidor vNN": significa que subiste solo una parte. También puedes ver la del servidor en /api/salud.
+Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py` y `VERSION_APP` en `public/index.html`.
+
+### v25
+- La voz se evalúa aunque las respuestas sean muy cortas (se marca la fiabilidad de la medición como baja/media/alta).
+- Etiqueta de versión junto al logo, con aviso si página y servidor no coinciden.
+- Informe final del coach (v24 y anteriores: ver historial de conversación).
