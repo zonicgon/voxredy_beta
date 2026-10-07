@@ -30,7 +30,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "25"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "26"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 MODELO = os.getenv("MODELO_IA", "z-ai/glm-5.3")
 BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 

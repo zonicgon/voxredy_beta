@@ -50,3 +50,7 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - La voz se evalúa aunque las respuestas sean muy cortas (se marca la fiabilidad de la medición como baja/media/alta).
 - Etiqueta de versión junto al logo, con aviso si página y servidor no coinciden.
 - Informe final del coach (v24 y anteriores: ver historial de conversación).
+
+### v26
+- Ventana de bienvenida de la beta: se muestra al entrar (una vez por pestaña) antes de la comprobación técnica y la entrevista, con el contexto para el cliente (qué es, la situación, qué se evalúa, para qué es la beta, privacidad y consejos). El botón "Acerca de esta beta" (arriba a la derecha) la vuelve a abrir. Los textos se editan en public/index.html, bloque "Ventana de bienvenida".
+- Nota: el zip de la v25 NO incluía esta ventana; desde la v26 sí.

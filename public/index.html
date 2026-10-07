@@ -45,6 +45,36 @@
   .paso.activo { background: var(--orange); color: white; font-weight: 600; }
   .paso.hecho { background: rgba(255,255,255,0.28); color: white; }
 
+  .derecha { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .enlace-beta { background: transparent; color: #C9D6E3; border: 1px solid rgba(255,255,255,0.35); padding: 6px 14px; font-size: 13px; border-radius: 999px; }
+  .enlace-beta:hover:not(:disabled) { background: rgba(255,255,255,0.12); opacity: 1; }
+
+  /* ---------- Ventana de bienvenida (beta) ---------- */
+  #modal-beta {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(15,30,45,0.65);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-caja {
+    background: white; border-radius: 16px; width: 100%; max-width: 780px; max-height: 92vh;
+    display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.35); overflow: hidden;
+  }
+  .modal-cab { background: var(--navy); color: white; padding: 22px 28px; }
+  .modal-cab .etiqueta-beta { display: inline-block; background: var(--orange); color: white; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; padding: 3px 10px; border-radius: 999px; margin-bottom: 8px; }
+  .modal-cab h2 { color: white; margin: 0 0 4px 0; font-size: 26px; }
+  .modal-cab p { margin: 0; color: #C9D6E3; }
+  .modal-cuerpo { padding: 22px 28px 6px; overflow-y: auto; }
+  .modal-bloque { margin-bottom: 18px; }
+  .modal-bloque h3 { margin: 0 0 6px 0; color: var(--navy); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .modal-bloque p, .modal-bloque li { font-size: 15px; line-height: 1.55; margin: 0 0 6px 0; }
+  .modal-bloque ul { margin: 0; padding-left: 20px; }
+  .modal-situacion { background: #FFF6EF; border-left: 5px solid var(--orange); padding: 14px 16px; border-radius: 8px; }
+  .modal-evalua { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 8px; }
+  .modal-evalua div { background: var(--light); border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45; }
+  .modal-evalua b { display: block; color: var(--navy); margin-bottom: 4px; }
+  .modal-pie { padding: 16px 28px 22px; display: flex; justify-content: flex-end; border-top: 1px solid var(--light); background: white; }
+  .modal-pie button { font-size: 16px; padding: 13px 28px; }
+
   /* ---------- Pantalla completa: 2 columnas ---------- */
   main {
     flex: 1;
@@ -231,6 +261,7 @@
 
   /* ---------- Al imprimir / guardar PDF: solo los resultados ---------- */
   @media print {
+    #modal-beta { display: none !important; }
     body { background: white; }
     body * { visibility: hidden; }
     #panel-resultados, #panel-resultados * { visibility: visible; }
@@ -245,13 +276,81 @@
 <body>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v25</span></div>
-  <div class="pasos" id="pasos">
-    <div class="paso activo" data-paso="1">1 · Comprobación</div>
-    <div class="paso" data-paso="2">2 · Entrevista</div>
-    <div class="paso" data-paso="3">3 · Evaluación</div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v26</span></div>
+  <div class="derecha">
+    <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
+    <div class="pasos" id="pasos">
+      <div class="paso activo" data-paso="1">1 · Comprobación</div>
+      <div class="paso" data-paso="2">2 · Entrevista</div>
+      <div class="paso" data-paso="3">3 · Evaluación</div>
+    </div>
   </div>
 </header>
+
+<!-- ============ Ventana de bienvenida (edita los textos aquí) ============ -->
+<div id="modal-beta" role="dialog" aria-modal="true" aria-labelledby="modal-beta-titulo">
+  <div class="modal-caja">
+    <div class="modal-cab">
+      <span class="etiqueta-beta">VERSIÓN BETA</span>
+      <h2 id="modal-beta-titulo">Bienvenido a VoxReady</h2>
+      <p>Entrenamiento de vocería en situaciones de crisis, con inteligencia artificial.</p>
+    </div>
+
+    <div class="modal-cuerpo">
+      <div class="modal-bloque">
+        <h3>¿Qué es esto?</h3>
+        <p>VoxReady es un simulador para practicar entrevistas de prensa cuando una organización enfrenta una crisis. Esta es una <b>beta</b>: está en etapa de pruebas y todavía la estamos afinando contigo.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>La situación que vas a enfrentar</h3>
+        <div class="modal-situacion">
+          <p>Eres el <b>vocero de una empresa</b>. Hubo un <b>derrame químico que afectó el agua de tres comunidades</b>.</p>
+          <p>Un <b>periodista exigente</b> te entrevistará: hace una pregunta a la vez, repregunta sobre lo que digas y presiona si evades. Serán <b><span id="beta-num-preguntas">5</span> preguntas</b>, y puedes responder hablando o escribiendo.</p>
+        </div>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Qué evaluaremos al terminar</h3>
+        <div class="modal-evalua">
+          <div><b>Contenido</b>Claridad, transparencia, manejo de la presión y responsabilidad al responder.</div>
+          <div><b>Voz</b>Tono, ritmo, pausas y volumen. Solo se evalúa si respondes hablando.</div>
+          <div><b>Expresión facial</b>Serenidad, empatía y presencia frente a la cámara.</div>
+        </div>
+        <p style="margin-top:10px;">Todo se une en un <b>informe de coach</b> con una nota global, cuatro áreas (Expresión, Tono de voz, Coherencia y Empatía) y la recomendación más importante para mejorar.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Para qué es esta beta</h3>
+        <ul>
+          <li>Probar qué tan útil y justo resulta entrenar con IA.</li>
+          <li>Medir qué tan bien funciona la IA en sus dos roles: <b>entrevistador</b> y <b>evaluador</b>.</li>
+          <li>Detectar fallas técnicas (cámara, micrófono, navegador).</li>
+        </ul>
+        <p style="margin-top:8px;">Las notas son <b>estimaciones automáticas</b>, no un diagnóstico, y pueden tener errores. Si algo te parece raro o injusto, cuéntalo: es justo lo que queremos descubrir.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Tu privacidad</h3>
+        <p>Tu video y tu audio se procesan en tu navegador y <b>no se guardan</b>. A la IA solo se envía el texto de tus respuestas y métricas numéricas de tu voz y tu expresión. Si usas el botón de hablar, el reconocimiento de voz de Chrome o Edge envía tu audio al servicio de voz del navegador para transcribirlo.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Antes de empezar</h3>
+        <ul>
+          <li>Usa <b>Chrome o Edge</b> en un computador, con cámara y micrófono.</li>
+          <li>Busca un lugar silencioso y con buena luz sobre tu cara.</li>
+          <li>Para que se evalúe tu voz, responde con el botón <b>🎤 Hablar</b>.</li>
+          <li>Mira a la cámara y responde como lo harías frente a un periodista real.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="modal-pie">
+      <button type="button" id="boton-entendido">Entendido, continuar</button>
+    </div>
+  </div>
+</div>
 
 <main>
   <div id="escenario">
@@ -1535,7 +1634,7 @@
   }
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "25";
+  const VERSION_APP = "26";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -1553,6 +1652,34 @@
       el.title = `Página v${VERSION_APP} · no se pudo consultar la versión del servidor`;
     }
   })();
+
+  // ---------- Ventana de bienvenida de la beta ----------
+  const modalBeta = document.getElementById("modal-beta");
+  const botonEntendido = document.getElementById("boton-entendido");
+  document.getElementById("beta-num-preguntas").textContent = MAX_PREGUNTAS; // siempre coincide con la entrevista real
+
+  function abrirModalBeta() {
+    modalBeta.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    botonEntendido.focus();
+  }
+  function cerrarModalBeta() {
+    modalBeta.style.display = "none";
+    document.body.style.overflow = "";
+    try { sessionStorage.setItem("voxready_beta_vista", "1"); } catch (e) { /* nada */ }
+  }
+  botonEntendido.addEventListener("click", cerrarModalBeta);
+  document.getElementById("boton-info-beta").addEventListener("click", abrirModalBeta);
+  document.addEventListener("keydown", (e) => {
+    if (modalBeta.style.display !== "flex") return;
+    if (e.key === "Escape") cerrarModalBeta();
+    if (e.key === "Tab") { e.preventDefault(); botonEntendido.focus(); } // el foco se queda dentro de la ventana
+  });
+
+  // Se muestra al entrar (una vez por pestaña), antes de la comprobación y la entrevista
+  let betaYaVista = false;
+  try { betaYaVista = sessionStorage.getItem("voxready_beta_vista") === "1"; } catch (e) { /* nada */ }
+  if (!betaYaVista) abrirModalBeta();
 </script>
 
 </body>
