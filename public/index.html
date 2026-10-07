@@ -293,7 +293,7 @@
 <body>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v27</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v28</span></div>
   <div class="derecha">
     <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
     <button type="button" class="enlace-beta" id="boton-diagnostico">🩺 Diagnóstico</button>
@@ -1713,7 +1713,7 @@
   }
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "27";
+  const VERSION_APP = "28";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -1884,14 +1884,45 @@
         const datos = await r.json().catch(() => null);
         const seg = ((performance.now() - t0) / 1000).toFixed(1);
         if (r.ok && datos && datos.ia && datos.ia.estado === "ok") {
-          agregar("La IA responde", "ok", `Respondió en ${seg} s`, "");
+          agregar("La IA responde", "ok", `Respondió en ${seg} s · modelo: ${datos.ia.modelo || "?"}`, "");
         } else if (r.ok && datos && datos.ia) {
           const ia = datos.ia;
-          agregar("La IA responde", "mal",
-            `${ia.detalle || "Error"}${ia.codigo_proveedor ? ` · código del proveedor: ${ia.codigo_proveedor}` : ""}${ia.mensaje_proveedor ? ` · «${ia.mensaje_proveedor}»` : ""}`,
-            ia.codigo_proveedor === 429 ? "El proveedor de IA está limitando las solicitudes (por uso alto o límite del plan). Suele pasar solo en uno o dos minutos."
-              : [401, 402, 403, 404].includes(ia.codigo_proveedor) ? "Es un problema de configuración o de crédito del servicio de IA: quien administra debe revisar la clave, el crédito y el modelo en build.nvidia.com."
-              : "Error del proveedor de IA. Suele ser temporal; si se repite, revisar los Logs en Vercel.");
+          const detalleBase = `${ia.detalle || "Error"}${ia.codigo_proveedor ? ` · código del proveedor: ${ia.codigo_proveedor}` : ""}${ia.mensaje_proveedor ? ` · «${ia.mensaje_proveedor}»` : ""}${ia.modelos_probados ? ` · modelo(s) probado(s): ${ia.modelos_probados.join(", ")}` : ""}`;
+          let ayuda;
+          let filaCatalogo = null;
+          if (ia.codigo_proveedor === 404) {
+            // El modelo no existe para esta clave: consultamos el catálogo para decir qué hacer
+            ayuda = "El modelo de IA no está disponible para tu clave (NVIDIA lo retiró, o tu cuenta no tiene acceso).";
+            try {
+              const r2 = await fetchConTiempo(`${URL_BACKEND}/salud?modelos=glm`, {}, 30000);
+              const d2 = await r2.json().catch(() => null);
+              const cat = d2 && d2.catalogo;
+              if (cat && !cat.error) {
+                const conf = cat.configurados_en_catalogo || {};
+                const figuran = Object.keys(conf).filter((m) => conf[m]);
+                const noFiguran = Object.keys(conf).filter((m) => !conf[m]);
+                const estadoConf = Object.entries(conf).map(([m, v]) => `${m}: ${v ? "figura en el catálogo" : "NO figura"}`).join(" · ");
+                const lista = (cat.coincidencias || []).slice(0, 12).join(", ") || "ninguno";
+                ayuda = figuran.length === 0
+                  ? "Ninguno de los modelos configurados figura ya en el catálogo: en Vercel cambia MODELO_IA (y, si quieres, MODELOS_RESPALDO) por uno de la lista de abajo y haz Redeploy."
+                  : `Estos modelos figuran en el catálogo pero tu clave recibe 404: ${figuran.join(", ")}. Revisa tu cuenta en build.nvidia.com (puede pedir verificación) o genera una clave nueva y actualízala en Vercel (NVIDIA_API_KEY).`
+                    + (noFiguran.length ? ` Además ya no figuran (quítalos de MODELO_IA / MODELOS_RESPALDO): ${noFiguran.join(", ")}.` : "");
+                filaCatalogo = ["Modelos GLM en el catálogo de NVIDIA", "aviso", `${estadoConf} · Disponibles ahora: ${lista}`, "Elige uno con «Free Endpoint» en build.nvidia.com/models. El nombre se escribe tal cual aparece aquí."];
+              } else {
+                filaCatalogo = ["Modelos GLM en el catálogo de NVIDIA", "aviso", "No se pudo consultar el catálogo: " + ((cat && cat.error) || "sin respuesta"), ""];
+              }
+            } catch (e2) {
+              filaCatalogo = ["Modelos GLM en el catálogo de NVIDIA", "aviso", "No se pudo consultar el catálogo: " + e2.message, ""];
+            }
+          } else if (ia.codigo_proveedor === 429) {
+            ayuda = "El proveedor de IA está limitando las solicitudes (por uso alto o límite del plan). Suele pasar solo en uno o dos minutos.";
+          } else if ([401, 402, 403].includes(ia.codigo_proveedor)) {
+            ayuda = "Es un problema de configuración o de crédito del servicio de IA: quien administra debe revisar la clave y el crédito en build.nvidia.com.";
+          } else {
+            ayuda = "Error del proveedor de IA. Suele ser temporal; si se repite, revisar los Logs en Vercel.";
+          }
+          agregar("La IA responde", "mal", detalleBase, ayuda);
+          if (filaCatalogo) agregar(...filaCatalogo);
         } else {
           agregar("La IA responde", "mal", `El servidor respondió con error HTTP ${r.status}`,
             r.status === 429 ? "Hiciste demasiadas pruebas seguidas: espera unos minutos." : ayudaHTTP(r.status, false));

@@ -60,3 +60,9 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - Mensajes de error claros desde el servidor (límite del proveedor, credenciales, modelo no disponible, tiempo agotado), siempre con el código.
 - Nuevo diagnóstico: abre `tu-link/api/salud?probar_ia=1` para ver si la IA responde ahora mismo (y, si no, por qué).
 - Botón **🩺 Diagnóstico** (arriba a la derecha, y también cuando falla una pregunta): prueba navegador, cámara y micrófono, servidor, clave, IA y servicios externos, dice cuál falla y por qué, y permite **copiar el resultado** para enviarlo a quien administra. Si un cliente tiene un error, pídele que lo ejecute y te mande el texto copiado.
+
+### v28
+- NVIDIA retira modelos gratuitos con frecuencia. Ahora hay **modelo principal + respaldos**: si el principal responde 404 (ya no existe), el servidor prueba el siguiente solo y se queda con el que funciona. Se cambian sin tocar código, con variables de entorno en Vercel: `MODELO_IA` (principal, por defecto `z-ai/glm-5.3`) y `MODELOS_RESPALDO` (separados por coma, por defecto `z-ai/glm-5.3-flash`). Después de cambiar una variable hay que hacer Redeploy.
+- Los parámetros de razonamiento (`reasoning_effort`, etc.) solo se envían a modelos GLM, para poder usar otros modelos sin errores.
+- Diagnóstico: la fila "La IA responde" muestra qué modelo contestó y el motivo exacto del proveedor; si es un 404, consulta el catálogo de NVIDIA y dice qué hacer.
+- Nuevo: `tu-link/api/salud?modelos=glm` lista los modelos del catálogo que contienen "glm" (usa `?modelos=todos` para ver todos) y si los tuyos figuran.

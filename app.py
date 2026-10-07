@@ -30,8 +30,16 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "27"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
-MODELO = os.getenv("MODELO_IA", "z-ai/glm-5.3")
+VERSION = "28"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+# NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
+# si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
+# Se cambian SIN tocar código, con variables de entorno en Vercel:
+#   MODELO_IA          = modelo principal           (por defecto z-ai/glm-5.3)
+#   MODELOS_RESPALDO   = respaldos separados por coma (por defecto z-ai/glm-5.3-flash)
+MODELO = os.getenv("MODELO_IA", "z-ai/glm-5.3").strip()
+MODELOS_RESPALDO = [m.strip() for m in os.getenv("MODELOS_RESPALDO", "z-ai/glm-5.3-flash").split(",") if m.strip()]
+LISTA_MODELOS = [MODELO] + [m for m in MODELOS_RESPALDO if m != MODELO]
+_modelo_activo = None  # el último que funcionó (por instancia del servidor)
 BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
 app = FastAPI(title="VoxReady", version=VERSION)
@@ -69,7 +77,7 @@ def traducir_error_ia(e):
     if codigo in (401, 403):
         return 500, f"El servicio de IA rechazó las credenciales (código {codigo}). Avisa al administrador."
     if codigo == 404:
-        return 500, "El modelo de IA no está disponible (código 404). Avisa al administrador."
+        return 500, "El modelo de IA no está disponible (código 404): puede haber sido retirado o tu cuenta no tiene acceso. Avisa al administrador."
     if codigo and codigo >= 500:
         return 502, f"El proveedor de IA tuvo un error temporal (código {codigo}). Reintenta en unos segundos."
     if "Timeout" in nombre:
@@ -77,15 +85,40 @@ def traducir_error_ia(e):
     return 502, "No se pudo contactar a la IA. Reintenta en unos segundos."
 
 
+def _extra_body(modelo, esfuerzo):
+    """Los parámetros de razonamiento son propios de los modelos GLM; a los demás no se les envían."""
+    if "glm" in modelo.lower():
+        return {"chat_template_kwargs": {"clear_thinking": True, "reasoning_effort": esfuerzo}}
+    return None
+
+
+def crear_completion(mensajes, temperature, max_tokens, esfuerzo):
+    """Prueba los modelos en orden y salta al siguiente SOLO si el modelo no existe (404).
+    Devuelve (respuesta, modelo_usado)."""
+    global _modelo_activo
+    cliente = obtener_cliente()
+    orden = ([_modelo_activo] if _modelo_activo else []) + [m for m in LISTA_MODELOS if m != _modelo_activo]
+    for i, modelo in enumerate(orden):
+        kwargs = dict(model=modelo, messages=mensajes, temperature=temperature, max_tokens=max_tokens)
+        extra = _extra_body(modelo, esfuerzo)
+        if extra:
+            kwargs["extra_body"] = extra
+        try:
+            r = cliente.chat.completions.create(**kwargs)
+            _modelo_activo = modelo
+            return r, modelo
+        except Exception as e:
+            if getattr(e, "status_code", None) == 404 and i < len(orden) - 1:
+                print("Modelo no disponible (404), probando el siguiente:", modelo)
+                if modelo == _modelo_activo:
+                    _modelo_activo = None
+                continue
+            raise
+
+
 def llamar_ia(mensajes, temperature, max_tokens, esfuerzo):
     try:
-        r = obtener_cliente().chat.completions.create(
-            model=MODELO,
-            messages=mensajes,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            extra_body={"chat_template_kwargs": {"clear_thinking": True, "reasoning_effort": esfuerzo}},
-        )
+        r, _modelo = crear_completion(mensajes, temperature, max_tokens, esfuerzo)
     except HTTPException:
         raise
     except Exception as e:  # red, cuota, modelo inexistente, etc.
@@ -208,29 +241,36 @@ def entrevistar(peticion: PeticionEntrevista):
     return {"pregunta": texto}
 
 
+def detalle_proveedor(e):
+    """Texto crudo del error del proveedor (sin claves), para diagnosticar."""
+    cuerpo = getattr(e, "body", None)
+    if cuerpo:
+        return str(cuerpo)[:300]
+    try:
+        return e.response.text[:300]
+    except Exception:
+        return str(e)[:300]
+
+
 @app.get("/api/salud")
-def salud(request: Request, probar_ia: int = 0):
-    """Estado del servidor. Con ?probar_ia=1 hace una llamada mínima a la IA y dice si responde
-    (y, si falla, el código y el motivo)."""
+def salud(request: Request, probar_ia: int = 0, modelos: str = ""):
+    """Estado del servidor.
+    ?probar_ia=1     hace una llamada mínima a la IA y dice si responde (y con qué modelo).
+    ?modelos=glm     lista los modelos del catálogo de NVIDIA que contienen ese texto (?modelos=todos: todos)."""
     info = {
         "estado": "ok",
         "version": VERSION,
         "clave_configurada": bool(os.getenv("NVIDIA_API_KEY")),
         "modelo": MODELO,
+        "modelos_configurados": LISTA_MODELOS,
         "region": os.getenv("VERCEL_REGION") or "local",
     }
     if probar_ia:
         limitar(request)
         t0 = time.time()
         try:
-            obtener_cliente().chat.completions.create(
-                model=MODELO,
-                messages=[{"role": "user", "content": "Responde solo: ok"}],
-                temperature=0,
-                max_tokens=16,
-                extra_body={"chat_template_kwargs": {"clear_thinking": True, "reasoning_effort": "low"}},
-            )
-            info["ia"] = {"estado": "ok", "segundos": round(time.time() - t0, 1)}
+            _r, usado = crear_completion([{"role": "user", "content": "Responde solo: ok"}], 0, 16, "low")
+            info["ia"] = {"estado": "ok", "modelo": usado, "segundos": round(time.time() - t0, 1)}
         except HTTPException as e:  # por ejemplo, falta la clave
             info["ia"] = {"estado": "error", "codigo_http": e.status_code, "detalle": e.detail}
         except Exception as e:
@@ -241,9 +281,27 @@ def salud(request: Request, probar_ia: int = 0):
                 "codigo_proveedor": getattr(e, "status_code", None),
                 "tipo": type(e).__name__,
                 "detalle": detalle,
-                "mensaje_proveedor": str(e)[:200],
+                "mensaje_proveedor": detalle_proveedor(e),
+                "modelos_probados": LISTA_MODELOS,
                 "segundos": round(time.time() - t0, 1),
             }
+    if modelos:
+        limitar(request)
+        try:
+            ids = sorted(m.id for m in obtener_cliente().models.list().data)
+            filtro = modelos.lower()
+            coincide = ids if filtro in ("1", "todos", "all") else [i for i in ids if filtro in i.lower()]
+            info["catalogo"] = {
+                "total_en_catalogo": len(ids),
+                "filtro": modelos,
+                "coincidencias": coincide[:80],
+                "configurados_en_catalogo": {m: (m in ids) for m in LISTA_MODELOS},
+            }
+        except HTTPException as e:
+            info["catalogo"] = {"error": e.detail}
+        except Exception as e:
+            codigo, detalle = traducir_error_ia(e)
+            info["catalogo"] = {"error": detalle, "codigo_proveedor": getattr(e, "status_code", None), "mensaje_proveedor": detalle_proveedor(e)}
     return info
 
 
