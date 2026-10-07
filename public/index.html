@@ -50,7 +50,7 @@
   .enlace-beta:hover:not(:disabled) { background: rgba(255,255,255,0.12); opacity: 1; }
 
   /* ---------- Ventana de bienvenida (beta) ---------- */
-  #modal-beta {
+  #modal-beta, #modal-diagnostico {
     display: none; position: fixed; inset: 0; z-index: 1000;
     background: rgba(15,30,45,0.65);
     align-items: center; justify-content: center; padding: 20px;
@@ -74,6 +74,23 @@
   .modal-evalua b { display: block; color: var(--navy); margin-bottom: 4px; }
   .modal-pie { padding: 16px 28px 22px; display: flex; justify-content: flex-end; border-top: 1px solid var(--light); background: white; }
   .modal-pie button { font-size: 16px; padding: 13px 28px; }
+  /* Diagnóstico */
+  .diag-resumen { border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; font-size: 15px; line-height: 1.5; background: var(--light); }
+  .diag-resumen.ok { background: #E8F5EC; border-left: 5px solid #1E8E3E; }
+  .diag-resumen.aviso { background: #FFF6E5; border-left: 5px solid #E0A100; }
+  .diag-resumen.mal { background: #FDECEA; border-left: 5px solid #C0392B; }
+  .diag-fila { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--light); }
+  .diag-icono { width: 26px; height: 26px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: white; background: #9AA5B1; }
+  .diag-fila.ok .diag-icono { background: #1E8E3E; }
+  .diag-fila.aviso .diag-icono { background: #E0A100; }
+  .diag-fila.mal .diag-icono { background: #C0392B; }
+  .diag-fila .nombre { font-weight: 700; color: var(--navy); font-size: 14.5px; }
+  .diag-fila .detalle { font-size: 13.5px; color: var(--ink); margin-top: 2px; word-break: break-word; }
+  .diag-fila .ayuda { font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .modal-pie.diag-pie { justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .modal-pie.diag-pie .grupo { display: flex; gap: 10px; flex-wrap: wrap; }
+  .modal-pie.diag-pie button { font-size: 14px; padding: 11px 20px; }
+  .modal-pie.diag-pie .sec { background: var(--navy); }
 
   /* ---------- Pantalla completa: 2 columnas ---------- */
   main {
@@ -261,7 +278,7 @@
 
   /* ---------- Al imprimir / guardar PDF: solo los resultados ---------- */
   @media print {
-    #modal-beta { display: none !important; }
+    #modal-beta, #modal-diagnostico { display: none !important; }
     body { background: white; }
     body * { visibility: hidden; }
     #panel-resultados, #panel-resultados * { visibility: visible; }
@@ -276,9 +293,10 @@
 <body>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v26</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v27</span></div>
   <div class="derecha">
     <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
+    <button type="button" class="enlace-beta" id="boton-diagnostico">🩺 Diagnóstico</button>
     <div class="pasos" id="pasos">
       <div class="paso activo" data-paso="1">1 · Comprobación</div>
       <div class="paso" data-paso="2">2 · Entrevista</div>
@@ -286,6 +304,28 @@
     </div>
   </div>
 </header>
+
+<!-- ============ Diagnóstico: comprueba dónde está el problema ============ -->
+<div id="modal-diagnostico" role="dialog" aria-modal="true" aria-labelledby="modal-diag-titulo">
+  <div class="modal-caja">
+    <div class="modal-cab">
+      <h2 id="modal-diag-titulo">Diagnóstico de VoxReady</h2>
+      <p>Revisa paso a paso dónde está el problema. Si algo falla, usa "Copiar resultado" y envíaselo a quien administra la beta.</p>
+    </div>
+    <div class="modal-cuerpo">
+      <div id="diag-resumen" class="diag-resumen">Ejecutando comprobaciones...</div>
+      <div id="diag-lista"></div>
+      <p class="estado" style="margin-bottom:14px;">La comprobación "La IA responde" hace una llamada mínima a la IA. No se guarda ninguna conversación, video ni audio.</p>
+    </div>
+    <div class="modal-pie diag-pie">
+      <button type="button" class="sec" id="diag-copiar">Copiar resultado</button>
+      <div class="grupo">
+        <button type="button" class="sec" id="diag-repetir">Ejecutar de nuevo</button>
+        <button type="button" id="diag-cerrar">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ============ Ventana de bienvenida (edita los textos aquí) ============ -->
 <div id="modal-beta" role="dialog" aria-modal="true" aria-labelledby="modal-beta-titulo">
@@ -616,39 +656,78 @@
   const barraCarga = document.getElementById("barra-carga");
   const FASES_PREGUNTA = ["Enviando tu respuesta", "El entrevistador está pensando", "Redactando la pregunta"];
 
-  async function pedirPreguntaAlBackend() {
-    preguntaActual.textContent = "El entrevistador está preparando la siguiente pregunta...";
+  const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function quitarBotonReintentoPregunta() {
+    ["boton-reintentar-pregunta", "boton-diag-pregunta"].forEach((id) => {
+      const viejo = document.getElementById(id);
+      if (viejo) viejo.remove();
+    });
+  }
+
+  // Pide la siguiente pregunta. Si falla por algo pasajero (límite, red, error temporal) reintenta
+  // una vez sola; si sigue fallando, muestra el motivo real y un botón para reintentar SIN perder
+  // la entrevista (tu respuesta ya quedó guardada en la conversación).
+  async function pedirPreguntaAlBackend(intento = 1) {
+    quitarBotonReintentoPregunta();
+    preguntaActual.textContent = intento === 1
+      ? "El entrevistador está preparando la siguiente pregunta..."
+      : "Hubo un problema pasajero, reintentando...";
     botonResponder.disabled = true; // evita mandar dos respuestas mientras la IA piensa
     const carga = iniciarCarga(barraCarga, "pregunta", FASES_PREGUNTA, 6);
 
-    let respuesta;
+    let problema = "";
+    let pasajero = false;
     try {
-      respuesta = await fetch(`${URL_BACKEND}/entrevistar`, {
+      const respuesta = await fetch(`${URL_BACKEND}/entrevistar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ historial }),
       });
+      let datos = {};
+      try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON (por ejemplo, una página de error) */ }
+
+      if (respuesta.ok && datos.pregunta) {
+        carga.terminar(true);
+        botonResponder.disabled = false;
+        iniciarVentanaVoz(); // a partir de aquí medimos tu voz, hasta que envíes la respuesta
+        historial.push({ role: "assistant", content: datos.pregunta });
+        numPregunta++;
+        preguntaActual.textContent = `(${numPregunta}/${MAX_PREGUNTAS}) ${datos.pregunta}`;
+        agregarAlHistorialVisual("assistant", datos.pregunta);
+        return true;
+      }
+      const detalle = typeof datos.detail === "string" ? datos.detail : "El servidor no pudo responder.";
+      problema = `${detalle} [error ${respuesta.status}]`;
+      pasajero = [429, 502, 503, 504].includes(respuesta.status);
     } catch (error) {
-      carga.terminar(false);
-      botonResponder.disabled = false;
-      throw error;
+      problema = "No hay conexión con el servidor. Revisa tu internet.";
+      pasajero = true;
+      console.error(error);
     }
 
-    if (!respuesta.ok) {
-      carga.terminar(false);
-      botonResponder.disabled = false;
-      preguntaActual.textContent = "Error al conectar con el servidor. Recarga la página e intenta de nuevo.";
-      return;
+    carga.terminar(false);
+    if (pasajero && intento < 2) {
+      await esperar(3000);
+      return pedirPreguntaAlBackend(intento + 1);
     }
 
-    const datos = await respuesta.json();
-    carga.terminar(true);
-    botonResponder.disabled = false;
-    iniciarVentanaVoz(); // a partir de aquí medimos tu voz, hasta que envíes la respuesta
-    historial.push({ role: "assistant", content: datos.pregunta });
-    numPregunta++;
-    preguntaActual.textContent = `(${numPregunta}/${MAX_PREGUNTAS}) ${datos.pregunta}`;
-    agregarAlHistorialVisual("assistant", datos.pregunta);
+    preguntaActual.textContent = "No se pudo obtener la siguiente pregunta. " + problema;
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.id = "boton-reintentar-pregunta";
+    boton.textContent = "Reintentar (tu respuesta no se pierde)";
+    boton.style.marginTop = "10px";
+    boton.addEventListener("click", () => pedirPreguntaAlBackend(1));
+    preguntaActual.insertAdjacentElement("afterend", boton);
+    const diag = document.createElement("button");
+    diag.type = "button";
+    diag.id = "boton-diag-pregunta";
+    diag.textContent = "🩺 Ejecutar diagnóstico";
+    diag.style.cssText = "margin: 10px 0 0 10px; background: var(--navy);";
+    diag.addEventListener("click", () => abrirDiagnostico());
+    boton.insertAdjacentElement("afterend", diag);
+    return false;
   }
 
   // ================================================================
@@ -1634,7 +1713,7 @@
   }
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "26";
+  const VERSION_APP = "27";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -1680,6 +1759,270 @@
   let betaYaVista = false;
   try { betaYaVista = sessionStorage.getItem("voxready_beta_vista") === "1"; } catch (e) { /* nada */ }
   if (!betaYaVista) abrirModalBeta();
+
+  // ================================================================
+  // Diagnóstico: prueba cada eslabón y dice QUÉ falla y POR QUÉ
+  // ================================================================
+  const modalDiag = document.getElementById("modal-diagnostico");
+  const diagLista = document.getElementById("diag-lista");
+  const diagResumen = document.getElementById("diag-resumen");
+  let diagTexto = "";
+  let diagEjecutando = false;
+
+  async function fetchConTiempo(url, opciones, ms) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), ms);
+    try { return await fetch(url, { ...(opciones || {}), signal: ctl.signal }); }
+    finally { clearTimeout(t); }
+  }
+
+  function ayudaHTTP(codigo, esHTML) {
+    if (codigo === 404) return "El servidor responde, pero no encuentra /api: app.py no quedó en la raíz del repositorio o el despliegue no terminó.";
+    if (codigo === 401 || codigo === 403) return "Vercel está pidiendo iniciar sesión (protección del despliegue). Usa el link corto del proyecto, no el largo de un despliegue.";
+    if (codigo === 429) return "Demasiadas solicitudes desde tu conexión. Espera unos minutos.";
+    if (codigo >= 500) return "El servidor tuvo un error interno" + (esHTML ? " (Vercel devolvió una página de error)" : "") + ". Quien administra la beta debe mirar los Logs en Vercel a esta hora.";
+    return "Respuesta inesperada del servidor.";
+  }
+
+  function nombreNavegador() {
+    const ua = navigator.userAgent;
+    if (/Edg\//.test(ua)) return "Edge";
+    if (/OPR\//.test(ua)) return "Opera";
+    if (/Chrome\//.test(ua)) return "Chrome";
+    if (/Firefox\//.test(ua)) return "Firefox";
+    if (/Safari\//.test(ua)) return "Safari";
+    return "desconocido";
+  }
+
+  async function ejecutarDiagnostico() {
+    const resultados = [];
+    const agregar = (nombre, estado, detalle, ayuda) => resultados.push({ nombre, estado, detalle, ayuda: ayuda || "" });
+
+    // 1) Navegador
+    {
+      const nav = nombreNavegador();
+      const problemas = [], avisos = [];
+      if (!window.isSecureContext) problemas.push("la página no está en https (la cámara y el micrófono no funcionarán)");
+      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) problemas.push("este navegador no permite usar cámara/micrófono");
+      if (typeof WebAssembly === "undefined") avisos.push("sin WebAssembly (el análisis facial no funcionará)");
+      if (!(window.AudioContext || window.webkitAudioContext)) avisos.push("sin audio avanzado (no se medirá tu voz)");
+      if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) avisos.push("sin reconocimiento de voz (el botón Hablar no funcionará)");
+      if (!/Chrome|Edge/.test(nombreNavegador())) avisos.push("se recomienda Chrome o Edge");
+      const detalle = `${nav} · ${navigator.onLine ? "con internet" : "SIN internet"}`;
+      if (!navigator.onLine) problemas.push("el navegador indica que no tienes internet");
+      agregar("Tu navegador", problemas.length ? "mal" : avisos.length ? "aviso" : "ok",
+        detalle + (problemas.length || avisos.length ? " · " + [...problemas, ...avisos].join("; ") : ""),
+        problemas.length ? "Abre la página con el link https en Chrome o Edge y revisa tu conexión." : avisos.length ? "Usa Chrome o Edge en un computador para tener todas las funciones." : "");
+    }
+
+    // 2) Cámara y micrófono
+    {
+      try {
+        const disp = await navigator.mediaDevices.enumerateDevices();
+        const camaras = disp.filter((d) => d.kind === "videoinput").length;
+        const mics = disp.filter((d) => d.kind === "audioinput").length;
+        let permiso = "";
+        const estados = [];
+        if (navigator.permissions && navigator.permissions.query) {
+          for (const n of ["camera", "microphone"]) {
+            try { estados.push(`${n === "camera" ? "cámara" : "micrófono"}: ${(await navigator.permissions.query({ name: n })).state}`); } catch (e) { /* no soportado */ }
+          }
+        }
+        permiso = estados.length ? " · permisos → " + estados.join(", ") : "";
+        const bloqueado = estados.some((x) => x.endsWith("denied"));
+        const faltan = camaras === 0 || mics === 0;
+        agregar("Cámara y micrófono", bloqueado || faltan ? "mal" : "ok",
+          `${camaras} cámara(s), ${mics} micrófono(s)${permiso}`,
+          bloqueado ? "El permiso está bloqueado: haz clic en el candado junto a la dirección y permite cámara y micrófono."
+            : faltan ? "No se detecta una cámara o un micrófono: conéctalo y revisa que otra aplicación (Zoom, Meet) no lo esté usando." : "");
+      } catch (e) {
+        agregar("Cámara y micrófono", "aviso", "No se pudo revisar: " + e.message, "");
+      }
+    }
+
+    // 3) Servidor
+    let salud = null;
+    {
+      const t0 = performance.now();
+      try {
+        const r = await fetchConTiempo(`${URL_BACKEND}/salud`, {}, 15000);
+        const ms = Math.round(performance.now() - t0);
+        const tipo = r.headers.get("content-type") || "";
+        let datos = null;
+        try { datos = await r.json(); } catch (e) { /* no era JSON */ }
+        if (r.ok && datos && datos.estado === "ok") {
+          salud = datos;
+          const desajuste = String(datos.version) !== VERSION_APP;
+          agregar("Servidor (Vercel)", desajuste ? "aviso" : "ok",
+            `Responde en ${ms} ms · servidor v${datos.version} · página v${VERSION_APP} · región ${datos.region || "?"}`,
+            desajuste ? "La página y el servidor son de versiones distintas: sube y despliega todos los archivos, y recarga con Ctrl+F5." : "");
+        } else {
+          agregar("Servidor (Vercel)", "mal", `El servidor respondió con error HTTP ${r.status}`, ayudaHTTP(r.status, !/json/.test(tipo)));
+        }
+      } catch (e) {
+        const agotado = e.name === "AbortError";
+        agregar("Servidor (Vercel)", "mal", agotado ? "No respondió en 15 s" : "No se pudo establecer conexión con el servidor",
+          agotado ? "El servidor tardó demasiado: puede estar saturado o tu conexión es muy lenta."
+            : "Es tu internet, un firewall o proxy de tu red (por ejemplo, de una empresa), o el servidor está caído. Prueba desde otra red, como los datos del celular.");
+      }
+    }
+
+    // 4) Clave de la IA
+    if (salud) {
+      agregar("Clave de la IA en el servidor", salud.clave_configurada ? "ok" : "mal",
+        salud.clave_configurada ? "Configurada" : "Falta NVIDIA_API_KEY",
+        salud.clave_configurada ? "" : "Quien administra debe agregar la variable NVIDIA_API_KEY en Vercel (Settings → Environment Variables) y volver a desplegar.");
+    } else {
+      agregar("Clave de la IA en el servidor", "aviso", "No se pudo comprobar (el servidor no respondió)", "");
+    }
+
+    // 5) La IA responde
+    if (salud && salud.clave_configurada) {
+      try {
+        const t0 = performance.now();
+        const r = await fetchConTiempo(`${URL_BACKEND}/salud?probar_ia=1`, {}, 60000);
+        const datos = await r.json().catch(() => null);
+        const seg = ((performance.now() - t0) / 1000).toFixed(1);
+        if (r.ok && datos && datos.ia && datos.ia.estado === "ok") {
+          agregar("La IA responde", "ok", `Respondió en ${seg} s`, "");
+        } else if (r.ok && datos && datos.ia) {
+          const ia = datos.ia;
+          agregar("La IA responde", "mal",
+            `${ia.detalle || "Error"}${ia.codigo_proveedor ? ` · código del proveedor: ${ia.codigo_proveedor}` : ""}${ia.mensaje_proveedor ? ` · «${ia.mensaje_proveedor}»` : ""}`,
+            ia.codigo_proveedor === 429 ? "El proveedor de IA está limitando las solicitudes (por uso alto o límite del plan). Suele pasar solo en uno o dos minutos."
+              : [401, 402, 403, 404].includes(ia.codigo_proveedor) ? "Es un problema de configuración o de crédito del servicio de IA: quien administra debe revisar la clave, el crédito y el modelo en build.nvidia.com."
+              : "Error del proveedor de IA. Suele ser temporal; si se repite, revisar los Logs en Vercel.");
+        } else {
+          agregar("La IA responde", "mal", `El servidor respondió con error HTTP ${r.status}`,
+            r.status === 429 ? "Hiciste demasiadas pruebas seguidas: espera unos minutos." : ayudaHTTP(r.status, false));
+        }
+      } catch (e) {
+        agregar("La IA responde", "mal", e.name === "AbortError" ? "No respondió en 60 s" : "Falló la comprobación: " + e.message,
+          "La IA o el servidor tardaron demasiado. Puede ser una caída temporal del proveedor de IA.");
+      }
+    } else {
+      agregar("La IA responde", "aviso", "No se pudo comprobar", "Primero hay que resolver el servidor o la clave.");
+    }
+
+    // 6) Servicios externos del análisis facial
+    {
+      const destinos = [
+        ["jsDelivr (motor facial)", `${MP_BASE}/package.json`],
+        ["Google (modelo facial)", MP_MODELO],
+        ["Modelos de respaldo", `${MODELOS_URL}/tiny_face_detector_model-weights_manifest.json`],
+      ];
+      const caidos = [];
+      await Promise.all(destinos.map(async ([nombre, url]) => {
+        try { await fetchConTiempo(url, { method: "HEAD", mode: "no-cors" }, 12000); }
+        catch (e) { caidos.push(nombre); }
+      }));
+      agregar("Servicios del análisis facial", caidos.length ? "aviso" : "ok",
+        caidos.length ? "No se pudo llegar a: " + caidos.join(", ") : "jsDelivr y Google accesibles",
+        caidos.length ? "Tu red parece bloquear estos servicios (firewall, proxy o extensión). La entrevista funciona, pero sin análisis de tu expresión facial." : "");
+    }
+
+    // 7) Análisis facial en esta sesión
+    {
+      const camaraActiva = document.body.classList.contains("con-camara");
+      if (typeof faceLandmarker !== "undefined" && faceLandmarker) agregar("Análisis facial en esta sesión", "ok", "Motor de alta precisión activo", "");
+      else if (!camaraActiva) agregar("Análisis facial en esta sesión", "aviso", "La cámara aún no se activó", "Completa el paso 1 (Comprobación) para activarla.");
+      else agregar("Análisis facial en esta sesión", "aviso", "El motor de alta precisión no está activo (se usa el respaldo o no cargó)", "Revisa la fila anterior y recarga la página.");
+    }
+    return resultados;
+  }
+
+  function pintarDiagnostico(resultados) {
+    diagLista.textContent = "";
+    const marca = { ok: "✓", aviso: "!", mal: "✕", cargando: "…" };
+    resultados.forEach((r) => {
+      const fila = document.createElement("div");
+      fila.className = "diag-fila " + r.estado;
+      const ic = document.createElement("div");
+      ic.className = "diag-icono";
+      ic.textContent = marca[r.estado] || "?";
+      const cont = document.createElement("div");
+      const n = document.createElement("div"); n.className = "nombre"; n.textContent = r.nombre;
+      const d = document.createElement("div"); d.className = "detalle"; d.textContent = r.detalle;
+      cont.appendChild(n); cont.appendChild(d);
+      if (r.ayuda) { const a = document.createElement("div"); a.className = "ayuda"; a.textContent = "→ " + r.ayuda; cont.appendChild(a); }
+      fila.appendChild(ic); fila.appendChild(cont);
+      diagLista.appendChild(fila);
+    });
+    const malos = resultados.filter((r) => r.estado === "mal");
+    const avisos = resultados.filter((r) => r.estado === "aviso");
+    diagResumen.className = "diag-resumen " + (malos.length ? "mal" : avisos.length ? "aviso" : "ok");
+    if (malos.length) {
+      const causa = malos[0]; // el primero que falla en el orden de dependencia es la causa más probable
+      diagResumen.textContent = `Se encontró ${malos.length} problema(s). Causa más probable: ${causa.nombre}. ${causa.ayuda}`;
+    } else if (avisos.length) {
+      diagResumen.textContent = `Todo lo esencial funciona, con ${avisos.length} aviso(s) para revisar.`;
+    } else {
+      diagResumen.textContent = "Todo en orden: navegador, servidor, IA y servicios responden bien. Si algo falló antes, fue pasajero: vuelve a intentarlo.";
+    }
+
+    const sesion = (typeof historial !== "undefined") ? `pregunta ${numPregunta}/${MAX_PREGUNTAS}, ${historial.length} mensajes` : "sin datos";
+    diagTexto = [
+      `VoxReady · diagnóstico · ${new Date().toISOString()}`,
+      `Página v${VERSION_APP} · ${location.origin}${location.pathname}`,
+      `Navegador: ${navigator.userAgent}`,
+      `Zona horaria: ${Intl.DateTimeFormat().resolvedOptions().timeZone} · Sesión: ${sesion}`,
+      "",
+      ...resultados.map((r) => `[${r.estado.toUpperCase()}] ${r.nombre}: ${r.detalle}${r.ayuda ? " → " + r.ayuda : ""}`),
+      "",
+      diagResumen.textContent,
+    ].join("\n");
+  }
+
+  async function correrDiagnostico() {
+    if (diagEjecutando) return;
+    diagEjecutando = true;
+    diagResumen.className = "diag-resumen";
+    diagResumen.textContent = "Ejecutando comprobaciones... (puede tardar hasta un minuto si algo no responde)";
+    diagLista.textContent = "";
+    document.getElementById("diag-repetir").disabled = true;
+    try { pintarDiagnostico(await ejecutarDiagnostico()); }
+    catch (e) { diagResumen.className = "diag-resumen mal"; diagResumen.textContent = "El diagnóstico falló: " + e.message; }
+    finally { diagEjecutando = false; document.getElementById("diag-repetir").disabled = false; }
+  }
+
+  function abrirDiagnostico() {
+    modalDiag.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    document.getElementById("diag-cerrar").focus();
+    correrDiagnostico();
+  }
+  function cerrarDiagnostico() {
+    modalDiag.style.display = "none";
+    document.body.style.overflow = "";
+  }
+  document.getElementById("boton-diagnostico").addEventListener("click", abrirDiagnostico);
+  document.getElementById("diag-cerrar").addEventListener("click", cerrarDiagnostico);
+  document.getElementById("diag-repetir").addEventListener("click", correrDiagnostico);
+  document.getElementById("diag-copiar").addEventListener("click", async () => {
+    const boton = document.getElementById("diag-copiar");
+    const original = "Copiar resultado";
+    try {
+      await navigator.clipboard.writeText(diagTexto);
+      boton.textContent = "¡Copiado!";
+    } catch (e) {
+      const ta = document.createElement("textarea");
+      ta.value = diagTexto; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); boton.textContent = "¡Copiado!"; } catch (e2) { boton.textContent = "No se pudo copiar"; }
+      ta.remove();
+    }
+    setTimeout(() => { boton.textContent = original; }, 1800);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (modalDiag.style.display !== "flex") return;
+    if (e.key === "Escape") cerrarDiagnostico();
+    if (e.key === "Tab") { // el foco se queda dentro de la ventana
+      const f = [...modalDiag.querySelectorAll("button:not(:disabled)")];
+      if (!f.length) return;
+      const i = f.indexOf(document.activeElement);
+      e.preventDefault();
+      f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+    }
+  });
 </script>
 
 </body>

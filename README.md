@@ -54,3 +54,9 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 ### v26
 - Ventana de bienvenida de la beta: se muestra al entrar (una vez por pestaña) antes de la comprobación técnica y la entrevista, con el contexto para el cliente (qué es, la situación, qué se evalúa, para qué es la beta, privacidad y consejos). El botón "Acerca de esta beta" (arriba a la derecha) la vuelve a abrir. Los textos se editan en public/index.html, bloque "Ventana de bienvenida".
 - Nota: el zip de la v25 NO incluía esta ventana; desde la v26 sí.
+
+### v27
+- Si la IA falla, la página ya NO pide recargar (eso hacía perder toda la entrevista): reintenta sola una vez si el error es pasajero y, si sigue fallando, muestra el motivo real con su código y un botón "Reintentar" que conserva tu respuesta.
+- Mensajes de error claros desde el servidor (límite del proveedor, credenciales, modelo no disponible, tiempo agotado), siempre con el código.
+- Nuevo diagnóstico: abre `tu-link/api/salud?probar_ia=1` para ver si la IA responde ahora mismo (y, si no, por qué).
+- Botón **🩺 Diagnóstico** (arriba a la derecha, y también cuando falla una pregunta): prueba navegador, cámara y micrófono, servidor, clave, IA y servicios externos, dice cuál falla y por qué, y permite **copiar el resultado** para enviarlo a quien administra. Si un cliente tiene un error, pídele que lo ejecute y te mande el texto copiado.

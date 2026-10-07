@@ -30,7 +30,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "26"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "27"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 MODELO = os.getenv("MODELO_IA", "z-ai/glm-5.3")
 BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
@@ -57,6 +57,26 @@ def obtener_cliente():
     return _cliente
 
 
+def traducir_error_ia(e):
+    """(código HTTP para nuestra página, mensaje claro). Siempre dice el código del proveedor
+    para que, si el cliente manda una captura, se vea de inmediato qué pasó."""
+    codigo = getattr(e, "status_code", None)
+    nombre = type(e).__name__
+    if codigo == 429:
+        return 429, "La IA recibió demasiadas solicitudes seguidas o se alcanzó el límite del proveedor (código 429). Espera un minuto y reintenta."
+    if codigo == 402:
+        return 500, "Se agotó el crédito del servicio de IA (código 402). Avisa al administrador."
+    if codigo in (401, 403):
+        return 500, f"El servicio de IA rechazó las credenciales (código {codigo}). Avisa al administrador."
+    if codigo == 404:
+        return 500, "El modelo de IA no está disponible (código 404). Avisa al administrador."
+    if codigo and codigo >= 500:
+        return 502, f"El proveedor de IA tuvo un error temporal (código {codigo}). Reintenta en unos segundos."
+    if "Timeout" in nombre:
+        return 504, "La IA tardó demasiado en responder. Reintenta en unos segundos."
+    return 502, "No se pudo contactar a la IA. Reintenta en unos segundos."
+
+
 def llamar_ia(mensajes, temperature, max_tokens, esfuerzo):
     try:
         r = obtener_cliente().chat.completions.create(
@@ -69,8 +89,10 @@ def llamar_ia(mensajes, temperature, max_tokens, esfuerzo):
     except HTTPException:
         raise
     except Exception as e:  # red, cuota, modelo inexistente, etc.
-        print("Error llamando a la IA:", repr(e))
-        raise HTTPException(status_code=502, detail="No se pudo contactar a la IA. Intenta de nuevo en unos segundos.")
+        codigo, detalle = traducir_error_ia(e)
+        # Queda en los logs de Vercel (Project -> Logs): tipo de error y código del proveedor
+        print("Error llamando a la IA:", type(e).__name__, getattr(e, "status_code", None), repr(e)[:300])
+        raise HTTPException(status_code=codigo, detail=detalle)
     texto = r.choices[0].message.content
     if not texto:
         raise HTTPException(status_code=502, detail="La IA devolvió una respuesta vacía. Intenta de nuevo.")
@@ -187,8 +209,42 @@ def entrevistar(peticion: PeticionEntrevista):
 
 
 @app.get("/api/salud")
-def salud():
-    return {"estado": "ok", "version": VERSION, "clave_configurada": bool(os.getenv("NVIDIA_API_KEY")), "modelo": MODELO}
+def salud(request: Request, probar_ia: int = 0):
+    """Estado del servidor. Con ?probar_ia=1 hace una llamada mínima a la IA y dice si responde
+    (y, si falla, el código y el motivo)."""
+    info = {
+        "estado": "ok",
+        "version": VERSION,
+        "clave_configurada": bool(os.getenv("NVIDIA_API_KEY")),
+        "modelo": MODELO,
+        "region": os.getenv("VERCEL_REGION") or "local",
+    }
+    if probar_ia:
+        limitar(request)
+        t0 = time.time()
+        try:
+            obtener_cliente().chat.completions.create(
+                model=MODELO,
+                messages=[{"role": "user", "content": "Responde solo: ok"}],
+                temperature=0,
+                max_tokens=16,
+                extra_body={"chat_template_kwargs": {"clear_thinking": True, "reasoning_effort": "low"}},
+            )
+            info["ia"] = {"estado": "ok", "segundos": round(time.time() - t0, 1)}
+        except HTTPException as e:  # por ejemplo, falta la clave
+            info["ia"] = {"estado": "error", "codigo_http": e.status_code, "detalle": e.detail}
+        except Exception as e:
+            codigo, detalle = traducir_error_ia(e)
+            info["ia"] = {
+                "estado": "error",
+                "codigo_http": codigo,
+                "codigo_proveedor": getattr(e, "status_code", None),
+                "tipo": type(e).__name__,
+                "detalle": detalle,
+                "mensaje_proveedor": str(e)[:200],
+                "segundos": round(time.time() - t0, 1),
+            }
+    return info
 
 
 # ------------------------------------------------ Evaluación: CONTENIDO -------
