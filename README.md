@@ -66,3 +66,16 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - Los parámetros de razonamiento (`reasoning_effort`, etc.) solo se envían a modelos GLM, para poder usar otros modelos sin errores.
 - Diagnóstico: la fila "La IA responde" muestra qué modelo contestó y el motivo exacto del proveedor; si es un 404, consulta el catálogo de NVIDIA y dice qué hacer.
 - Nuevo: `tu-link/api/salud?modelos=glm` lista los modelos del catálogo que contienen "glm" (usa `?modelos=todos` para ver todos) y si los tuyos figuran.
+
+### v29 — IA con respaldo automático (para que la beta no se caiga)
+- **Varios proveedores de IA.** El servidor usa primero el de `PROVEEDORES_IA` (por defecto `anthropic,nvidia`). Si falla (caída, límite, lentitud o saldo), pasa solo al siguiente. Un proveedor que falló se salta durante 60 s para no hacer esperar a nadie.
+- **Claude (Anthropic) como principal, de pago y estable:** variable `ANTHROPIC_API_KEY`. El entrevistador usa un modelo rápido (`MODELOS_ANTHROPIC_RAPIDO`, por defecto `claude-haiku-4-5-20251001`) y los jueces uno de mayor calidad (`MODELOS_ANTHROPIC_EVALUADOR`, por defecto `claude-sonnet-5-5`, con Haiku como respaldo si ese nombre no existiera).
+- **NVIDIA queda como respaldo gratuito:** variable `NVIDIA_API_KEY` (y `MODELO_IA`, `MODELOS_RESPALDO` como en v28).
+- **Límites de tiempo por proveedor** (entrevistador 25 s, jueces 45 s) para que un proveedor lento no deje la página esperando 1 o 2 minutos.
+- El 🩺 Diagnóstico prueba **cada proveedor por separado** y marca: ✓ ok, ! degradado (el principal falla pero el respaldo responde) o ✕ error. Avisa si solo hay un proveedor configurado.
+- `requirements.txt` ahora incluye `anthropic`. **Hay que subirlo a GitHub** junto con `app.py`, `public/index.html` y `vercel.json`.
+
+#### Cómo activar Claude como principal
+1. Crea una cuenta en la consola de desarrolladores de Anthropic (platform.claude.com), carga saldo con tarjeta y crea una **API key**. Conviene poner un límite de gasto mensual en la consola.
+2. En Vercel: Settings → Environment Variables → agrega `ANTHROPIC_API_KEY` (Production, Preview y Development). Deja `NVIDIA_API_KEY` como respaldo.
+3. Sube los archivos a GitHub y espera el despliegue (o Redeploy). Abre 🩺 Diagnóstico: debe decir "Claude ✓ · NVIDIA ✓" o, al menos, "Claude ✓".

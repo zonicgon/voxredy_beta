@@ -6,8 +6,8 @@ Diferencias clave con la versión local (backend_entrevista.py):
     entre peticiones). Todo lo que hace falta viaja en cada petición.
   * No usa librosa ni ffmpeg: la voz se mide en el navegador y aquí solo llegan
     las métricas (números). No se sube ningún audio.
-  * La clave de la IA sale de una variable de entorno (NVIDIA_API_KEY),
-    nunca del código.
+  * Las claves de la IA salen de variables de entorno (ANTHROPIC_API_KEY y/o
+    NVIDIA_API_KEY), nunca del código. Si un proveedor falla, se usa el siguiente.
 
 Local:   python -m uvicorn app:app --reload --port 8000   ->  http://localhost:8000
 Vercel:  se despliega tal cual (el objeto `app` es el punto de entrada).
@@ -30,7 +30,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "28"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "29"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -45,24 +45,51 @@ BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 app = FastAPI(title="VoxReady", version=VERSION)
 
 # ---------------------------------------------------------------- IA ---------
+# Varios proveedores con RESPALDO: si el primero falla (caída, límite, lentitud, saldo),
+# se usa el siguiente automáticamente. Se configura con variables de entorno en Vercel:
+#   PROVEEDORES_IA     = orden separado por coma (por defecto "anthropic,nvidia"). Solo se usan
+#                        los que tengan clave.
+#   ANTHROPIC_API_KEY  = clave de Claude (servicio de pago, estable)  <- recomendado como principal
+#   NVIDIA_API_KEY     = clave de NVIDIA (servicio de prueba gratuito) <- respaldo
 
-_cliente = None
+
+def _lista_env(nombre, por_defecto):
+    return [m.strip() for m in os.getenv(nombre, por_defecto).split(",") if m.strip()]
+
+
+PROVEEDORES_ORDEN = [p.lower() for p in _lista_env("PROVEEDORES_IA", "anthropic,nvidia")]
+# El entrevistador necesita rapidez; los jueces, calidad. Si el primer modelo de la lista no existe (404), se usa el siguiente.
+MODELOS_ANTHROPIC_RAPIDO = _lista_env("MODELOS_ANTHROPIC_RAPIDO", "claude-haiku-4-5-20251001")
+MODELOS_ANTHROPIC_EVALUADOR = _lista_env("MODELOS_ANTHROPIC_EVALUADOR", "claude-sonnet-5-5,claude-haiku-4-5-20251001")
+TIEMPO_LIMITE = {"entrevistador": 25, "evaluador": 45, "prueba": 20}  # segundos POR proveedor
+ENFRIAMIENTO_S = 60  # un proveedor que falló se salta durante este tiempo (si hay otro disponible)
+_enfriar_hasta = {}
+_clientes = {}
+
+
+def proveedores_configurados():
+    claves = {"anthropic": os.getenv("ANTHROPIC_API_KEY"), "nvidia": os.getenv("NVIDIA_API_KEY")}
+    return [p for p in PROVEEDORES_ORDEN if claves.get(p)]
+
+
+def _cliente_nvidia():
+    if "nvidia" not in _clientes:
+        _clientes["nvidia"] = OpenAI(base_url=BASE_URL, api_key=os.getenv("NVIDIA_API_KEY"), timeout=100, max_retries=0)
+    return _clientes["nvidia"]
+
+
+def _cliente_anthropic():
+    if "anthropic" not in _clientes:
+        import anthropic  # se importa aquí para que la app arranque aunque el paquete falte
+        _clientes["anthropic"] = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"), timeout=60, max_retries=0)
+    return _clientes["anthropic"]
 
 
 def obtener_cliente():
-    global _cliente
-    clave = os.getenv("NVIDIA_API_KEY")
-    if not clave:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Falta la variable de entorno NVIDIA_API_KEY. En Vercel: "
-                "Project -> Settings -> Environment Variables, y vuelve a desplegar."
-            ),
-        )
-    if _cliente is None:
-        _cliente = OpenAI(base_url=BASE_URL, api_key=clave, timeout=100, max_retries=1)
-    return _cliente
+    """Cliente de NVIDIA (se usa para listar su catálogo de modelos)."""
+    if not os.getenv("NVIDIA_API_KEY"):
+        raise HTTPException(status_code=500, detail="Falta la variable de entorno NVIDIA_API_KEY.")
+    return _cliente_nvidia()
 
 
 def traducir_error_ia(e):
@@ -70,10 +97,11 @@ def traducir_error_ia(e):
     para que, si el cliente manda una captura, se vea de inmediato qué pasó."""
     codigo = getattr(e, "status_code", None)
     nombre = type(e).__name__
+    texto = str(e).lower()
     if codigo == 429:
         return 429, "La IA recibió demasiadas solicitudes seguidas o se alcanzó el límite del proveedor (código 429). Espera un minuto y reintenta."
-    if codigo == 402:
-        return 500, "Se agotó el crédito del servicio de IA (código 402). Avisa al administrador."
+    if codigo == 402 or (codigo == 400 and "credit balance" in texto):
+        return 500, f"Se agotó el saldo o crédito del servicio de IA (código {codigo}). Avisa al administrador."
     if codigo in (401, 403):
         return 500, f"El servicio de IA rechazó las credenciales (código {codigo}). Avisa al administrador."
     if codigo == 404:
@@ -82,7 +110,20 @@ def traducir_error_ia(e):
         return 502, f"El proveedor de IA tuvo un error temporal (código {codigo}). Reintenta en unos segundos."
     if "Timeout" in nombre:
         return 504, "La IA tardó demasiado en responder. Reintenta en unos segundos."
+    if isinstance(e, RuntimeError) and "vacía" in texto:
+        return 502, "La IA devolvió una respuesta vacía. Reintenta en unos segundos."
     return 502, "No se pudo contactar a la IA. Reintenta en unos segundos."
+
+
+def detalle_proveedor(e):
+    """Texto crudo del error del proveedor (sin claves), para diagnosticar."""
+    cuerpo = getattr(e, "body", None)
+    if cuerpo:
+        return str(cuerpo)[:300]
+    try:
+        return e.response.text[:300]
+    except Exception:
+        return str(e)[:300]
 
 
 def _extra_body(modelo, esfuerzo):
@@ -92,43 +133,99 @@ def _extra_body(modelo, esfuerzo):
     return None
 
 
-def crear_completion(mensajes, temperature, max_tokens, esfuerzo):
-    """Prueba los modelos en orden y salta al siguiente SOLO si el modelo no existe (404).
-    Devuelve (respuesta, modelo_usado)."""
+def _llamar_anthropic(modelo, mensajes, temperature, max_tokens, timeout):
+    cliente = _cliente_anthropic().with_options(timeout=timeout, max_retries=0)
+    sistema = "\n\n".join(m["content"] for m in mensajes if m["role"] == "system")
+    conversacion = [{"role": m["role"], "content": m["content"]} for m in mensajes if m["role"] in ("user", "assistant")]
+    kwargs = dict(model=modelo, max_tokens=max_tokens, messages=conversacion)
+    if sistema:
+        kwargs["system"] = sistema
+    try:
+        r = cliente.messages.create(temperature=temperature, **kwargs)
+    except Exception as e:
+        # Algunos modelos no aceptan el parámetro temperature: se reintenta sin él
+        if getattr(e, "status_code", None) == 400 and "temperature" in str(e).lower():
+            r = cliente.messages.create(**kwargs)
+        else:
+            raise
+    return "".join(getattr(b, "text", "") for b in r.content if getattr(b, "type", "") == "text")
+
+
+def _llamar_nvidia(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout):
+    cliente = _cliente_nvidia().with_options(timeout=timeout, max_retries=0)
+    kwargs = dict(model=modelo, messages=mensajes, temperature=temperature, max_tokens=max_tokens)
+    extra = _extra_body(modelo, esfuerzo)
+    if extra:
+        kwargs["extra_body"] = extra
+    r = cliente.chat.completions.create(**kwargs)
+    return r.choices[0].message.content or ""
+
+
+def _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, timeout, exigir_texto=True):
+    """Prueba los modelos de UN proveedor en orden y salta al siguiente SOLO si el modelo no existe (404).
+    Devuelve (texto, modelo_usado); si falla, lanza la excepción."""
     global _modelo_activo
-    cliente = obtener_cliente()
-    orden = ([_modelo_activo] if _modelo_activo else []) + [m for m in LISTA_MODELOS if m != _modelo_activo]
-    for i, modelo in enumerate(orden):
-        kwargs = dict(model=modelo, messages=mensajes, temperature=temperature, max_tokens=max_tokens)
-        extra = _extra_body(modelo, esfuerzo)
-        if extra:
-            kwargs["extra_body"] = extra
+    if prov == "anthropic":
+        modelos = MODELOS_ANTHROPIC_EVALUADOR if rol == "evaluador" else MODELOS_ANTHROPIC_RAPIDO
+    else:
+        modelos = ([_modelo_activo] if _modelo_activo else []) + [m for m in LISTA_MODELOS if m != _modelo_activo]
+    for i, modelo in enumerate(modelos):
         try:
-            r = cliente.chat.completions.create(**kwargs)
-            _modelo_activo = modelo
-            return r, modelo
+            if prov == "anthropic":
+                texto = _llamar_anthropic(modelo, mensajes, temperature, max_tokens, timeout)
+            else:
+                texto = _llamar_nvidia(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
+            if exigir_texto and not texto.strip():
+                raise RuntimeError("la IA devolvió una respuesta vacía")
+            if prov == "nvidia":
+                _modelo_activo = modelo
+            return texto, modelo
         except Exception as e:
-            if getattr(e, "status_code", None) == 404 and i < len(orden) - 1:
-                print("Modelo no disponible (404), probando el siguiente:", modelo)
-                if modelo == _modelo_activo:
+            if getattr(e, "status_code", None) == 404 and i < len(modelos) - 1:
+                print("Modelo no disponible (404), probando el siguiente:", prov, modelo)
+                if prov == "nvidia" and modelo == _modelo_activo:
                     _modelo_activo = None
                 continue
             raise
 
 
-def llamar_ia(mensajes, temperature, max_tokens, esfuerzo):
-    try:
-        r, _modelo = crear_completion(mensajes, temperature, max_tokens, esfuerzo)
-    except HTTPException:
-        raise
-    except Exception as e:  # red, cuota, modelo inexistente, etc.
-        codigo, detalle = traducir_error_ia(e)
-        # Queda en los logs de Vercel (Project -> Logs): tipo de error y código del proveedor
-        print("Error llamando a la IA:", type(e).__name__, getattr(e, "status_code", None), repr(e)[:300])
-        raise HTTPException(status_code=codigo, detail=detalle)
-    texto = r.choices[0].message.content
-    if not texto:
-        raise HTTPException(status_code=502, detail="La IA devolvió una respuesta vacía. Intenta de nuevo.")
+def generar_texto(mensajes, temperature, max_tokens, esfuerzo, rol="evaluador"):
+    """Devuelve (texto, proveedor, modelo). Si un proveedor falla, usa el siguiente.
+    Lanza HTTPException solo si NINGUNO responde."""
+    todos = proveedores_configurados()
+    if not todos:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "No hay ninguna clave de IA configurada. En Vercel agrega ANTHROPIC_API_KEY (recomendado) "
+                "y/o NVIDIA_API_KEY (Project -> Settings -> Environment Variables) y vuelve a desplegar."
+            ),
+        )
+    ahora = time.time()
+    candidatos = [p for p in todos if _enfriar_hasta.get(p, 0) <= ahora] or todos
+    timeout = TIEMPO_LIMITE.get(rol, 45)
+    fallos, ultimo = [], None
+    for prov in candidatos:
+        try:
+            texto, modelo = _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, timeout)
+            _enfriar_hasta.pop(prov, None)
+            if fallos:
+                print("IA: respondió el respaldo", prov, "tras fallar:", fallos)
+            return texto, prov, modelo
+        except Exception as e:
+            ultimo = e
+            _enfriar_hasta[prov] = time.time() + ENFRIAMIENTO_S
+            fallos.append(f"{prov}: {type(e).__name__} {getattr(e, 'status_code', '') or ''}".strip())
+            # Queda en los logs de Vercel (Project -> Logs)
+            print("Error llamando a la IA:", prov, type(e).__name__, getattr(e, "status_code", None), repr(e)[:300])
+    codigo, detalle = traducir_error_ia(ultimo)
+    if len(fallos) > 1:
+        detalle += " [intentos: " + "; ".join(fallos) + "]"
+    raise HTTPException(status_code=codigo, detail=detalle)
+
+
+def llamar_ia(mensajes, temperature, max_tokens, esfuerzo, rol="evaluador"):
+    texto, _proveedor, _modelo = generar_texto(mensajes, temperature, max_tokens, esfuerzo, rol)
     return texto
 
 
@@ -237,54 +334,58 @@ SYSTEM_PROMPT = (
 def entrevistar(peticion: PeticionEntrevista):
     mensajes = [{"role": "system", "content": SYSTEM_PROMPT}]
     mensajes += [{"role": m.role, "content": m.content} for m in peticion.historial]
-    texto = llamar_ia(mensajes, temperature=0.7, max_tokens=1024, esfuerzo="low")
+    texto = llamar_ia(mensajes, temperature=0.7, max_tokens=1024, esfuerzo="low", rol="entrevistador")
     return {"pregunta": texto}
 
 
-def detalle_proveedor(e):
-    """Texto crudo del error del proveedor (sin claves), para diagnosticar."""
-    cuerpo = getattr(e, "body", None)
-    if cuerpo:
-        return str(cuerpo)[:300]
+def probar_proveedor(prov):
+    """Llamada mínima a UN proveedor (sin respaldo), para el diagnóstico."""
+    t0 = time.time()
     try:
-        return e.response.text[:300]
-    except Exception:
-        return str(e)[:300]
+        _t, modelo = _intentar_proveedor(prov, [{"role": "user", "content": "Responde solo: ok"}], 0, 16, "low", "prueba", TIEMPO_LIMITE["prueba"], exigir_texto=False)
+        return {"proveedor": prov, "estado": "ok", "modelo": modelo, "segundos": round(time.time() - t0, 1)}
+    except Exception as e:
+        codigo, detalle = traducir_error_ia(e)
+        return {
+            "proveedor": prov,
+            "estado": "error",
+            "codigo_http": codigo,
+            "codigo_proveedor": getattr(e, "status_code", None),
+            "tipo": type(e).__name__,
+            "detalle": detalle,
+            "mensaje_proveedor": detalle_proveedor(e),
+            "segundos": round(time.time() - t0, 1),
+        }
 
 
 @app.get("/api/salud")
 def salud(request: Request, probar_ia: int = 0, modelos: str = ""):
     """Estado del servidor.
-    ?probar_ia=1     hace una llamada mínima a la IA y dice si responde (y con qué modelo).
+    ?probar_ia=1     prueba CADA proveedor de IA por separado (ok / degradado / error).
     ?modelos=glm     lista los modelos del catálogo de NVIDIA que contienen ese texto (?modelos=todos: todos)."""
+    configurados = proveedores_configurados()
     info = {
         "estado": "ok",
         "version": VERSION,
-        "clave_configurada": bool(os.getenv("NVIDIA_API_KEY")),
+        "clave_configurada": bool(configurados),
+        "proveedores": configurados,
+        "orden_de_proveedores": PROVEEDORES_ORDEN,
+        "modelos_anthropic": {"entrevistador": MODELOS_ANTHROPIC_RAPIDO, "evaluador": MODELOS_ANTHROPIC_EVALUADOR},
         "modelo": MODELO,
         "modelos_configurados": LISTA_MODELOS,
         "region": os.getenv("VERCEL_REGION") or "local",
     }
     if probar_ia:
         limitar(request)
-        t0 = time.time()
-        try:
-            _r, usado = crear_completion([{"role": "user", "content": "Responde solo: ok"}], 0, 16, "low")
-            info["ia"] = {"estado": "ok", "modelo": usado, "segundos": round(time.time() - t0, 1)}
-        except HTTPException as e:  # por ejemplo, falta la clave
-            info["ia"] = {"estado": "error", "codigo_http": e.status_code, "detalle": e.detail}
-        except Exception as e:
-            codigo, detalle = traducir_error_ia(e)
-            info["ia"] = {
-                "estado": "error",
-                "codigo_http": codigo,
-                "codigo_proveedor": getattr(e, "status_code", None),
-                "tipo": type(e).__name__,
-                "detalle": detalle,
-                "mensaje_proveedor": detalle_proveedor(e),
-                "modelos_probados": LISTA_MODELOS,
-                "segundos": round(time.time() - t0, 1),
-            }
+        if not configurados:
+            info["ia"] = {"estado": "error", "proveedores": [], "detalle": "No hay ninguna clave de IA configurada (ANTHROPIC_API_KEY o NVIDIA_API_KEY)."}
+        else:
+            resultados = [probar_proveedor(p) for p in configurados]
+            funcionan = [r for r in resultados if r["estado"] == "ok"]
+            estado = "error" if not funcionan else ("ok" if resultados[0]["estado"] == "ok" else "degradado")
+            info["ia"] = {"estado": estado, "proveedores": resultados}
+            if funcionan:
+                info["ia"]["modelo"] = funcionan[0]["modelo"]
     if modelos:
         limitar(request)
         try:
