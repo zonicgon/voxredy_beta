@@ -30,7 +30,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "31"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "32"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -150,6 +150,14 @@ def traducir_error_ia(e):
         return 500, str(e)
     if codigo == 429:
         return 429, "La IA recibió demasiadas solicitudes seguidas o se alcanzó el límite del proveedor (código 429). Espera un minuto y reintenta."
+    if "ip address restriction" in texto:
+        return 500, "La clave de Gemini tiene una restricción por dirección IP y el servidor de Vercel usa IPs que cambian (código 403). Hay que crear una clave sin restricción de IP."
+    if "referer" in texto or "referrer" in texto:
+        return 500, "La clave de Gemini está restringida a ciertos sitios web (código 403) y no sirve para el servidor. Hay que crear una clave sin esa restricción."
+    if "leaked" in texto:
+        return 500, "Google desactivó la clave de Gemini por haberse expuesto públicamente (código 403). Hay que crear una nueva."
+    if codigo == 403 and ("has not been used in project" in texto or "service_disabled" in texto or "is disabled" in texto):
+        return 500, "La API de Gemini (Generative Language) no está habilitada en el proyecto de Google de esa clave (código 403)."
     if codigo == 400 and ("api key not valid" in texto or "api_key_invalid" in texto):
         return 500, "El servicio de IA rechazó la clave (código 400: clave no válida). Avisa al administrador."
     if codigo == 402 or (codigo == 400 and "credit balance" in texto):
@@ -199,9 +207,12 @@ def _llamar_anthropic(modelo, mensajes, temperature, max_tokens, timeout):
     if sistema:
         kwargs["system"] = sistema
     try:
-        r = cliente.messages.create(temperature=temperature, **kwargs)
+        # temperature va por extra_body: algunas versiones de la librería (o modelos) ya no la aceptan como parámetro directo
+        r = cliente.messages.create(extra_body={"temperature": temperature}, **kwargs)
+    except TypeError:
+        r = cliente.messages.create(**kwargs)
     except Exception as e:
-        # Algunos modelos no aceptan el parámetro temperature: se reintenta sin él
+        # Si el modelo rechaza temperature (400), se reintenta sin ella
         if getattr(e, "status_code", None) == 400 and "temperature" in str(e).lower():
             r = cliente.messages.create(**kwargs)
         else:

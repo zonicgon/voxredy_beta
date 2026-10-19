@@ -96,3 +96,8 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 1. En Vercel: Settings → Environment Variables → agrega `GEMINI_API_KEY` con la clave (sin espacios ni comillas; Production, Preview y Development).
 2. Sube `app.py`, `public/index.html` (y `.env.example` / `README.md` si quieres) a GitHub y espera el despliegue (o Redeploy).
 3. Abre 🩺 Diagnóstico: debe decir "Gemini ✓". **No pegues la clave en el código ni en chats.**
+
+### v32
+- **Arreglo con Claude:** la librería de Anthropic instalada ya no acepta `temperature` como parámetro directo y daba `TypeError`. Ahora se envía de forma compatible y, si el modelo la rechaza, se reintenta sin ella.
+- **Errores 403 de Google explicados:** clave con restricción por **IP** (no sirve en Vercel porque sus IPs cambian), por **sitio web**, **expuesta/bloqueada por Google** o con la **API sin habilitar**. El 🩺 Diagnóstico dice cuál es y cómo arreglarlo.
+- Importante: una clave de Gemini para el servidor debe crearse **sin restricción de IP ni de sitio web**. La clave vive solo en las variables de entorno de Vercel (nunca llega al navegador). Para limitar el riesgo, restringe la clave solo a la API «Generative Language» y pon un presupuesto/alerta de gasto en Google Cloud.

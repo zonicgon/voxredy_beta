@@ -293,7 +293,7 @@
 <body>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v31</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v32</span></div>
   <div class="derecha">
     <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
     <button type="button" class="enlace-beta" id="boton-diagnostico">🩺 Diagnóstico</button>
@@ -1713,7 +1713,7 @@
   }
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "31";
+  const VERSION_APP = "32";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -1793,6 +1793,22 @@
     } catch (e) {
       return { ayuda, fila: [nombre, "aviso", "No se pudo consultar el catálogo: " + e.message, ""] };
     }
+  }
+
+  // Consejo concreto según lo que dice el proveedor en su error (si se reconoce)
+  function ayudaProveedor(p) {
+    const t = `${p.mensaje_proveedor || ""} ${p.detalle || ""}`;
+    if (/ip address restriction|restricción por dirección IP/i.test(t))
+      return "La clave de Gemini está restringida por IP y Vercel usa IPs que cambian. Crea una clave nueva SIN restricción de IP (en Google AI Studio / Google Cloud → Credenciales: «Restricciones de aplicación: Ninguna» y, si quieres, «Restricción de API: solo Generative Language API»), ponla en GEMINI_API_KEY en Vercel y haz Redeploy.";
+    if (/referer|referrer|sitios web/i.test(t))
+      return "La clave de Gemini está limitada a ciertos sitios web y no sirve para el servidor. Crea una clave sin restricción de sitio web.";
+    if (/leaked|expuesto/i.test(t))
+      return "Google bloqueó la clave por haberse expuesto públicamente. Crea una nueva y ponla en Vercel.";
+    if (/has not been used in project|service_disabled|no está habilitada/i.test(t))
+      return "Falta habilitar la API de Gemini (Generative Language API) en el proyecto de Google de esa clave.";
+    if (/TypeError/i.test(t))
+      return "Error interno del servidor al llamar a este proveedor: pásale este texto a quien programa.";
+    return "";
   }
 
   function ayudaHTTP(codigo, esHTML) {
@@ -1933,8 +1949,10 @@
           if (ia.estado === "ok") {
             agregar("La IA responde", "ok", detalle, "");
           } else if (ia.estado === "degradado") {
+            const especificas = [...new Set(provs.filter((p) => p.estado !== "ok").map(ayudaProveedor).filter(Boolean))];
             agregar("La IA responde", "aviso", detalle,
-              "El proveedor principal falló, pero el de respaldo responde: la entrevista funciona. Conviene revisar el principal (clave, saldo o caída temporal).");
+              (especificas.length ? especificas.join(" ") + " " : "") +
+              "Mientras tanto la entrevista funciona con el proveedor de respaldo.");
             if (provs.some((p) => p.proveedor === "gemini" && p.estado !== "ok" && p.codigo_proveedor === 404)) {
               agregar(...(await catalogoGemini()).fila);
             }
@@ -1943,8 +1961,11 @@
             const hay = (c) => malos.some((p) => p.codigo_proveedor === c);
             let ayuda;
             let filaCatalogo = null;
+            const especificasE = [...new Set(malos.map(ayudaProveedor).filter(Boolean))];
             if (!provs.length) {
               ayuda = ia.detalle || "No hay proveedores de IA configurados.";
+            } else if (especificasE.length) {
+              ayuda = especificasE.join(" ");
             } else if (malos.some((p) => p.proveedor === "gemini" && p.codigo_proveedor === 404)) {
               const g = await catalogoGemini();
               ayuda = g.ayuda;
