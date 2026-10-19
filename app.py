@@ -30,7 +30,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "32"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "33"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -47,10 +47,12 @@ app = FastAPI(title="VoxReady", version=VERSION)
 # ---------------------------------------------------------------- IA ---------
 # Varios proveedores con RESPALDO: si el primero falla (caída, límite, lentitud, saldo),
 # se usa el siguiente automáticamente. Se configura con variables de entorno en Vercel:
-#   PROVEEDORES_IA     = orden separado por coma (por defecto "gemini,anthropic,nvidia"). Solo se usan
-#                        los que tengan clave.
+#   PROVEEDORES_IA     = orden separado por coma (por defecto "gemini,anthropic,groq,openrouter,nvidia").
+#                        Solo se usan los que tengan clave.
 #   GEMINI_API_KEY     = clave de Gemini (Google)
 #   ANTHROPIC_API_KEY  = clave de Claude (Anthropic)
+#   GROQ_API_KEY       = clave de Groq (gsk_...), gratis y muy rápido
+#   OPENROUTER_API_KEY = clave de OpenRouter (sk-or-...), un solo acceso a muchos modelos
 #   NVIDIA_API_KEY     = clave de NVIDIA (servicio de prueba gratuito) <- último respaldo
 
 
@@ -58,7 +60,16 @@ def _lista_env(nombre, por_defecto):
     return [m.strip() for m in os.getenv(nombre, por_defecto).split(",") if m.strip()]
 
 
-PROVEEDORES_ORDEN = [p.lower() for p in _lista_env("PROVEEDORES_IA", "gemini,anthropic,nvidia")]
+PROVEEDORES_ORDEN = [p.lower() for p in _lista_env("PROVEEDORES_IA", "gemini,anthropic,groq,openrouter,nvidia")]
+# Groq y OpenRouter también usan el formato OpenAI (no hace falta otro paquete).
+# "openrouter/free" es un alias de OpenRouter que elige solo un modelo gratuito disponible,
+# así no se rompe cuando retiran un modelo concreto. Se pueden cambiar con MODELOS_GROQ / MODELOS_OPENROUTER.
+COMPAT = {
+    "groq": {"clave": "GROQ_API_KEY", "url": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+             "modelos": _lista_env("MODELOS_GROQ", "openai/gpt-oss-120b,llama-3.3-70b-versatile")},
+    "openrouter": {"clave": "OPENROUTER_API_KEY", "url": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+                   "modelos": _lista_env("MODELOS_OPENROUTER", "openrouter/free")},
+}
 # Gemini se usa por su endpoint compatible con OpenAI (no hace falta otro paquete).
 # Los modelos de Gemini se retiran seguido: "gemini-flash-latest" es un alias que Google mantiene al día
 # y "gemini-3.1-flash-lite" es el respaldo. Se pueden cambiar con MODELOS_GEMINI (separados por coma).
@@ -78,7 +89,8 @@ class ConfiguracionIA(Exception):
     """Problema de configuración del servidor (por ejemplo, falta un paquete). El mensaje se muestra tal cual."""
 
 
-PREFIJO_CLAVE = {"GEMINI_API_KEY": ("AIza", "AQ."), "ANTHROPIC_API_KEY": "sk-ant-", "NVIDIA_API_KEY": "nvapi-"}
+PREFIJO_CLAVE = {"GEMINI_API_KEY": ("AIza", "AQ."), "ANTHROPIC_API_KEY": "sk-ant-", "GROQ_API_KEY": "gsk_",
+                 "OPENROUTER_API_KEY": "sk-or-", "NVIDIA_API_KEY": "nvapi-"}
 
 
 def clave_de(nombre):
@@ -105,7 +117,16 @@ def estado_claves():
 
 def proveedores_configurados():
     claves = {"gemini": clave_de("GEMINI_API_KEY"), "anthropic": clave_de("ANTHROPIC_API_KEY"), "nvidia": clave_de("NVIDIA_API_KEY")}
+    for nombre, cfg in COMPAT.items():
+        claves[nombre] = clave_de(cfg["clave"])
     return [p for p in PROVEEDORES_ORDEN if claves.get(p)]
+
+
+def _cliente_compat(prov):
+    if prov not in _clientes:
+        cfg = COMPAT[prov]
+        _clientes[prov] = OpenAI(base_url=cfg["url"], api_key=clave_de(cfg["clave"]), timeout=60, max_retries=0)
+    return _clientes[prov]
 
 
 def _cliente_nvidia():
@@ -235,6 +256,13 @@ def _llamar_gemini(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
     return r.choices[0].message.content or ""
 
 
+def _llamar_compat(prov, modelo, mensajes, temperature, max_tokens, timeout):
+    """Groq y OpenRouter. Los modelos con razonamiento gastan tokens pensando: se da margen para que la respuesta no quede vacía."""
+    cliente = _cliente_compat(prov).with_options(timeout=timeout, max_retries=0)
+    r = cliente.chat.completions.create(model=modelo, messages=mensajes, temperature=temperature, max_tokens=int(max_tokens * 2))
+    return r.choices[0].message.content or ""
+
+
 def _llamar_nvidia(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout):
     cliente = _cliente_nvidia().with_options(timeout=timeout, max_retries=0)
     kwargs = dict(model=modelo, messages=mensajes, temperature=temperature, max_tokens=max_tokens)
@@ -253,6 +281,8 @@ def _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, 
         modelos = MODELOS_ANTHROPIC_EVALUADOR if rol == "evaluador" else MODELOS_ANTHROPIC_RAPIDO
     elif prov == "gemini":
         modelos = ([_modelo_activo_gemini] if _modelo_activo_gemini else []) + [m for m in MODELOS_GEMINI if m != _modelo_activo_gemini]
+    elif prov in COMPAT:
+        modelos = COMPAT[prov]["modelos"]
     else:
         modelos = ([_modelo_activo] if _modelo_activo else []) + [m for m in LISTA_MODELOS if m != _modelo_activo]
     for i, modelo in enumerate(modelos):
@@ -261,6 +291,8 @@ def _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, 
                 texto = _llamar_anthropic(modelo, mensajes, temperature, max_tokens, timeout)
             elif prov == "gemini":
                 texto = _llamar_gemini(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
+            elif prov in COMPAT:
+                texto = _llamar_compat(prov, modelo, mensajes, temperature, max_tokens, timeout)
             else:
                 texto = _llamar_nvidia(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
             if exigir_texto and not texto.strip():
@@ -289,8 +321,8 @@ def generar_texto(mensajes, temperature, max_tokens, esfuerzo, rol="evaluador"):
         raise HTTPException(
             status_code=500,
             detail=(
-                "No hay ninguna clave de IA configurada. En Vercel agrega ANTHROPIC_API_KEY (recomendado) "
-                "y/o NVIDIA_API_KEY (Project -> Settings -> Environment Variables) y vuelve a desplegar."
+                "No hay ninguna clave de IA configurada. En Vercel agrega GEMINI_API_KEY, GROQ_API_KEY, "
+                "ANTHROPIC_API_KEY u OPENROUTER_API_KEY (Project -> Settings -> Environment Variables) y vuelve a desplegar."
             ),
         )
     ahora = time.time()
@@ -464,6 +496,8 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = ""):
         "claves": estado_claves(),
         "orden_de_proveedores": PROVEEDORES_ORDEN,
         "modelos_gemini": MODELOS_GEMINI,
+        "modelos_groq": COMPAT["groq"]["modelos"],
+        "modelos_openrouter": COMPAT["openrouter"]["modelos"],
         "modelos_anthropic": {"entrevistador": MODELOS_ANTHROPIC_RAPIDO, "evaluador": MODELOS_ANTHROPIC_EVALUADOR},
         "modelo": MODELO,
         "modelos_configurados": LISTA_MODELOS,
@@ -472,7 +506,7 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = ""):
     if probar_ia:
         limitar(request)
         if not configurados:
-            info["ia"] = {"estado": "error", "proveedores": [], "detalle": "No hay ninguna clave de IA configurada (ANTHROPIC_API_KEY o NVIDIA_API_KEY)."}
+            info["ia"] = {"estado": "error", "proveedores": [], "detalle": "No hay ninguna clave de IA configurada (GEMINI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY o NVIDIA_API_KEY)."}
         else:
             resultados = [probar_proveedor(p) for p in configurados]
             funcionan = [r for r in resultados if r["estado"] == "ok"]

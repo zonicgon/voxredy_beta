@@ -101,3 +101,11 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Arreglo con Claude:** la librería de Anthropic instalada ya no acepta `temperature` como parámetro directo y daba `TypeError`. Ahora se envía de forma compatible y, si el modelo la rechaza, se reintenta sin ella.
 - **Errores 403 de Google explicados:** clave con restricción por **IP** (no sirve en Vercel porque sus IPs cambian), por **sitio web**, **expuesta/bloqueada por Google** o con la **API sin habilitar**. El 🩺 Diagnóstico dice cuál es y cómo arreglarlo.
 - Importante: una clave de Gemini para el servidor debe crearse **sin restricción de IP ni de sitio web**. La clave vive solo en las variables de entorno de Vercel (nunca llega al navegador). Para limitar el riesgo, restringe la clave solo a la API «Generative Language» y pon un presupuesto/alerta de gasto en Google Cloud.
+
+### v33 — Más proveedores de respaldo (Groq y OpenRouter)
+- Dos proveedores nuevos que usan el formato OpenAI (**no hace falta tocar `requirements.txt`**):
+  - **Groq** → variable `GROQ_API_KEY` (empieza con `gsk_`). Modelos: `MODELOS_GROQ` (por defecto `openai/gpt-oss-120b,llama-3.3-70b-versatile`).
+  - **OpenRouter** → variable `OPENROUTER_API_KEY` (empieza con `sk-or-`). Modelo: `MODELOS_OPENROUTER` (por defecto `openrouter/free`, un alias que elige solo un modelo gratuito disponible; así no se rompe cuando retiran uno concreto).
+- Orden por defecto: **Gemini → Claude → Groq → OpenRouter → NVIDIA**. Solo se usan los que tengan clave. Para forzar un orden o un solo proveedor, usa `PROVEEDORES_IA` (por ejemplo `groq,openrouter` o solo `anthropic`).
+- El 🩺 Diagnóstico reconoce los nuevos proveedores y valida el formato de sus claves.
+- Ningún nivel gratuito es 100 % estable (los proveedores cambian cupos y retiran modelos sin aviso). Para un cliente de verdad, lo estable es un proveedor **de pago** (Claude o Gemini con facturación) como principal, y los gratuitos como respaldo.
