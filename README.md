@@ -79,3 +79,20 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 1. Crea una cuenta en la consola de desarrolladores de Anthropic (platform.claude.com), carga saldo con tarjeta y crea una **API key**. Conviene poner un límite de gasto mensual en la consola.
 2. En Vercel: Settings → Environment Variables → agrega `ANTHROPIC_API_KEY` (Production, Preview y Development). Deja `NVIDIA_API_KEY` como respaldo.
 3. Sube los archivos a GitHub y espera el despliegue (o Redeploy). Abre 🩺 Diagnóstico: debe decir "Claude ✓ · NVIDIA ✓" o, al menos, "Claude ✓".
+
+### v30
+- Las claves (`ANTHROPIC_API_KEY`, `NVIDIA_API_KEY`) se **limpian solas**: se quitan espacios, saltos de línea y comillas. Pegar la clave con un espacio al final es el error más común y hace que la conexión falle sin dar ningún código.
+- Si falta el paquete `anthropic` en el servidor, el mensaje lo dice con todas las letras (hay que subir `requirements.txt` y hacer Redeploy).
+- El 🩺 Diagnóstico muestra el **detalle técnico** de cada proveedor que falla (tipo de error y su causa) y avisa si una clave no tiene el formato esperado (`sk-ant-…` / `nvapi-…`) o venía con espacios.
+
+### v31 — Gemini (Google) como proveedor de IA
+- Nuevo proveedor **Gemini**, conectado por el endpoint compatible con OpenAI de Google (no hace falta instalar otro paquete). Variable: `GEMINI_API_KEY`.
+- Orden por defecto: **Gemini → Claude → NVIDIA**. Solo se usan los que tengan clave; si uno falla, pasa al siguiente. Se cambia con `PROVEEDORES_IA` (por ejemplo `gemini,nvidia`).
+- Modelos de Gemini: `MODELOS_GEMINI` (por defecto `gemini-flash-latest,gemini-3.1-flash-lite`). Google retira modelos seguido (por ejemplo `gemini-2.5-flash` cerró el 16 de octubre de 2026); si uno desaparece, el diagnóstico lista los disponibles.
+- El 🩺 Diagnóstico entiende Gemini: prueba cada proveedor por separado, avisa si la clave no tiene el formato esperado (`AIza…` o `AQ.…`) y, si el modelo da 404, muestra los modelos de Gemini disponibles.
+- Los modelos Gemini "piensan" y ese razonamiento cuenta dentro del límite de tokens, por eso el servidor les da el doble de margen.
+
+#### Cómo activar Gemini
+1. En Vercel: Settings → Environment Variables → agrega `GEMINI_API_KEY` con la clave (sin espacios ni comillas; Production, Preview y Development).
+2. Sube `app.py`, `public/index.html` (y `.env.example` / `README.md` si quieres) a GitHub y espera el despliegue (o Redeploy).
+3. Abre 🩺 Diagnóstico: debe decir "Gemini ✓". **No pegues la clave en el código ni en chats.**

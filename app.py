@@ -6,8 +6,8 @@ Diferencias clave con la versión local (backend_entrevista.py):
     entre peticiones). Todo lo que hace falta viaja en cada petición.
   * No usa librosa ni ffmpeg: la voz se mide en el navegador y aquí solo llegan
     las métricas (números). No se sube ningún audio.
-  * Las claves de la IA salen de variables de entorno (ANTHROPIC_API_KEY y/o
-    NVIDIA_API_KEY), nunca del código. Si un proveedor falla, se usa el siguiente.
+  * Las claves de la IA salen de variables de entorno (GEMINI_API_KEY, ANTHROPIC_API_KEY
+    y/o NVIDIA_API_KEY), nunca del código. Si un proveedor falla, se usa el siguiente.
 
 Local:   python -m uvicorn app:app --reload --port 8000   ->  http://localhost:8000
 Vercel:  se despliega tal cual (el objeto `app` es el punto de entrada).
@@ -30,7 +30,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "29"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "31"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -47,17 +47,24 @@ app = FastAPI(title="VoxReady", version=VERSION)
 # ---------------------------------------------------------------- IA ---------
 # Varios proveedores con RESPALDO: si el primero falla (caída, límite, lentitud, saldo),
 # se usa el siguiente automáticamente. Se configura con variables de entorno en Vercel:
-#   PROVEEDORES_IA     = orden separado por coma (por defecto "anthropic,nvidia"). Solo se usan
+#   PROVEEDORES_IA     = orden separado por coma (por defecto "gemini,anthropic,nvidia"). Solo se usan
 #                        los que tengan clave.
-#   ANTHROPIC_API_KEY  = clave de Claude (servicio de pago, estable)  <- recomendado como principal
-#   NVIDIA_API_KEY     = clave de NVIDIA (servicio de prueba gratuito) <- respaldo
+#   GEMINI_API_KEY     = clave de Gemini (Google)
+#   ANTHROPIC_API_KEY  = clave de Claude (Anthropic)
+#   NVIDIA_API_KEY     = clave de NVIDIA (servicio de prueba gratuito) <- último respaldo
 
 
 def _lista_env(nombre, por_defecto):
     return [m.strip() for m in os.getenv(nombre, por_defecto).split(",") if m.strip()]
 
 
-PROVEEDORES_ORDEN = [p.lower() for p in _lista_env("PROVEEDORES_IA", "anthropic,nvidia")]
+PROVEEDORES_ORDEN = [p.lower() for p in _lista_env("PROVEEDORES_IA", "gemini,anthropic,nvidia")]
+# Gemini se usa por su endpoint compatible con OpenAI (no hace falta otro paquete).
+# Los modelos de Gemini se retiran seguido: "gemini-flash-latest" es un alias que Google mantiene al día
+# y "gemini-3.1-flash-lite" es el respaldo. Se pueden cambiar con MODELOS_GEMINI (separados por coma).
+GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+MODELOS_GEMINI = _lista_env("MODELOS_GEMINI", "gemini-flash-latest,gemini-3.1-flash-lite")
+_modelo_activo_gemini = None
 # El entrevistador necesita rapidez; los jueces, calidad. Si el primer modelo de la lista no existe (404), se usa el siguiente.
 MODELOS_ANTHROPIC_RAPIDO = _lista_env("MODELOS_ANTHROPIC_RAPIDO", "claude-haiku-4-5-20251001")
 MODELOS_ANTHROPIC_EVALUADOR = _lista_env("MODELOS_ANTHROPIC_EVALUADOR", "claude-sonnet-5-5,claude-haiku-4-5-20251001")
@@ -67,27 +74,68 @@ _enfriar_hasta = {}
 _clientes = {}
 
 
+class ConfiguracionIA(Exception):
+    """Problema de configuración del servidor (por ejemplo, falta un paquete). El mensaje se muestra tal cual."""
+
+
+PREFIJO_CLAVE = {"GEMINI_API_KEY": ("AIza", "AQ."), "ANTHROPIC_API_KEY": "sk-ant-", "NVIDIA_API_KEY": "nvapi-"}
+
+
+def clave_de(nombre):
+    """Lee una clave del entorno y la LIMPIA: quita espacios, saltos de línea y comillas.
+    (Pegar la clave con un espacio o salto de línea al final es el error más común y hace que
+    la conexión falle sin ningún código de error.)"""
+    crudo = os.getenv(nombre) or ""
+    return "".join(crudo.split()).strip("\"'")
+
+
+def estado_claves():
+    """Información SEGURA sobre las claves (nunca la clave): si existe, si se ve bien formada y si venía sucia."""
+    info = {}
+    for nombre, prefijo in PREFIJO_CLAVE.items():
+        crudo = os.getenv(nombre) or ""
+        limpia = clave_de(nombre)
+        info[nombre] = {
+            "configurada": bool(limpia),
+            "formato_esperado": limpia.startswith(prefijo) if limpia else None,
+            "tenia_espacios_o_comillas": bool(limpia) and limpia != crudo,
+        }
+    return info
+
+
 def proveedores_configurados():
-    claves = {"anthropic": os.getenv("ANTHROPIC_API_KEY"), "nvidia": os.getenv("NVIDIA_API_KEY")}
+    claves = {"gemini": clave_de("GEMINI_API_KEY"), "anthropic": clave_de("ANTHROPIC_API_KEY"), "nvidia": clave_de("NVIDIA_API_KEY")}
     return [p for p in PROVEEDORES_ORDEN if claves.get(p)]
 
 
 def _cliente_nvidia():
     if "nvidia" not in _clientes:
-        _clientes["nvidia"] = OpenAI(base_url=BASE_URL, api_key=os.getenv("NVIDIA_API_KEY"), timeout=100, max_retries=0)
+        _clientes["nvidia"] = OpenAI(base_url=BASE_URL, api_key=clave_de("NVIDIA_API_KEY"), timeout=100, max_retries=0)
     return _clientes["nvidia"]
+
+
+def _cliente_gemini():
+    if "gemini" not in _clientes:
+        _clientes["gemini"] = OpenAI(base_url=GEMINI_BASE_URL, api_key=clave_de("GEMINI_API_KEY"), timeout=60, max_retries=0)
+    return _clientes["gemini"]
 
 
 def _cliente_anthropic():
     if "anthropic" not in _clientes:
-        import anthropic  # se importa aquí para que la app arranque aunque el paquete falte
-        _clientes["anthropic"] = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"), timeout=60, max_retries=0)
+        try:
+            import anthropic  # se importa aquí para que la app arranque aunque el paquete falte
+        except ImportError:
+            raise ConfiguracionIA(
+                "Falta el paquete 'anthropic' en el servidor: sube requirements.txt a GitHub (debe incluir la línea "
+                "'anthropic') y haz Redeploy en Vercel."
+            )
+        _clientes["anthropic"] = anthropic.Anthropic(api_key=clave_de("ANTHROPIC_API_KEY"), timeout=60, max_retries=0)
     return _clientes["anthropic"]
 
 
 def obtener_cliente():
     """Cliente de NVIDIA (se usa para listar su catálogo de modelos)."""
-    if not os.getenv("NVIDIA_API_KEY"):
+    if not clave_de("NVIDIA_API_KEY"):
         raise HTTPException(status_code=500, detail="Falta la variable de entorno NVIDIA_API_KEY.")
     return _cliente_nvidia()
 
@@ -98,8 +146,12 @@ def traducir_error_ia(e):
     codigo = getattr(e, "status_code", None)
     nombre = type(e).__name__
     texto = str(e).lower()
+    if isinstance(e, ConfiguracionIA):
+        return 500, str(e)
     if codigo == 429:
         return 429, "La IA recibió demasiadas solicitudes seguidas o se alcanzó el límite del proveedor (código 429). Espera un minuto y reintenta."
+    if codigo == 400 and ("api key not valid" in texto or "api_key_invalid" in texto):
+        return 500, "El servicio de IA rechazó la clave (código 400: clave no válida). Avisa al administrador."
     if codigo == 402 or (codigo == 400 and "credit balance" in texto):
         return 500, f"Se agotó el saldo o crédito del servicio de IA (código {codigo}). Avisa al administrador."
     if codigo in (401, 403):
@@ -110,20 +162,26 @@ def traducir_error_ia(e):
         return 502, f"El proveedor de IA tuvo un error temporal (código {codigo}). Reintenta en unos segundos."
     if "Timeout" in nombre:
         return 504, "La IA tardó demasiado en responder. Reintenta en unos segundos."
+    if "Connection" in nombre:
+        return 502, "No se pudo conectar con el proveedor de IA: falla de red, o la clave quedó mal copiada en Vercel (con espacios o saltos de línea). Reintenta; si se repite, vuelve a pegar la clave."
     if isinstance(e, RuntimeError) and "vacía" in texto:
         return 502, "La IA devolvió una respuesta vacía. Reintenta en unos segundos."
     return 502, "No se pudo contactar a la IA. Reintenta en unos segundos."
 
 
 def detalle_proveedor(e):
-    """Texto crudo del error del proveedor (sin claves), para diagnosticar."""
+    """Texto del error del proveedor (sin claves), con el tipo de error y su causa, para diagnosticar."""
     cuerpo = getattr(e, "body", None)
     if cuerpo:
-        return str(cuerpo)[:300]
-    try:
-        return e.response.text[:300]
-    except Exception:
-        return str(e)[:300]
+        base = str(cuerpo)[:300]
+    else:
+        try:
+            base = e.response.text[:300]
+        except Exception:
+            base = str(e)[:300]
+    causa = getattr(e, "__cause__", None)
+    extra = f" | causa: {type(causa).__name__}: {str(causa)[:150]}" if causa else ""
+    return f"{type(e).__name__}: {base}{extra}"[:520]
 
 
 def _extra_body(modelo, esfuerzo):
@@ -151,6 +209,21 @@ def _llamar_anthropic(modelo, mensajes, temperature, max_tokens, timeout):
     return "".join(getattr(b, "text", "") for b in r.content if getattr(b, "type", "") == "text")
 
 
+def _llamar_gemini(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout):
+    cliente = _cliente_gemini().with_options(timeout=timeout, max_retries=0)
+    # Los modelos Gemini "piensan" y ese razonamiento cuenta dentro de max_tokens: se da margen para que no quede vacía la respuesta
+    kwargs = dict(model=modelo, messages=mensajes, temperature=temperature, max_tokens=int(max_tokens * 2))
+    try:
+        r = cliente.chat.completions.create(reasoning_effort="low" if esfuerzo == "low" else "medium", **kwargs)
+    except Exception as e:
+        # Si el modelo no acepta ese parámetro, se reintenta sin él
+        if getattr(e, "status_code", None) == 400 and ("reasoning" in str(e).lower() or "thinking" in str(e).lower()):
+            r = cliente.chat.completions.create(**kwargs)
+        else:
+            raise
+    return r.choices[0].message.content or ""
+
+
 def _llamar_nvidia(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout):
     cliente = _cliente_nvidia().with_options(timeout=timeout, max_retries=0)
     kwargs = dict(model=modelo, messages=mensajes, temperature=temperature, max_tokens=max_tokens)
@@ -164,27 +237,35 @@ def _llamar_nvidia(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
 def _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, timeout, exigir_texto=True):
     """Prueba los modelos de UN proveedor en orden y salta al siguiente SOLO si el modelo no existe (404).
     Devuelve (texto, modelo_usado); si falla, lanza la excepción."""
-    global _modelo_activo
+    global _modelo_activo, _modelo_activo_gemini
     if prov == "anthropic":
         modelos = MODELOS_ANTHROPIC_EVALUADOR if rol == "evaluador" else MODELOS_ANTHROPIC_RAPIDO
+    elif prov == "gemini":
+        modelos = ([_modelo_activo_gemini] if _modelo_activo_gemini else []) + [m for m in MODELOS_GEMINI if m != _modelo_activo_gemini]
     else:
         modelos = ([_modelo_activo] if _modelo_activo else []) + [m for m in LISTA_MODELOS if m != _modelo_activo]
     for i, modelo in enumerate(modelos):
         try:
             if prov == "anthropic":
                 texto = _llamar_anthropic(modelo, mensajes, temperature, max_tokens, timeout)
+            elif prov == "gemini":
+                texto = _llamar_gemini(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
             else:
                 texto = _llamar_nvidia(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
             if exigir_texto and not texto.strip():
                 raise RuntimeError("la IA devolvió una respuesta vacía")
             if prov == "nvidia":
                 _modelo_activo = modelo
+            elif prov == "gemini":
+                _modelo_activo_gemini = modelo
             return texto, modelo
         except Exception as e:
             if getattr(e, "status_code", None) == 404 and i < len(modelos) - 1:
                 print("Modelo no disponible (404), probando el siguiente:", prov, modelo)
                 if prov == "nvidia" and modelo == _modelo_activo:
                     _modelo_activo = None
+                if prov == "gemini" and modelo == _modelo_activo_gemini:
+                    _modelo_activo_gemini = None
                 continue
             raise
 
@@ -362,14 +443,16 @@ def probar_proveedor(prov):
 def salud(request: Request, probar_ia: int = 0, modelos: str = ""):
     """Estado del servidor.
     ?probar_ia=1     prueba CADA proveedor de IA por separado (ok / degradado / error).
-    ?modelos=glm     lista los modelos del catálogo de NVIDIA que contienen ese texto (?modelos=todos: todos)."""
+    ?modelos=flash   lista los modelos de NVIDIA y de Gemini que contienen ese texto (?modelos=todos: todos)."""
     configurados = proveedores_configurados()
     info = {
         "estado": "ok",
         "version": VERSION,
         "clave_configurada": bool(configurados),
         "proveedores": configurados,
+        "claves": estado_claves(),
         "orden_de_proveedores": PROVEEDORES_ORDEN,
+        "modelos_gemini": MODELOS_GEMINI,
         "modelos_anthropic": {"entrevistador": MODELOS_ANTHROPIC_RAPIDO, "evaluador": MODELOS_ANTHROPIC_EVALUADOR},
         "modelo": MODELO,
         "modelos_configurados": LISTA_MODELOS,
@@ -403,6 +486,20 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = ""):
         except Exception as e:
             codigo, detalle = traducir_error_ia(e)
             info["catalogo"] = {"error": detalle, "codigo_proveedor": getattr(e, "status_code", None), "mensaje_proveedor": detalle_proveedor(e)}
+        if clave_de("GEMINI_API_KEY"):
+            try:
+                ids = sorted(m.id.replace("models/", "") for m in _cliente_gemini().models.list().data)
+                filtro = modelos.lower()
+                coincide = ids if filtro in ("1", "todos", "all") else [i for i in ids if filtro in i.lower()]
+                info["catalogo_gemini"] = {
+                    "total_en_catalogo": len(ids),
+                    "filtro": modelos,
+                    "coincidencias": coincide[:80],
+                    "configurados_en_catalogo": {m: (m in ids) for m in MODELOS_GEMINI},
+                }
+            except Exception as e:
+                codigo, detalle = traducir_error_ia(e)
+                info["catalogo_gemini"] = {"error": detalle, "codigo_proveedor": getattr(e, "status_code", None), "mensaje_proveedor": detalle_proveedor(e)}
     return info
 
 

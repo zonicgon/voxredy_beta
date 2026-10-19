@@ -293,7 +293,7 @@
 <body>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v29</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v31</span></div>
   <div class="derecha">
     <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
     <button type="button" class="enlace-beta" id="boton-diagnostico">🩺 Diagnóstico</button>
@@ -1713,7 +1713,7 @@
   }
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "29";
+  const VERSION_APP = "31";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -1774,6 +1774,25 @@
     const t = setTimeout(() => ctl.abort(), ms);
     try { return await fetch(url, { ...(opciones || {}), signal: ctl.signal }); }
     finally { clearTimeout(t); }
+  }
+
+  // Consulta qué modelos de Gemini hay disponibles ahora (Google los retira con frecuencia)
+  async function catalogoGemini() {
+    const nombre = "Modelos de Gemini disponibles ahora";
+    let ayuda = "Gemini no encuentra el modelo configurado (Google los retira con frecuencia).";
+    try {
+      const r2 = await fetchConTiempo(`${URL_BACKEND}/salud?modelos=flash`, {}, 30000);
+      const d2 = await r2.json().catch(() => null);
+      const cat = d2 && d2.catalogo_gemini;
+      if (cat && !cat.error) {
+        const lista = (cat.coincidencias || []).slice(0, 15).join(", ") || "ninguno";
+        ayuda = "En Vercel agrega o cambia MODELOS_GEMINI por un modelo de la lista de abajo (varios separados por coma) y haz Redeploy.";
+        return { ayuda, fila: [nombre, "aviso", lista, "Se escribe el nombre tal cual aparece. Los alias como gemini-flash-latest pueden no figurar en la lista aunque funcionen."] };
+      }
+      return { ayuda, fila: [nombre, "aviso", "No se pudo consultar el catálogo: " + ((cat && cat.error) || "sin respuesta"), ""] };
+    } catch (e) {
+      return { ayuda, fila: [nombre, "aviso", "No se pudo consultar el catálogo: " + e.message, ""] };
+    }
   }
 
   function ayudaHTTP(codigo, esHTML) {
@@ -1870,15 +1889,27 @@
     // 4) Claves de la IA
     if (salud) {
       const provs = salud.proveedores || [];
-      const nombreProv = (x) => ({ anthropic: "Claude (Anthropic)", nvidia: "NVIDIA" }[x] || x);
+      const nombreProv = (x) => ({ gemini: "Gemini (Google)", anthropic: "Claude (Anthropic)", nvidia: "NVIDIA" }[x] || x);
+      const claves = salud.claves || {};
+      const notas = [];
+      const prefijos = { GEMINI_API_KEY: ["Gemini", "AIza o AQ."], ANTHROPIC_API_KEY: ["Claude", "sk-ant-"], NVIDIA_API_KEY: ["NVIDIA", "nvapi-"] };
+      Object.entries(prefijos).forEach(([k, [nombre, pref]]) => {
+        const c = claves[k];
+        if (!c || !c.configurada) return;
+        if (c.formato_esperado === false) notas.push(`la clave de ${nombre} no empieza con «${pref}» (¿copiaste otra cosa?)`);
+        if (c.tenia_espacios_o_comillas) notas.push(`la clave de ${nombre} tenía espacios, saltos de línea o comillas; el servidor ya la limpió`);
+      });
+      const textoNotas = notas.length ? " · " + notas.join("; ") : "";
+      const hayFormatoMalo = notas.some((n) => n.includes("no empieza"));
       if (!salud.clave_configurada) {
         agregar("Claves de la IA en el servidor", "mal", "No hay ninguna clave configurada",
-          "Quien administra debe agregar ANTHROPIC_API_KEY (recomendado) y/o NVIDIA_API_KEY en Vercel (Settings → Environment Variables) y volver a desplegar.");
+          "Quien administra debe agregar GEMINI_API_KEY (y, si quiere respaldo, ANTHROPIC_API_KEY o NVIDIA_API_KEY) en Vercel (Settings → Environment Variables) y volver a desplegar.");
       } else if (provs.length === 1) {
-        agregar("Claves de la IA en el servidor", "aviso", `Solo hay un proveedor: ${nombreProv(provs[0])}`,
-          "Si ese proveedor se cae, la beta se detiene. Se recomienda configurar dos (por ejemplo ANTHROPIC_API_KEY y NVIDIA_API_KEY) para que haya respaldo automático.");
+        agregar("Claves de la IA en el servidor", "aviso", `Solo hay un proveedor: ${nombreProv(provs[0])}${textoNotas}`,
+          "Si ese proveedor se cae, la beta se detiene. Se recomienda configurar al menos dos (por ejemplo GEMINI_API_KEY y NVIDIA_API_KEY) para que haya respaldo automático.");
       } else {
-        agregar("Claves de la IA en el servidor", "ok", `Proveedores en orden de uso: ${provs.map(nombreProv).join(" → ")}`, "");
+        agregar("Claves de la IA en el servidor", hayFormatoMalo ? "aviso" : "ok", `Proveedores en orden de uso: ${provs.map(nombreProv).join(" → ")}${textoNotas}`,
+          hayFormatoMalo ? "Vuelve a copiar la clave desde la consola del proveedor y pégala en Vercel sin espacios ni comillas." : "");
       }
     } else {
       agregar("Claves de la IA en el servidor", "aviso", "No se pudo comprobar (el servidor no respondió)", "");
@@ -1894,16 +1925,19 @@
         if (r.ok && datos && datos.ia) {
           const ia = datos.ia;
           const provs = ia.proveedores || [];
-          const nombreProv = (x) => ({ anthropic: "Claude (Anthropic)", nvidia: "NVIDIA" }[x] || x);
+          const nombreProv = (x) => ({ gemini: "Gemini (Google)", anthropic: "Claude (Anthropic)", nvidia: "NVIDIA" }[x] || x);
           const lineas = provs.map((p) => p.estado === "ok"
             ? `${nombreProv(p.proveedor)}: ✓ ${p.modelo} (${p.segundos} s)`
-            : `${nombreProv(p.proveedor)}: ✕ ${p.detalle || "error"}${p.codigo_proveedor ? ` [código ${p.codigo_proveedor}]` : ""}`);
+            : `${nombreProv(p.proveedor)}: ✕ ${p.detalle || "error"}${p.codigo_proveedor ? ` [código ${p.codigo_proveedor}]` : ""}${p.mensaje_proveedor && !String(p.detalle || "").includes(String(p.mensaje_proveedor).replace(/^\w+: /, "").slice(0, 40)) ? ` · detalle técnico: «${String(p.mensaje_proveedor).slice(0, 220)}»` : ""}`);
           const detalle = lineas.length ? lineas.join("  ·  ") : (ia.detalle || "Sin información");
           if (ia.estado === "ok") {
             agregar("La IA responde", "ok", detalle, "");
           } else if (ia.estado === "degradado") {
             agregar("La IA responde", "aviso", detalle,
               "El proveedor principal falló, pero el de respaldo responde: la entrevista funciona. Conviene revisar el principal (clave, saldo o caída temporal).");
+            if (provs.some((p) => p.proveedor === "gemini" && p.estado !== "ok" && p.codigo_proveedor === 404)) {
+              agregar(...(await catalogoGemini()).fila);
+            }
           } else {
             const malos = provs.filter((p) => p.estado !== "ok");
             const hay = (c) => malos.some((p) => p.codigo_proveedor === c);
@@ -1911,6 +1945,10 @@
             let filaCatalogo = null;
             if (!provs.length) {
               ayuda = ia.detalle || "No hay proveedores de IA configurados.";
+            } else if (malos.some((p) => p.proveedor === "gemini" && p.codigo_proveedor === 404)) {
+              const g = await catalogoGemini();
+              ayuda = g.ayuda;
+              filaCatalogo = g.fila;
             } else if (malos.some((p) => p.proveedor === "nvidia" && p.codigo_proveedor === 404)) {
               // NVIDIA no encuentra el modelo: consultamos su catálogo para decir qué hacer
               ayuda = "El modelo de NVIDIA no está disponible para tu clave (lo retiró NVIDIA, o tu cuenta no tiene acceso).";
@@ -1938,7 +1976,7 @@
             } else if (hay(429)) {
               ayuda = "El proveedor de IA está limitando las solicitudes (por uso alto o límite del plan). Suele pasar solo en uno o dos minutos.";
             } else if ([401, 402, 403].some(hay) || malos.some((p) => /saldo|crédito|credencial/i.test(p.detalle || ""))) {
-              ayuda = "Problema de clave o de saldo en un proveedor de IA: quien administra debe revisar la clave y el saldo (Claude: consola de Anthropic; NVIDIA: build.nvidia.com).";
+              ayuda = "Problema de clave o de saldo en un proveedor de IA: quien administra debe revisar la clave y la cuota (Gemini: Google AI Studio; Claude: consola de Anthropic; NVIDIA: build.nvidia.com).";
             } else {
               ayuda = "Ningún proveedor de IA respondió. Suele ser temporal; si se repite, revisar los Logs en Vercel.";
             }
