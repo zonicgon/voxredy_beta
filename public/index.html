@@ -1,0 +1,2141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>VoxReady — Entrevista de práctica</title>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<style>
+  :root {
+    --navy: #17354F;
+    --orange: #DB6427;
+    --light: #E4EAF1;
+    --ink: #22303C;
+    --muted: #5B6670;
+    --fondo: #F2F5F9;
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: -apple-system, "Segoe UI", Calibri, sans-serif;
+    background: var(--fondo);
+    color: var(--ink);
+  }
+
+  /* ---------- Barra superior con los 3 pasos ---------- */
+  .barra-superior {
+    background: var(--navy);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px 28px;
+  }
+  .logo { font-size: 21px; font-weight: 700; letter-spacing: 0.3px; }
+  .logo span { color: var(--orange); }
+  .logo .version { font-size: 12px; font-weight: 600; color: #C9D6E3; background: rgba(255,255,255,0.14); padding: 3px 9px; border-radius: 999px; margin-left: 10px; vertical-align: middle; letter-spacing: 0; }
+  .logo .version.desajuste { background: #C0392B; color: white; }
+  .pasos { display: flex; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+  .paso { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,0.12); color: #C9D6E3; }
+  .paso.activo { background: var(--orange); color: white; font-weight: 600; }
+  .paso.hecho { background: rgba(255,255,255,0.28); color: white; }
+
+  .derecha { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .enlace-beta { background: transparent; color: #C9D6E3; border: 1px solid rgba(255,255,255,0.35); padding: 6px 14px; font-size: 13px; border-radius: 999px; }
+  .enlace-beta:hover:not(:disabled) { background: rgba(255,255,255,0.12); opacity: 1; }
+
+  /* ---------- Ventana de bienvenida (beta) ---------- */
+  #modal-beta, #modal-diagnostico {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(15,30,45,0.65);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-caja {
+    background: white; border-radius: 16px; width: 100%; max-width: 780px; max-height: 92vh;
+    display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.35); overflow: hidden;
+  }
+  .modal-cab { background: var(--navy); color: white; padding: 22px 28px; }
+  .modal-cab .etiqueta-beta { display: inline-block; background: var(--orange); color: white; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; padding: 3px 10px; border-radius: 999px; margin-bottom: 8px; }
+  .modal-cab h2 { color: white; margin: 0 0 4px 0; font-size: 26px; }
+  .modal-cab p { margin: 0; color: #C9D6E3; }
+  .modal-cuerpo { padding: 22px 28px 6px; overflow-y: auto; }
+  .modal-bloque { margin-bottom: 18px; }
+  .modal-bloque h3 { margin: 0 0 6px 0; color: var(--navy); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .modal-bloque p, .modal-bloque li { font-size: 15px; line-height: 1.55; margin: 0 0 6px 0; }
+  .modal-bloque ul { margin: 0; padding-left: 20px; }
+  .modal-situacion { background: #FFF6EF; border-left: 5px solid var(--orange); padding: 14px 16px; border-radius: 8px; }
+  .modal-evalua { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 8px; }
+  .modal-evalua div { background: var(--light); border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45; }
+  .modal-evalua b { display: block; color: var(--navy); margin-bottom: 4px; }
+  .modal-pie { padding: 16px 28px 22px; display: flex; justify-content: flex-end; border-top: 1px solid var(--light); background: white; }
+  .modal-pie button { font-size: 16px; padding: 13px 28px; }
+  /* Diagnóstico */
+  .diag-resumen { border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; font-size: 15px; line-height: 1.5; background: var(--light); }
+  .diag-resumen.ok { background: #E8F5EC; border-left: 5px solid #1E8E3E; }
+  .diag-resumen.aviso { background: #FFF6E5; border-left: 5px solid #E0A100; }
+  .diag-resumen.mal { background: #FDECEA; border-left: 5px solid #C0392B; }
+  .diag-fila { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--light); }
+  .diag-icono { width: 26px; height: 26px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: white; background: #9AA5B1; }
+  .diag-fila.ok .diag-icono { background: #1E8E3E; }
+  .diag-fila.aviso .diag-icono { background: #E0A100; }
+  .diag-fila.mal .diag-icono { background: #C0392B; }
+  .diag-fila .nombre { font-weight: 700; color: var(--navy); font-size: 14.5px; }
+  .diag-fila .detalle { font-size: 13.5px; color: var(--ink); margin-top: 2px; word-break: break-word; }
+  .diag-fila .ayuda { font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .modal-pie.diag-pie { justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .modal-pie.diag-pie .grupo { display: flex; gap: 10px; flex-wrap: wrap; }
+  .modal-pie.diag-pie button { font-size: 14px; padding: 11px 20px; }
+  .modal-pie.diag-pie .sec { background: var(--navy); }
+
+  /* ---------- Pantalla completa: 2 columnas ---------- */
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 24px 28px 48px;
+  }
+  #escenario {
+    display: grid;
+    grid-template-columns: minmax(340px, 5fr) 7fr;
+    gap: 24px;
+    align-items: start;
+  }
+  body:not(.con-camara) #escenario { grid-template-columns: minmax(0, 820px); justify-content: center; }
+  body:not(.con-camara) #columna-camara { display: none; }
+  #columna-camara { position: sticky; top: 16px; }
+  #columna-principal { align-self: stretch; }
+  #columna-camara { align-self: start; }
+
+  .panel {
+    background: white;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06);
+  }
+
+  h1 { color: var(--navy); font-size: 28px; margin: 0 0 4px 0; }
+  h2 { color: var(--navy); font-size: 20px; margin: 0 0 12px 0; }
+  p.subtitulo { color: var(--muted); margin: 0 0 22px 0; }
+
+  .caja-consentimiento {
+    background: var(--light);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .caja-consentimiento label { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; }
+
+  button {
+    background: var(--orange);
+    color: white;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button:disabled { background: #C9C9C9; cursor: not-allowed; }
+  button:hover:not(:disabled) { opacity: 0.9; }
+  .fila-botones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+
+  .estado { margin: 12px 0 0 0; font-size: 14px; color: var(--muted); }
+  .estado.ok { color: #1E8E3E; font-weight: bold; }
+  .estado.error { color: #C0392B; font-weight: bold; }
+
+  /* Se oculta el bloque de permisos cuando la cámara ya funciona */
+  body.con-camara #bloque-consentimiento { display: none; }
+
+  /* ---------- Cámara ---------- */
+  #contenedor-video { position: relative; display: none; }
+  #video-vista {
+    width: 100%;
+    border-radius: 10px;
+    background: black;
+    display: block;
+    transform: scaleX(-1); /* efecto espejo, solo visual */
+  }
+  #canvas-caras {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    transform: scaleX(-1);
+    pointer-events: none;
+  }
+  #estado-facial { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  #medidor-audio-contenedor {
+    width: 100%; height: 14px; background: var(--light);
+    border-radius: 7px; margin-top: 10px; overflow: hidden; display: none;
+  }
+  #medidor-audio-barra { height: 100%; width: 0%; background: var(--orange); transition: width 0.05s linear; }
+
+  /* ---------- Entrevista ---------- */
+  #seccion-entrevista { display: none; }
+  #pregunta-actual {
+    background: var(--navy);
+    color: white;
+    padding: 20px 22px;
+    border-radius: 12px;
+    font-size: 18px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+    min-height: 64px;
+  }
+  #campo-respuesta {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid #C9D6E3;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 110px;
+  }
+  #historial-conversacion {
+    margin-top: 18px;
+    font-size: 14px;
+    max-height: 32vh;
+    overflow-y: auto;
+  }
+  #historial-conversacion p { margin: 6px 0; padding: 10px 12px; border-radius: 8px; background: var(--fondo); }
+  #historial-conversacion b { color: var(--navy); }
+
+  .barra-carga { display: none; margin-top: 12px; margin-bottom: 12px; }
+  .carga-etiqueta { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .carga-pista { height: 10px; background: #E5E7EB; border-radius: 999px; overflow: hidden; }
+  .carga-relleno { height: 100%; width: 0; background: var(--orange); border-radius: 999px; transition: width 0.15s linear; }
+
+  /* ---------- Resultados: ancho completo ---------- */
+  #panel-resultados { display: none; margin-top: 24px; }
+  body.con-resultados #panel-resultados { display: block; }
+  .cabecera-resultados { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .cabecera-resultados h2 { margin: 0; font-size: 24px; }
+
+  #resumen-general { display: none; margin-bottom: 18px; }
+  .tarjeta-general {
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+    background: var(--navy); color: white; border-radius: 14px; padding: 22px 26px;
+  }
+  .tarjeta-general .puntaje-enorme { font-size: 64px; font-weight: 800; color: var(--orange); line-height: 1; }
+  .tarjeta-general .etiqueta { font-size: 18px; font-weight: 600; }
+  .tarjeta-general .nota { font-size: 12.5px; color: #C9D6E3; margin-top: 4px; }
+  .mini-puntajes { display: flex; gap: 12px; flex-wrap: wrap; margin-left: auto; }
+  .mini { background: rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 16px; text-align: center; min-width: 110px; }
+  .mini b { display: block; font-size: 22px; }
+  .mini span { font-size: 12px; color: #C9D6E3; }
+
+  #informe-cara {
+    display: grid !important; /* el JS le pone display:block; aquí lo mantenemos en cuadrícula */
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 18px;
+    align-items: start;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  #informe-cara > p.estado { grid-column: 1 / -1; margin: 0; }
+  .seccion-informe { background: white; border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06); }
+  .encabezado-informe { background: var(--navy); color: white; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+  .encabezado-informe .puntaje-grande { font-size: 38px; font-weight: bold; color: var(--orange); line-height: 1.1; }
+  #informe-cara .area { background: var(--light); margin: 10px 0; padding: 12px 14px; border-radius: 8px; }
+  #informe-cara .titulo-area { display: flex; justify-content: space-between; font-weight: bold; color: var(--navy); margin-bottom: 6px; }
+  #informe-cara .recomendacion { margin-top: 12px; padding: 10px 12px; background: var(--fondo); border-left: 4px solid var(--orange); border-radius: 6px; }
+
+  /* Informe final del coach */
+  .informe-final { display: grid; gap: 16px; }
+  .areas-finales { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .area-final { background: white; border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06); }
+  .area-final .cab { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .area-final .nombre { font-weight: 700; color: var(--navy); font-size: 16px; }
+  .area-final .nota { font-size: 26px; font-weight: 800; color: var(--orange); }
+  .area-final .nota.sin-datos { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .area-final .barra { height: 6px; background: #E5E7EB; border-radius: 999px; overflow: hidden; margin-bottom: 10px; }
+  .area-final .barra > div { height: 100%; background: var(--orange); border-radius: 999px; }
+  .area-final .comentario { font-size: 13.5px; line-height: 1.5; }
+  .area-final .fuentes { margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+  .bloque-coach { background: white; border-radius: 14px; padding: 18px 22px; box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06); font-size: 15px; line-height: 1.6; }
+  .bloque-coach h3 { margin: 0 0 6px 0; color: var(--navy); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .bloque-coach.prioridad { border-left: 6px solid var(--orange); background: #FFF6EF; }
+  .bloque-coach .porque { margin-top: 8px; font-size: 13.5px; color: var(--muted); }
+  .subtitulo-detalle { color: var(--navy); font-size: 18px; margin: 26px 0 12px 0; }
+  #transcripcion-final { margin-top: 18px; }
+  #transcripcion-final .linea { padding: 10px 14px; border-radius: 8px; margin: 8px 0; font-size: 14px; line-height: 1.5; }
+  #transcripcion-final .linea.entrevistador { background: var(--light); }
+  #transcripcion-final .linea.vocero { background: #FFF1E8; border-left: 4px solid var(--orange); }
+  #transcripcion-final .quien { font-weight: bold; color: var(--navy); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  /* ---------- Celulares / pantallas angostas ---------- */
+  @media (max-width: 960px) {
+    #escenario { grid-template-columns: 1fr; }
+    #columna-camara { position: static; }
+    main { padding: 16px 14px 36px; }
+    .barra-superior { padding: 10px 14px; }
+    .mini-puntajes { margin-left: 0; }
+  }
+
+  /* ---------- Al imprimir / guardar PDF: solo los resultados ---------- */
+  @media print {
+    #modal-beta, #modal-diagnostico { display: none !important; }
+    body { background: white; }
+    body * { visibility: hidden; }
+    #panel-resultados, #panel-resultados * { visibility: visible; }
+    #panel-resultados { position: absolute; left: 0; top: 0; width: 100%; display: block; }
+    #boton-pdf { display: none !important; }
+    .encabezado-informe, .area, .tarjeta-general, .mini, .linea, .bloque-coach { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .seccion-informe, .area-final, .bloque-coach { box-shadow: none; border: 1px solid var(--light); page-break-inside: avoid; }
+    #informe-cara { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="barra-superior">
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v33</span></div>
+  <div class="derecha">
+    <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
+    <button type="button" class="enlace-beta" id="boton-diagnostico">🩺 Diagnóstico</button>
+    <div class="pasos" id="pasos">
+      <div class="paso activo" data-paso="1">1 · Comprobación</div>
+      <div class="paso" data-paso="2">2 · Entrevista</div>
+      <div class="paso" data-paso="3">3 · Evaluación</div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ Diagnóstico: comprueba dónde está el problema ============ -->
+<div id="modal-diagnostico" role="dialog" aria-modal="true" aria-labelledby="modal-diag-titulo">
+  <div class="modal-caja">
+    <div class="modal-cab">
+      <h2 id="modal-diag-titulo">Diagnóstico de VoxReady</h2>
+      <p>Revisa paso a paso dónde está el problema. Si algo falla, usa "Copiar resultado" y envíaselo a quien administra la beta.</p>
+    </div>
+    <div class="modal-cuerpo">
+      <div id="diag-resumen" class="diag-resumen">Ejecutando comprobaciones...</div>
+      <div id="diag-lista"></div>
+      <p class="estado" style="margin-bottom:14px;">La comprobación "La IA responde" hace una llamada mínima a la IA. No se guarda ninguna conversación, video ni audio.</p>
+    </div>
+    <div class="modal-pie diag-pie">
+      <button type="button" class="sec" id="diag-copiar">Copiar resultado</button>
+      <div class="grupo">
+        <button type="button" class="sec" id="diag-repetir">Ejecutar de nuevo</button>
+        <button type="button" id="diag-cerrar">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Ventana de bienvenida (edita los textos aquí) ============ -->
+<div id="modal-beta" role="dialog" aria-modal="true" aria-labelledby="modal-beta-titulo">
+  <div class="modal-caja">
+    <div class="modal-cab">
+      <span class="etiqueta-beta">VERSIÓN BETA</span>
+      <h2 id="modal-beta-titulo">Bienvenido a VoxReady</h2>
+      <p>Entrenamiento de vocería en situaciones de crisis, con inteligencia artificial.</p>
+    </div>
+
+    <div class="modal-cuerpo">
+      <div class="modal-bloque">
+        <h3>¿Qué es esto?</h3>
+        <p>VoxReady es un simulador para practicar entrevistas de prensa cuando una organización enfrenta una crisis. Esta es una <b>beta</b>: está en etapa de pruebas y todavía la estamos afinando contigo.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>La situación que vas a enfrentar</h3>
+        <div class="modal-situacion">
+          <p>Eres el <b>vocero de una empresa</b>. Hubo un <b>derrame químico que afectó el agua de tres comunidades</b>.</p>
+          <p>Un <b>periodista exigente</b> te entrevistará: hace una pregunta a la vez, repregunta sobre lo que digas y presiona si evades. Serán <b><span id="beta-num-preguntas">5</span> preguntas</b>, y puedes responder hablando o escribiendo.</p>
+        </div>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Qué evaluaremos al terminar</h3>
+        <div class="modal-evalua">
+          <div><b>Contenido</b>Claridad, transparencia, manejo de la presión y responsabilidad al responder.</div>
+          <div><b>Voz</b>Tono, ritmo, pausas y volumen. Solo se evalúa si respondes hablando.</div>
+          <div><b>Expresión facial</b>Serenidad, empatía y presencia frente a la cámara.</div>
+        </div>
+        <p style="margin-top:10px;">Todo se une en un <b>informe de coach</b> con una nota global, cuatro áreas (Expresión, Tono de voz, Coherencia y Empatía) y la recomendación más importante para mejorar.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Para qué es esta beta</h3>
+        <ul>
+          <li>Probar qué tan útil y justo resulta entrenar con IA.</li>
+          <li>Medir qué tan bien funciona la IA en sus dos roles: <b>entrevistador</b> y <b>evaluador</b>.</li>
+          <li>Detectar fallas técnicas (cámara, micrófono, navegador).</li>
+        </ul>
+        <p style="margin-top:8px;">Las notas son <b>estimaciones automáticas</b>, no un diagnóstico, y pueden tener errores. Si algo te parece raro o injusto, cuéntalo: es justo lo que queremos descubrir.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Tu privacidad</h3>
+        <p>Tu video y tu audio se procesan en tu navegador y <b>no se guardan</b>. A la IA solo se envía el texto de tus respuestas y métricas numéricas de tu voz y tu expresión. Si usas el botón de hablar, el reconocimiento de voz de Chrome o Edge envía tu audio al servicio de voz del navegador para transcribirlo.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Antes de empezar</h3>
+        <ul>
+          <li>Usa <b>Chrome o Edge</b> en un computador, con cámara y micrófono.</li>
+          <li>Busca un lugar silencioso y con buena luz sobre tu cara.</li>
+          <li>Para que se evalúe tu voz, responde con el botón <b>🎤 Hablar</b>.</li>
+          <li>Mira a la cámara y responde como lo harías frente a un periodista real.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="modal-pie">
+      <button type="button" id="boton-entendido">Entendido, continuar</button>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div id="escenario">
+
+    <!-- Columna izquierda: cámara (aparece al conceder el permiso) -->
+    <aside id="columna-camara" class="panel">
+      <div id="contenedor-video">
+        <video id="video-vista" autoplay muted playsinline></video>
+        <canvas id="canvas-caras"></canvas>
+      </div>
+      <p class="estado" id="estado-facial">Cargando modelo de expresión facial...</p>
+      <div id="medidor-audio-contenedor">
+        <div id="medidor-audio-barra"></div>
+      </div>
+      <div class="fila-botones">
+        <button id="boton-recalibrar" type="button" style="display:none; background: var(--navy); padding: 8px 14px; font-size: 13px;">Recalibrar cara neutra</button>
+      </div>
+    </aside>
+
+    <!-- Columna derecha: permisos, entrevista -->
+    <section class="panel" id="columna-principal">
+
+      <div id="bloque-consentimiento">
+        <h1>Comprobación técnica</h1>
+        <p class="subtitulo">Antes de la entrevista, verificamos que tu cámara y micrófono funcionen.</p>
+
+        <div class="caja-consentimiento">
+          <label>
+            <input type="checkbox" id="check-consentimiento" />
+            Acepto que esta sesión use mi cámara y micrófono únicamente para la
+            práctica de entrenamiento en VoxReady. El video y el audio se procesan
+            en mi navegador y no se guardan: a la IA solo se envía el texto de mis
+            respuestas y métricas numéricas de mi voz y mi expresión. Si uso el botón
+            de hablar, el reconocimiento de voz de Chrome/Edge envía mi audio al
+            servicio de voz del navegador para transcribirlo.
+          </label>
+        </div>
+
+        <button id="boton-solicitar" disabled>Solicitar acceso a cámara y micrófono</button>
+        <p class="estado" id="mensaje-estado">Marca la casilla para habilitar el botón.</p>
+      </div>
+
+      <div id="seccion-entrevista">
+        <h2>Entrevista de práctica</h2>
+        <div id="pregunta-actual">Presiona "Comenzar entrevista" para empezar.</div>
+        <div id="barra-carga" class="barra-carga"></div>
+        <textarea id="campo-respuesta" placeholder="Escribe aquí tu respuesta, o usa el micrófono..."></textarea>
+        <div class="fila-botones">
+          <button id="boton-comenzar">Comenzar entrevista</button>
+          <button id="boton-hablar" type="button" style="display:none; background: var(--navy);">🎤 Hablar</button>
+          <button id="boton-responder" style="display:none;">Responder</button>
+          <button id="boton-evaluar" type="button" style="display:none; background: var(--navy);">Ver mi evaluación completa</button>
+        </div>
+        <div id="historial-conversacion"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Resultados: ancho completo, aparece al terminar -->
+  <section id="panel-resultados">
+    <div class="cabecera-resultados">
+      <h2>Tu evaluación</h2>
+      <button id="boton-pdf" type="button" style="display:none; background: var(--navy);">Descargar informes como PDF</button>
+    </div>
+    <div id="resumen-general"></div>
+    <h3 class="subtitulo-detalle" id="titulo-detalle" style="display:none;">Detalle por evaluación</h3>
+    <div id="informe-cara"></div>
+    <div id="transcripcion-final" class="panel"></div>
+  </section>
+</main>
+
+<script>
+  // --- Dirección de tu backend. Si usas otro puerto, cámbialo aquí. ---
+  const URL_BACKEND = "/api"; // mismo dominio: funciona igual en Vercel y en local
+
+  const checkConsentimiento = document.getElementById("check-consentimiento");
+  const botonSolicitar = document.getElementById("boton-solicitar");
+  const contenedorVideo = document.getElementById("contenedor-video");
+  const videoVista = document.getElementById("video-vista");
+  const canvasCaras = document.getElementById("canvas-caras");
+  const estadoFacial = document.getElementById("estado-facial");
+  const medidorContenedor = document.getElementById("medidor-audio-contenedor");
+  const medidorBarra = document.getElementById("medidor-audio-barra");
+  const mensajeEstado = document.getElementById("mensaje-estado");
+  const seccionEntrevista = document.getElementById("seccion-entrevista");
+  const preguntaActual = document.getElementById("pregunta-actual");
+  const campoRespuesta = document.getElementById("campo-respuesta");
+  const botonComenzar = document.getElementById("boton-comenzar");
+  const botonResponder = document.getElementById("boton-responder");
+  const botonHablar = document.getElementById("boton-hablar");
+  const historialConversacion = document.getElementById("historial-conversacion");
+
+  // Indicador de pasos (barra superior) y clases de pantalla
+  function setPaso(n) {
+    document.querySelectorAll("#pasos .paso").forEach((el) => {
+      const k = Number(el.dataset.paso);
+      el.classList.toggle("activo", k === n);
+      el.classList.toggle("hecho", k < n);
+    });
+  }
+
+  // Aquí guardamos la conversación completa, igual que la lista "historial"
+  // que usábamos en Python. Se la mandamos completa al backend en cada turno.
+  let historial = [];
+  let numPregunta = 0;
+  const MAX_PREGUNTAS = 5; // debe coincidir con lo que usábamos en entrevista.py
+
+  // Para la grabación de audio real (para el análisis de voz más adelante).
+  let flujoMedios = null;       // el stream de cámara/mic ya autorizado
+
+  // El botón solo se habilita si la persona marcó el consentimiento.
+  // Esto es justo el flujo de "consentimiento antes de capturar" del producto.
+  checkConsentimiento.addEventListener("change", () => {
+    botonSolicitar.disabled = !checkConsentimiento.checked;
+    if (checkConsentimiento.checked) {
+      mensajeEstado.textContent = "Listo. Presiona el botón para pedir permiso al navegador.";
+      mensajeEstado.className = "estado";
+    }
+  });
+
+  botonSolicitar.addEventListener("click", async () => {
+    mensajeEstado.textContent = "Pidiendo permiso al navegador...";
+    mensajeEstado.className = "estado";
+
+    try {
+      // getUserMedia es la función del navegador que pide cámara y micrófono.
+      // Esto reemplaza lo que antes hacíamos por separado en Python.
+      const flujo = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+      });
+
+      // Mostramos el video en vivo, para que la persona vea que la cámara funciona.
+      contenedorVideo.style.display = "block";
+      medidorContenedor.style.display = "block";
+      document.body.classList.add("con-camara"); // activa el diseño de dos columnas
+
+      // Iniciamos la detección cuando el video REALMENTE está reproduciendo
+      // cuadros (evento "playing"), y el listener va ANTES de asignar el stream.
+      videoVista.addEventListener("playing", () => iniciarDeteccionFacial(), { once: true });
+      videoVista.srcObject = flujo;
+      try { await videoVista.play(); } catch (e) { console.warn("play() falló:", e); }
+
+      // Medidor de audio: usamos la Web Audio API para leer el volumen del
+      // micrófono en tiempo real y mostrarlo como una barra que se mueve.
+      const contextoAudio = new AudioContext();
+      const fuente = contextoAudio.createMediaStreamSource(flujo);
+      const analizador = contextoAudio.createAnalyser();
+      analizador.fftSize = 512;
+      fuente.connect(analizador);
+
+      const datos = new Uint8Array(analizador.frequencyBinCount);
+
+      function actualizarMedidor() {
+        analizador.getByteFrequencyData(datos);
+        const promedio = datos.reduce((suma, valor) => suma + valor, 0) / datos.length;
+        const porcentaje = Math.min(100, (promedio / 128) * 100);
+        medidorBarra.style.width = porcentaje + "%";
+        requestAnimationFrame(actualizarMedidor);
+      }
+      actualizarMedidor();
+
+      mensajeEstado.textContent = "Cámara y micrófono funcionando correctamente.";
+      mensajeEstado.className = "estado ok";
+      botonSolicitar.textContent = "Acceso concedido";
+      botonSolicitar.disabled = true;
+
+      // Ya comprobamos cámara/mic: mostramos la sección de la entrevista.
+      seccionEntrevista.style.display = "block";
+      setPaso(2);
+
+      // Guardamos el flujo para poder grabar el audio real más adelante.
+      flujoMedios = flujo;
+
+    } catch (error) {
+      // Esto se dispara si la persona rechaza el permiso, o si no hay
+      // cámara/micrófono disponible en el equipo.
+      mensajeEstado.textContent = "No se pudo acceder a la cámara/micrófono: " + error.message;
+      mensajeEstado.className = "estado error";
+    }
+  });
+
+  // --- Lógica de la entrevista: habla con el backend en /entrevistar ---
+
+  function agregarAlHistorialVisual(rol, texto) {
+    const etiqueta = rol === "assistant" ? "Entrevistador" : "Tú";
+    const parrafo = document.createElement("p");
+    const negrita = document.createElement("b");
+    negrita.textContent = etiqueta + ": ";
+    parrafo.appendChild(negrita);
+    parrafo.appendChild(document.createTextNode(texto));
+    historialConversacion.appendChild(parrafo);
+    historialConversacion.scrollTop = historialConversacion.scrollHeight;
+  }
+
+  // ================================================================
+  // Barra de carga con tiempo ESTIMADO (aprende de tus tiempos reales)
+  // La IA no avisa cuánto le falta, así que estimamos con la mediana de
+  // las últimas respuestas. La barra llega a ~90% en el tiempo esperado,
+  // se frena en 99% si tarda más, y solo marca 100% cuando llega la respuesta.
+  // ================================================================
+  function leerTiempos(clave) {
+    try { return JSON.parse(localStorage.getItem("voxready_t_" + clave) || "[]"); } catch (e) { return []; }
+  }
+  function guardarTiempo(clave, segundos) {
+    try {
+      const a = leerTiempos(clave);
+      a.push(segundos);
+      localStorage.setItem("voxready_t_" + clave, JSON.stringify(a.slice(-8)));
+    } catch (e) { /* sin almacenamiento: no pasa nada */ }
+  }
+  function esperadoDe(clave, porDefecto) {
+    const a = leerTiempos(clave);
+    if (!a.length) return porDefecto;
+    const o = [...a].sort((x, y) => x - y);
+    return o[Math.floor(o.length / 2)];
+  }
+
+  function iniciarCarga(contenedor, clave, fases, esperadoPorDefecto) {
+    const esperado = Math.max(1, esperadoDe(clave, esperadoPorDefecto));
+    contenedor.textContent = "";
+    contenedor.style.display = "block";
+    const etiqueta = document.createElement("div");
+    etiqueta.className = "carga-etiqueta";
+    const pista = document.createElement("div");
+    pista.className = "carga-pista";
+    const relleno = document.createElement("div");
+    relleno.className = "carga-relleno";
+    pista.appendChild(relleno);
+    contenedor.appendChild(etiqueta);
+    contenedor.appendChild(pista);
+
+    const inicio = performance.now();
+    const progreso = (t) => (t <= esperado ? (0.9 * t) / esperado : 0.9 + 0.09 * (1 - Math.exp(-(t - esperado) / esperado)));
+
+    function pintar() {
+      const t = (performance.now() - inicio) / 1000;
+      const p = progreso(t);
+      relleno.style.width = (p * 100).toFixed(1) + "%";
+      const fase = p < 0.25 ? fases[0] : p < 0.85 ? fases[1] : fases[2];
+      const texto = t > esperado * 2 ? "Está tardando más de lo normal, sigue trabajando" : fase;
+      const resto = t < esperado ? `  ·  ≈ ${Math.max(1, Math.round(esperado - t))} s restantes` : "";
+      etiqueta.textContent = `${texto}…  ${Math.round(p * 100)}%  ·  ${t.toFixed(1)} s${resto}`;
+    }
+    pintar();
+    const reloj = setInterval(pintar, 100);
+
+    return {
+      terminar(exito) {
+        clearInterval(reloj);
+        if (exito) {
+          guardarTiempo(clave, (performance.now() - inicio) / 1000);
+          relleno.style.width = "100%";
+          etiqueta.textContent = "¡Listo!";
+          setTimeout(() => { contenedor.style.display = "none"; }, 400);
+        } else {
+          contenedor.style.display = "none";
+        }
+      },
+    };
+  }
+
+  const barraCarga = document.getElementById("barra-carga");
+  const FASES_PREGUNTA = ["Enviando tu respuesta", "El entrevistador está pensando", "Redactando la pregunta"];
+
+  const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function quitarBotonReintentoPregunta() {
+    ["boton-reintentar-pregunta", "boton-diag-pregunta"].forEach((id) => {
+      const viejo = document.getElementById(id);
+      if (viejo) viejo.remove();
+    });
+  }
+
+  // Pide la siguiente pregunta. Si falla por algo pasajero (límite, red, error temporal) reintenta
+  // una vez sola; si sigue fallando, muestra el motivo real y un botón para reintentar SIN perder
+  // la entrevista (tu respuesta ya quedó guardada en la conversación).
+  async function pedirPreguntaAlBackend(intento = 1) {
+    quitarBotonReintentoPregunta();
+    preguntaActual.textContent = intento === 1
+      ? "El entrevistador está preparando la siguiente pregunta..."
+      : "Hubo un problema pasajero, reintentando...";
+    botonResponder.disabled = true; // evita mandar dos respuestas mientras la IA piensa
+    const carga = iniciarCarga(barraCarga, "pregunta", FASES_PREGUNTA, 6);
+
+    let problema = "";
+    let pasajero = false;
+    try {
+      const respuesta = await fetch(`${URL_BACKEND}/entrevistar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historial }),
+      });
+      let datos = {};
+      try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON (por ejemplo, una página de error) */ }
+
+      if (respuesta.ok && datos.pregunta) {
+        carga.terminar(true);
+        botonResponder.disabled = false;
+        iniciarVentanaVoz(); // a partir de aquí medimos tu voz, hasta que envíes la respuesta
+        historial.push({ role: "assistant", content: datos.pregunta });
+        numPregunta++;
+        preguntaActual.textContent = `(${numPregunta}/${MAX_PREGUNTAS}) ${datos.pregunta}`;
+        agregarAlHistorialVisual("assistant", datos.pregunta);
+        return true;
+      }
+      const detalle = typeof datos.detail === "string" ? datos.detail : "El servidor no pudo responder.";
+      problema = `${detalle} [error ${respuesta.status}]`;
+      pasajero = [429, 502, 503, 504].includes(respuesta.status);
+    } catch (error) {
+      problema = "No hay conexión con el servidor. Revisa tu internet.";
+      pasajero = true;
+      console.error(error);
+    }
+
+    carga.terminar(false);
+    if (pasajero && intento < 2) {
+      await esperar(3000);
+      return pedirPreguntaAlBackend(intento + 1);
+    }
+
+    preguntaActual.textContent = "No se pudo obtener la siguiente pregunta. " + problema;
+    const boton = document.createElement("button");
+    boton.type = "button";
+    boton.id = "boton-reintentar-pregunta";
+    boton.textContent = "Reintentar (tu respuesta no se pierde)";
+    boton.style.marginTop = "10px";
+    boton.addEventListener("click", () => pedirPreguntaAlBackend(1));
+    preguntaActual.insertAdjacentElement("afterend", boton);
+    const diag = document.createElement("button");
+    diag.type = "button";
+    diag.id = "boton-diag-pregunta";
+    diag.textContent = "🩺 Ejecutar diagnóstico";
+    diag.style.cssText = "margin: 10px 0 0 10px; background: var(--navy);";
+    diag.addEventListener("click", () => abrirDiagnostico());
+    boton.insertAdjacentElement("afterend", diag);
+    return false;
+  }
+
+  // ================================================================
+  // Análisis de VOZ dentro del navegador (reemplaza librosa + ffmpeg)
+  // Medimos volumen y tono ~20 veces por segundo, solo mientras respondes.
+  // No se sube ni se guarda ningún audio: solo se envían números.
+  // ================================================================
+  const VOZ_INTERVALO_MS = 50;
+  let vozCtx = null, vozAnalizador = null, vozBuffer = null, vozTimer = null;
+  let vozMuestras = [];          // {v: ventana, dt: segundos, rms, f0}
+  let vozMidiendo = false;
+  let vozVentana = 0;
+  let vozUltimo = 0;
+  let errorVoz = null;
+
+  function iniciarAnalisisVoz() {
+    vozMuestras = [];
+    vozVentana = 0;
+    errorVoz = null;
+    try {
+      if (!flujoMedios) throw new Error("no hay stream de micrófono");
+      const pistas = flujoMedios.getAudioTracks();
+      if (pistas.length === 0) throw new Error("el stream no tiene pista de audio");
+      vozCtx = new AudioContext();
+      if (vozCtx.state === "suspended") vozCtx.resume();
+      const fuente = vozCtx.createMediaStreamSource(new MediaStream(pistas));
+      vozAnalizador = vozCtx.createAnalyser();
+      vozAnalizador.fftSize = 2048;
+      fuente.connect(vozAnalizador);
+      vozBuffer = new Float32Array(vozAnalizador.fftSize);
+      vozTimer = setInterval(muestrearVoz, VOZ_INTERVALO_MS);
+    } catch (error) {
+      console.error("No se pudo iniciar el análisis de voz:", error);
+      errorVoz = error.message;
+    }
+  }
+
+  function iniciarVentanaVoz() { vozVentana++; vozUltimo = performance.now(); vozMidiendo = true; }
+  function detenerVentanaVoz() { vozMidiendo = false; }
+
+  // Tono por autocorrelación normalizada (rango de voz humana: 70 a 400 Hz)
+  function estimarTono(buf, sr) {
+    const minLag = Math.floor(sr / 400), maxLag = Math.floor(sr / 70);
+    const n = buf.length - maxLag;
+    if (n <= 0) return 0;
+    let e0 = 0;
+    for (let i = 0; i < n; i++) e0 += buf[i] * buf[i];
+    if (e0 < 1e-9) return 0;
+    const corr = new Float32Array(maxLag + 2);
+    let mejor = 0, mejorLag = 0;
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let s = 0, e1 = 0;
+      for (let i = 0; i < n; i++) { const y = buf[i + lag]; s += buf[i] * y; e1 += y * y; }
+      const c = s / Math.sqrt(e0 * e1 + 1e-12);
+      corr[lag] = c;
+      if (c > mejor) { mejor = c; mejorLag = lag; }
+    }
+    if (mejor < 0.6) return 0; // no hay tono claro (ruido o consonante)
+    // Evita errores de octava: el primer pico local casi tan fuerte como el máximo
+    for (let lag = minLag + 1; lag < maxLag; lag++) {
+      if (corr[lag] >= 0.9 * mejor && corr[lag] > corr[lag - 1] && corr[lag] >= corr[lag + 1]) { mejorLag = lag; break; }
+    }
+    return sr / mejorLag;
+  }
+
+  function muestrearVoz() {
+    if (!vozMidiendo || !vozAnalizador) return;
+    const ahora = performance.now();
+    const dt = Math.min(0.25, (ahora - vozUltimo) / 1000);
+    vozUltimo = ahora;
+    vozAnalizador.getFloatTimeDomainData(vozBuffer);
+    let suma = 0;
+    for (let i = 0; i < vozBuffer.length; i++) suma += vozBuffer[i] * vozBuffer[i];
+    const rms = Math.sqrt(suma / vozBuffer.length);
+    const f0 = rms > 0.004 ? estimarTono(vozBuffer, vozCtx.sampleRate) : 0;
+    vozMuestras.push({ v: vozVentana, dt, rms, f0 });
+  }
+
+  // Convierte las muestras en las mismas métricas que antes calculaba librosa
+  function resumirVoz() {
+    if (vozTimer) { clearInterval(vozTimer); vozTimer = null; }
+    vozMidiendo = false;
+    if (vozCtx) { try { vozCtx.close(); } catch (e) { /* nada */ } }
+    if (errorVoz) return { error: errorVoz };
+    if (vozMuestras.length === 0) return { error: "no se midió ninguna muestra de voz" };
+
+    const maximo = vozMuestras.reduce((m, x) => Math.max(m, x.rms), 0);
+    const ordenados = vozMuestras.map((x) => x.rms).sort((a, b) => a - b);
+    const pisoRuido = ordenados[Math.floor(ordenados.length * 0.1)] || 0;
+    // Voz = al menos 30 dB sobre el máximo (como antes), 3 veces el ruido de fondo, y un mínimo absoluto bajo
+    const umbral = Math.max(maximo * Math.pow(10, -30 / 20), pisoRuido * 3, 0.003);
+    const porVentana = {};
+    vozMuestras.forEach((x) => { (porVentana[x.v] = porVentana[x.v] || []).push(x); });
+
+    let duracion = 0, silencio = 0, pausas = 0, hablado = 0;
+    const rmsTodos = [], tonos = [], demoras = [];
+    let respuestasConVoz = 0;
+
+    Object.values(porVentana).forEach((muestras) => {
+      const conVoz = muestras.map((x) => x.rms >= umbral);
+      const primero = conVoz.indexOf(true);
+      const ultimo = conVoz.lastIndexOf(true);
+      if (primero === -1) return; // esa respuesta no tuvo voz (¿la escribiste?)
+      respuestasConVoz++;
+      demoras.push(muestras.slice(0, primero).reduce((s, x) => s + x.dt, 0));
+
+      // Solo consideramos desde que empezaste a hablar hasta que terminaste
+      let tramo = 0;
+      for (let i = primero; i <= ultimo; i++) {
+        const x = muestras[i];
+        duracion += x.dt;
+        rmsTodos.push(x.rms);
+        if (conVoz[i]) {
+          hablado += x.dt;
+          if (tramo >= 0.4) pausas++;   // silencio de 0,4 s o más entre frases = pausa
+          tramo = 0;
+          if (x.f0 > 0) tonos.push(x.f0);
+        } else {
+          silencio += x.dt;
+          tramo += x.dt;
+        }
+      }
+    });
+
+    if (respuestasConVoz === 0 || hablado < 0.3) {
+      return { error: "no se detectó voz en tus respuestas (¿las escribiste en vez de hablarlas?)" };
+    }
+    // Respuestas cortas SÍ se evalúan; solo avisamos qué tan fiable es la medición
+    const fiabilidad = hablado < 10 ? "baja" : hablado < 30 ? "media" : "alta";
+
+    const media = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+    const desv = (a) => { const m = media(a); return Math.sqrt(media(a.map((x) => (x - m) ** 2))); };
+
+    // Quitamos saltos de octava del tono (valores lejos de la mediana)
+    let tonoMedio = 0, tonoVar = 0;
+    if (tonos.length >= 4) {
+      const orden = [...tonos].sort((a, b) => a - b);
+      const mediana = orden[Math.floor(orden.length / 2)];
+      const limpios = tonos.filter((t) => t > mediana * 0.6 && t < mediana * 1.6);
+      tonoMedio = media(limpios);
+      tonoVar = desv(limpios);
+    }
+
+    return {
+      metricas: {
+        duracion_segundos: Math.round(duracion * 10) / 10,
+        tono_promedio_hz: Math.round(tonoMedio * 10) / 10,
+        tono_variabilidad_hz: Math.round(tonoVar * 10) / 10,
+        volumen_promedio: Math.round(media(rmsTodos) * 10000) / 10000,
+        volumen_variabilidad: Math.round(desv(rmsTodos) * 10000) / 10000,
+        proporcion_silencio: Math.round((silencio / Math.max(duracion, 0.001)) * 100) / 100,
+        numero_pausas: pausas,
+        demora_media_antes_de_hablar_s: Math.round(media(demoras) * 10) / 10,
+        respuestas_con_voz: respuestasConVoz,
+        habla_total_segundos: Math.round(hablado * 10) / 10,
+        fiabilidad_muestra: fiabilidad,
+      },
+    };
+  }
+
+  // Datos que se mandarán a evaluar cuando termine la entrevista
+  let resultadoVoz = null;
+  let datosCara = null;
+
+  async function finalizarEntrevista() {
+    botonHablar.style.display = "none";
+    botonResponder.style.display = "none";
+    campoRespuesta.style.display = "none";
+    detenerVentanaVoz();
+    resultadoVoz = resumirVoz();
+    datosCara = datosCaraSesion();
+    preguntaActual.textContent = "Entrevista completa. Presiona el botón para ver tu evaluación.";
+    botonEvaluar.style.display = "inline-block";
+  }
+
+  botonComenzar.addEventListener("click", async () => {
+    botonComenzar.style.display = "none";
+    botonHablar.style.display = "inline-block";
+    botonResponder.style.display = "inline-block"; // por si prefiere escribir en vez de hablar
+    historial = [{ role: "user", content: "Estoy listo para empezar." }];
+    numPregunta = 0;
+
+    iniciarAnalisisVoz();    // mide tu voz EN EL NAVEGADOR (no se sube ningún audio)
+    iniciarGrabacionCara();  // registra la expresión facial durante la entrevista
+
+    try {
+      await pedirPreguntaAlBackend();
+    } catch (error) {
+      preguntaActual.textContent = "Error al conectar con el backend: " + error.message;
+      console.error(error);
+    }
+  });
+
+  botonResponder.addEventListener("click", async () => {
+    const texto = campoRespuesta.value.trim();
+    if (!texto) return;
+    detenerVentanaVoz();
+
+    historial.push({ role: "user", content: texto });
+    agregarAlHistorialVisual("user", texto);
+    campoRespuesta.value = "";
+
+    // Si ya hicimos la última pregunta permitida, esta respuesta es la
+    // última: cerramos la entrevista en vez de pedir una pregunta más.
+    if (numPregunta >= MAX_PREGUNTAS) {
+      await finalizarEntrevista();
+    } else {
+      await pedirPreguntaAlBackend();
+    }
+  });
+
+  // --- Reconocimiento de voz del navegador (Chrome/Edge) ---
+  // A diferencia de la versión en Python, aquí NO se manda audio a ningún
+  // servidor: el propio navegador convierte tu voz a texto y nos entrega
+  // el resultado ya escrito, directo en el cuadro de respuesta.
+  const ClaseReconocimiento = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let reconocimiento = null;
+  let escuchando = false;
+
+  if (ClaseReconocimiento) {
+    reconocimiento = new ClaseReconocimiento();
+    reconocimiento.lang = "es-CL";
+    reconocimiento.continuous = true;   // sigue escuchando hasta que lo detengamos
+    reconocimiento.interimResults = true; // muestra texto parcial mientras hablas
+
+    reconocimiento.onresult = (evento) => {
+      let textoNuevo = "";
+      for (let i = evento.resultIndex; i < evento.results.length; i++) {
+        if (evento.results[i].isFinal) {
+          textoNuevo += evento.results[i][0].transcript + " ";
+        }
+      }
+      if (textoNuevo) {
+        campoRespuesta.value += textoNuevo;
+      }
+    };
+
+    reconocimiento.onerror = (evento) => {
+      console.error("Error de reconocimiento de voz:", evento.error);
+    };
+  }
+
+  botonHablar.addEventListener("click", () => {
+    if (!ClaseReconocimiento) {
+      alert("Tu navegador no soporta reconocimiento de voz. Prueba con Chrome o Edge.");
+      return;
+    }
+
+    if (!escuchando) {
+      // Primer clic: empieza a escuchar (equivalente al primer Enter en Python)
+      campoRespuesta.value = "";
+      reconocimiento.start();
+      escuchando = true;
+      botonHablar.textContent = "⏹ Detener y usar este texto";
+      botonHablar.style.background = "var(--orange)";
+    } else {
+      // Segundo clic: deja de escuchar (equivalente al segundo Enter)
+      reconocimiento.stop();
+      escuchando = false;
+      botonHablar.textContent = "🎤 Hablar";
+      botonHablar.style.background = "var(--navy)";
+    }
+  });
+
+
+  // ================================================================
+  // Motor de alta precisión: MediaPipe Face Landmarker (blendshapes)
+  // Mide 52 movimientos musculares de la cara (ceño, comisuras de la
+  // boca, cejas, ojos...) en vez de adivinar la emoción de un solo golpe.
+  // Además: calibración con tu cara neutra + suavizado en el tiempo.
+  // ================================================================
+  const MP_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  const MP_MODELO = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+  const FRAMES_CALIBRACION = 40;   // ~1.5 s con la cara relajada
+  const ALFA_SUAVIZADO = 0.35;     // 0 = muy suave/lento, 1 = sin suavizar
+  const UMBRAL_NEUTRAL = 0.30;     // bajo esto, se considera cara neutra
+
+  let faceLandmarker = null;
+  let baselineCara = null;
+  let acumuladoBase = {};
+  let framesBase = 0;
+  let emocionesSuaves = {};
+  let ultimoTiempoVideo = -1;
+  let acumPose = { yaw: 0, pitch: 0 };
+  let baselinePose = { yaw: 0, pitch: 0 };
+
+  const botonRecalibrar = document.getElementById("boton-recalibrar");
+  botonRecalibrar.addEventListener("click", () => {
+    baselineCara = null; acumuladoBase = {}; framesBase = 0; emocionesSuaves = {}; acumPose = { yaw: 0, pitch: 0 };
+  });
+
+  const prom = (b, ...n) => n.reduce((s, k) => s + (b[k] || 0), 0) / n.length;
+  const tope = (x) => Math.max(0, Math.min(1, x));
+
+  // b = cuánto se movió cada músculo respecto a tu cara neutra (0 a 1)
+  function calcularEmociones(b) {
+    return {
+      feliz: tope(prom(b, "mouthSmileLeft", "mouthSmileRight") * 1.8 + prom(b, "cheekSquintLeft", "cheekSquintRight") * 0.5),
+      triste: tope(
+        prom(b, "mouthFrownLeft", "mouthFrownRight") * 2.4 +
+        (b.browInnerUp || 0) * 1.7 +
+        (b.mouthShrugLower || 0) * 0.8 +
+        prom(b, "mouthPressLeft", "mouthPressRight") * 0.4 +
+        (b.mouthRollLower || 0) * 0.4
+      ),
+      enojo: tope(
+        prom(b, "browDownLeft", "browDownRight") * 1.7 +
+        prom(b, "noseSneerLeft", "noseSneerRight") * 1.0 +
+        prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.8 +
+        prom(b, "mouthPressLeft", "mouthPressRight") * 0.8
+      ),
+      sorpresa: tope(
+        prom(b, "eyeWideLeft", "eyeWideRight") * 1.5 +
+        prom(b, "browOuterUpLeft", "browOuterUpRight") * 1.2 +
+        (b.jawOpen || 0) * 1.3
+      ),
+      miedo: tope(
+        prom(b, "eyeWideLeft", "eyeWideRight") * 1.0 +
+        (b.browInnerUp || 0) * 1.0 +
+        prom(b, "mouthStretchLeft", "mouthStretchRight") * 1.6
+      ),
+      asco: tope(
+        prom(b, "noseSneerLeft", "noseSneerRight") * 1.9 +
+        prom(b, "mouthUpperUpLeft", "mouthUpperUpRight") * 1.2 +
+        (b.mouthShrugUpper || 0) * 0.6
+      ),
+    };
+  }
+
+  // ================================================================
+  // Registro de la cara DURANTE la entrevista (para la evaluación)
+  // Guardamos ~5 muestras por segundo: emociones, giro/inclinación de
+  // cabeza y desvío de mirada, más un conteo exacto de parpadeos.
+  // ================================================================
+  let grabandoCara = false;
+  let muestrasCara = [];
+  let ultimoMuestreoCara = 0;
+  let inicioCara = 0;
+  let framesTotalesCara = 0;
+  let framesConRostroCara = 0;
+  let parpadeosCara = 0;
+  let ojosCerrados = false;
+  let errorGrabacionCara = null;
+
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+
+  // Giro (yaw) e inclinación (pitch) de la cabeza, como índices relativos
+  // calculados con puntos de la cara (nariz vs. mejillas / frente / mentón).
+  function calcularPose(pts) {
+    const nariz = pts[1], izq = pts[234], der = pts[454], frente = pts[10], menton = pts[152];
+    const ancho = Math.abs(der.x - izq.x) || 1e-6;
+    const alto = Math.abs(menton.y - frente.y) || 1e-6;
+    return {
+      yaw: (nariz.x - (izq.x + der.x) / 2) / ancho,
+      pitch: (nariz.y - (frente.y + menton.y) / 2) / alto,
+    };
+  }
+
+  function contarParpadeo(crudo) {
+    const v = prom(crudo, "eyeBlinkLeft", "eyeBlinkRight");
+    if (!ojosCerrados && v > 0.5) { ojosCerrados = true; parpadeosCara++; }
+    else if (ojosCerrados && v < 0.3) { ojosCerrados = false; }
+  }
+
+  function registrarMuestra(emo, delta, pts) {
+    const ahora = performance.now();
+    if (ahora - ultimoMuestreoCara < 200) return; // ~5 muestras por segundo
+    ultimoMuestreoCara = ahora;
+
+    const pose = calcularPose(pts);
+    const horiz = Math.max(
+      prom(delta, "eyeLookInLeft", "eyeLookOutRight"),
+      prom(delta, "eyeLookOutLeft", "eyeLookInRight")
+    );
+    const vert = Math.max(
+      prom(delta, "eyeLookUpLeft", "eyeLookUpRight"),
+      prom(delta, "eyeLookDownLeft", "eyeLookDownRight")
+    );
+
+    muestrasCara.push({
+      t: Math.round((ahora - inicioCara) / 100) / 10,
+      feliz: r3(emo.feliz), triste: r3(emo.triste), enojo: r3(emo.enojo),
+      sorpresa: r3(emo.sorpresa), miedo: r3(emo.miedo), asco: r3(emo.asco),
+      yaw: r3(pose.yaw - baselinePose.yaw),
+      pitch: r3(pose.pitch - baselinePose.pitch),
+      mirada: r3(Math.max(horiz, vert)),
+    });
+  }
+
+  function iniciarGrabacionCara() {
+    muestrasCara = [];
+    ultimoMuestreoCara = 0;
+    framesTotalesCara = 0;
+    framesConRostroCara = 0;
+    parpadeosCara = 0;
+    ojosCerrados = false;
+    inicioCara = performance.now();
+    if (faceLandmarker) {
+      errorGrabacionCara = null;
+      grabandoCara = true;
+    } else {
+      errorGrabacionCara = "el motor de alta precisión (MediaPipe) no está activo";
+      grabandoCara = false;
+    }
+  }
+
+  // Reúne las muestras de la cara para mandarlas a evaluar (nada se guarda en disco)
+  function datosCaraSesion() {
+    grabandoCara = false;
+    if (muestrasCara.length === 0) return null;
+    let muestras = muestrasCara;
+    while (muestras.length > 4000) muestras = muestras.filter((_, i) => i % 2 === 0);
+    return {
+      muestras,
+      parpadeos: parpadeosCara,
+      frames_totales: framesTotalesCara,
+      frames_con_rostro: framesConRostroCara,
+      duracion_segundos: (performance.now() - inicioCara) / 1000,
+    };
+  }
+
+  // ---------- Evaluación final: contenido + voz + cara, en paralelo ----------
+  const botonEvaluar = document.getElementById("boton-evaluar");
+  const contenedorInformes = document.getElementById("informe-cara");
+
+  function renderizarInforme(destino, titulo, d, clavePuntaje) {
+    destino.textContent = "";
+    const enc = document.createElement("div");
+    enc.className = "encabezado-informe";
+    const grande = document.createElement("div");
+    grande.className = "puntaje-grande";
+    grande.textContent = `${d[clavePuntaje]} / 5`;
+    const t = document.createElement("div");
+    t.textContent = titulo;
+    enc.appendChild(grande);
+    enc.appendChild(t);
+    destino.appendChild(enc);
+
+    (d.areas || []).forEach((a) => {
+      const div = document.createElement("div");
+      div.className = "area";
+      const fila = document.createElement("div");
+      fila.className = "titulo-area";
+      const n = document.createElement("span");
+      n.textContent = a.nombre;
+      const pt = document.createElement("span");
+      pt.textContent = `${a.puntaje} / 5`;
+      fila.appendChild(n);
+      fila.appendChild(pt);
+      const c = document.createElement("div");
+      c.textContent = a.comentario; // textContent: el texto de la IA nunca se interpreta como HTML
+      div.appendChild(fila);
+      div.appendChild(c);
+      destino.appendChild(div);
+    });
+
+    const resumen = document.createElement("p");
+    const rb = document.createElement("b");
+    rb.textContent = "Resumen: ";
+    resumen.appendChild(rb);
+    resumen.appendChild(document.createTextNode(d.resumen || ""));
+    destino.appendChild(resumen);
+
+    const rec = document.createElement("div");
+    rec.className = "recomendacion";
+    rec.textContent = "Lo más importante a mejorar: " + (d.recomendacion_principal || "");
+    destino.appendChild(rec);
+  }
+
+  function crearSeccionInforme() {
+    const seccion = document.createElement("div");
+    seccion.className = "seccion-informe";
+    const barra = document.createElement("div");
+    barra.className = "barra-carga";
+    const cuerpo = document.createElement("div");
+    seccion.appendChild(barra);
+    seccion.appendChild(cuerpo);
+    contenedorInformes.appendChild(seccion);
+    return { barra, cuerpo };
+  }
+
+  // ---------- Informe final (fusión de los 3 jueces) ----------
+  let informesCrudos = {};      // lo que devolvió cada juez: {contenido, voz, cara}
+  const ESTADO_FINAL = { generando: false };
+
+  function nivelDe(nota) {
+    return nota >= 4.2 ? "Excelente" : nota >= 3.5 ? "Buen desempeño" : nota >= 2.5 ? "En desarrollo" : "Necesita más práctica";
+  }
+
+  function bloqueTexto(titulo, texto, clase, extra) {
+    const d = document.createElement("div");
+    d.className = "bloque-coach" + (clase ? " " + clase : "");
+    const h = document.createElement("h3");
+    h.textContent = titulo;
+    const p = document.createElement("div");
+    p.textContent = texto;
+    d.appendChild(h);
+    d.appendChild(p);
+    if (extra) {
+      const e = document.createElement("div");
+      e.className = "porque";
+      e.textContent = extra;
+      d.appendChild(e);
+    }
+    return d;
+  }
+
+  function renderizarInformeFinal(cont, f) {
+    cont.textContent = "";
+    const wrap = document.createElement("div");
+    wrap.className = "informe-final";
+
+    // Encabezado con la nota global
+    const caja = document.createElement("div");
+    caja.className = "tarjeta-general";
+    const num = document.createElement("div");
+    num.className = "puntaje-enorme";
+    num.textContent = f.puntaje_global != null ? Number(f.puntaje_global).toFixed(1) : "–";
+    const centro = document.createElement("div");
+    const et = document.createElement("div");
+    et.className = "etiqueta";
+    et.textContent = f.puntaje_global != null ? `Informe del coach · ${nivelDe(f.puntaje_global)}` : "Informe del coach";
+    const nota = document.createElement("div");
+    nota.className = "nota";
+    const nombresFuente = { contenido: "contenido", voz: "voz", cara: "imagen" };
+    nota.textContent = `Nota global sobre 5 · basada en: ${(f.fuentes_disponibles || []).map((x) => nombresFuente[x] || x).join(", ")}`;
+    centro.appendChild(et);
+    centro.appendChild(nota);
+    caja.appendChild(num);
+    caja.appendChild(centro);
+    wrap.appendChild(caja);
+
+    if (f.resumen) wrap.appendChild(bloqueTexto("Lectura global", f.resumen));
+
+    // Las 4 áreas finales
+    const grid = document.createElement("div");
+    grid.className = "areas-finales";
+    (f.areas || []).forEach((a) => {
+      const card = document.createElement("div");
+      card.className = "area-final";
+      const cab = document.createElement("div");
+      cab.className = "cab";
+      const n = document.createElement("span");
+      n.className = "nombre";
+      n.textContent = a.nombre;
+      const pt = document.createElement("span");
+      pt.className = "nota" + (a.puntaje == null ? " sin-datos" : "");
+      pt.textContent = a.puntaje == null ? "Sin datos" : `${Number(a.puntaje).toFixed(1)} / 5`;
+      cab.appendChild(n);
+      cab.appendChild(pt);
+      card.appendChild(cab);
+      if (a.puntaje != null) {
+        const barra = document.createElement("div");
+        barra.className = "barra";
+        const rel = document.createElement("div");
+        rel.style.width = Math.max(0, Math.min(100, (a.puntaje / 5) * 100)) + "%";
+        barra.appendChild(rel);
+        card.appendChild(barra);
+      }
+      const c = document.createElement("div");
+      c.className = "comentario";
+      c.textContent = a.comentario || "";
+      card.appendChild(c);
+      if (a.fuentes && a.fuentes.length) {
+        const fu = document.createElement("div");
+        fu.className = "fuentes";
+        fu.textContent = "Fuentes: " + a.fuentes.map((x) => nombresFuente[x] || x).join(" + ");
+        card.appendChild(fu);
+      }
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid);
+
+    if (f.fortaleza_principal) wrap.appendChild(bloqueTexto("Tu mayor fortaleza", f.fortaleza_principal));
+    if (f.recomendacion_principal) {
+      wrap.appendChild(bloqueTexto("Lo más importante para mejorar", f.recomendacion_principal, "prioridad", f.por_que_esta_prioridad));
+    }
+    cont.appendChild(wrap);
+    cont.style.display = "block";
+  }
+
+  async function generarInformeFinal() {
+    const cont = document.getElementById("resumen-general");
+    if (ESTADO_FINAL.generando) return;
+    if (!Object.keys(informesCrudos).length) { cont.style.display = "none"; return; }
+    ESTADO_FINAL.generando = true;
+
+    cont.textContent = "";
+    cont.style.display = "block";
+    const barra = document.createElement("div");
+    barra.className = "barra-carga";
+    const cuerpo = document.createElement("div");
+    cont.appendChild(barra);
+    cont.appendChild(cuerpo);
+    const carga = iniciarCarga(barra, "informe_final", ["Reuniendo tus 3 evaluaciones", "El coach está cruzando contenido, voz e imagen", "Redactando tu informe final"], 20);
+    let ok = false;
+    try {
+      const respuesta = await fetch(`${URL_BACKEND}/informe_final`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contenido: informesCrudos.contenido || null,
+          voz: informesCrudos.voz || null,
+          cara: informesCrudos.cara || null,
+        }),
+      });
+      let datos = {};
+      try { datos = await respuesta.json(); } catch (e) { /* sin JSON */ }
+      if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
+      ok = true;
+      renderizarInformeFinal(cont, datos);
+    } catch (error) {
+      cuerpo.textContent = "";
+      const p = document.createElement("p");
+      p.className = "estado error";
+      p.textContent = "No se pudo generar el informe final: " + error.message;
+      const reintentar = document.createElement("button");
+      reintentar.type = "button";
+      reintentar.textContent = "Reintentar informe final";
+      reintentar.addEventListener("click", () => { ESTADO_FINAL.generando = false; generarInformeFinal(); });
+      cuerpo.appendChild(p);
+      cuerpo.appendChild(reintentar);
+    } finally {
+      carga.terminar(ok);
+      ESTADO_FINAL.generando = false;
+    }
+  }
+
+  function renderizarTranscripcion() {
+    const cont = document.getElementById("transcripcion-final");
+    cont.textContent = "";
+    const h = document.createElement("h2");
+    h.textContent = "Transcripción de la entrevista";
+    cont.appendChild(h);
+    historial.slice(1).forEach((m) => { // se omite el "Estoy listo para empezar."
+      const linea = document.createElement("div");
+      linea.className = "linea " + (m.role === "assistant" ? "entrevistador" : "vocero");
+      const quien = document.createElement("span");
+      quien.className = "quien";
+      quien.textContent = m.role === "assistant" ? "Entrevistador" : "Tú (vocero)";
+      linea.appendChild(quien);
+      linea.appendChild(document.createTextNode(m.content));
+      cont.appendChild(linea);
+    });
+  }
+
+  // tarea = {titulo, corto, url, cuerpo, clavePuntaje, clave, esperado, fases}
+  async function ejecutarTarea(tarea, seccion) {
+    seccion.cuerpo.textContent = "";
+    const carga = iniciarCarga(seccion.barra, tarea.clave, tarea.fases, tarea.esperado);
+    let ok = false;
+    try {
+      const respuesta = await fetch(`${URL_BACKEND}${tarea.url}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tarea.cuerpo),
+      });
+      let datos = {};
+      try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON */ }
+      if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
+      ok = true;
+      renderizarInforme(seccion.cuerpo, tarea.titulo, datos, tarea.clavePuntaje);
+      informesCrudos[tarea.fuente] = datos;
+    } catch (error) {
+      const p = document.createElement("p");
+      p.textContent = `No se pudo generar "${tarea.titulo}": ${error.message}`;
+      const reintentar = document.createElement("button");
+      reintentar.type = "button";
+      reintentar.textContent = "Reintentar";
+      reintentar.style.padding = "6px 12px";
+      reintentar.addEventListener("click", async () => { await ejecutarTarea(tarea, seccion); generarInformeFinal(); });
+      seccion.cuerpo.appendChild(p);
+      seccion.cuerpo.appendChild(reintentar);
+    } finally {
+      carga.terminar(ok);
+    }
+  }
+
+  botonEvaluar.addEventListener("click", async () => {
+    botonEvaluar.style.display = "none";
+    contenedorInformes.textContent = "";
+    contenedorInformes.style.display = "block";
+    informesCrudos = {};
+    document.getElementById("resumen-general").style.display = "none";
+    document.getElementById("titulo-detalle").style.display = "block";
+    document.getElementById("boton-pdf").style.display = "none";
+    renderizarTranscripcion();
+    document.body.classList.add("con-resultados");
+    setPaso(3);
+    document.getElementById("panel-resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+
+    const tareas = [
+      {
+        titulo: "Contenido de tus respuestas", corto: "Contenido", url: "/evaluar", clavePuntaje: "puntaje_global",
+        fuente: "contenido", clave: "eval_contenido", esperado: 20, cuerpo: { conversacion: historial.slice(1) }, // se omite el "Estoy listo para empezar"
+        fases: ["Enviando tu entrevista", "Analizando lo que respondiste", "Redactando el informe"],
+      },
+    ];
+    if (resultadoVoz && resultadoVoz.metricas) {
+      tareas.push({
+        titulo: "Tu voz", corto: "Voz", url: "/evaluar_voz", clavePuntaje: "puntaje_global_voz",
+        fuente: "voz", clave: "eval_voz", esperado: 15, cuerpo: { metricas: resultadoVoz.metricas },
+        fases: ["Enviando las métricas de tu voz", "Analizando tono, ritmo y volumen", "Redactando el informe"],
+      });
+    }
+    if (datosCara) {
+      tareas.push({
+        titulo: "Tu expresión facial", corto: "Cara", url: "/evaluar_cara", clavePuntaje: "puntaje_global_cara",
+        fuente: "cara", clave: "eval_cara", esperado: 15, cuerpo: datosCara,
+        fases: ["Enviando los datos de tu cara", "Analizando tu expresión facial", "Redactando el informe"],
+      });
+    }
+
+    const secciones = tareas.map(() => crearSeccionInforme());
+    const avisos = [];
+    if (!resultadoVoz || !resultadoVoz.metricas) {
+      avisos.push("Voz: " + ((resultadoVoz && resultadoVoz.error) || "no disponible") + ".");
+    }
+    if (!datosCara) {
+      avisos.push("Cara: no se registró (¿tu rostro salió de cuadro o MediaPipe no cargó?).");
+    }
+    if (avisos.length) {
+      const aviso = document.createElement("p");
+      aviso.className = "estado";
+      aviso.textContent = "Sin evaluar: " + avisos.join(" ");
+      contenedorInformes.appendChild(aviso);
+    }
+    await Promise.allSettled(tareas.map((t, i) => ejecutarTarea(t, secciones[i])));
+    await generarInformeFinal();
+    document.getElementById("boton-pdf").style.display = "inline-block";
+  });
+
+  document.getElementById("boton-pdf").addEventListener("click", () => window.print());
+
+  async function iniciarMediaPipe() {
+    estadoFacial.textContent = "Cargando modelo de alta precisión (puede tardar unos segundos)...";
+    estadoFacial.className = "estado";
+
+    const { FaceLandmarker, FilesetResolver } = await import(`${MP_BASE}/vision_bundle.mjs`);
+    const fileset = await FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+    const opciones = (delegate) => ({
+      baseOptions: { modelAssetPath: MP_MODELO, delegate },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      outputFaceBlendshapes: true,
+    });
+    try {
+      faceLandmarker = await FaceLandmarker.createFromOptions(fileset, opciones("GPU"));
+    } catch (e) {
+      console.warn("GPU no disponible para MediaPipe, usando CPU:", e);
+      faceLandmarker = await FaceLandmarker.createFromOptions(fileset, opciones("CPU"));
+    }
+
+    let intentos = 0;
+    while ((videoVista.videoWidth === 0 || videoVista.readyState < 2) && intentos < 50) {
+      await new Promise((r) => setTimeout(r, 100));
+      intentos++;
+    }
+    if (videoVista.videoWidth === 0) throw new Error("El video no entregó imagen.");
+
+    canvasCaras.width = videoVista.videoWidth;
+    canvasCaras.height = videoVista.videoHeight;
+    botonRecalibrar.style.display = "inline-block";
+    console.log("MediaPipe listo. Motor de alta precisión activo.");
+    bucleMediaPipe();
+  }
+
+  function bucleMediaPipe() {
+    try {
+      // Solo procesamos cuando llegó un cuadro nuevo de video.
+      if (videoVista.currentTime !== ultimoTiempoVideo) {
+        ultimoTiempoVideo = videoVista.currentTime;
+        const res = faceLandmarker.detectForVideo(videoVista, performance.now());
+        if (grabandoCara) framesTotalesCara++;
+        const ctx = canvasCaras.getContext("2d");
+        ctx.clearRect(0, 0, canvasCaras.width, canvasCaras.height);
+
+        if (res.faceLandmarks && res.faceLandmarks.length && res.faceBlendshapes && res.faceBlendshapes.length) {
+          // 1) Dibujamos el recuadro de la cara
+          const pts = res.faceLandmarks[0];
+          let minX = 1, minY = 1, maxX = 0, maxY = 0;
+          for (const p of pts) {
+            if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+          }
+          const W = canvasCaras.width, H = canvasCaras.height;
+          ctx.strokeStyle = "#1E8E3E";
+          ctx.lineWidth = 3;
+          ctx.strokeRect(minX * W, minY * H, (maxX - minX) * W, (maxY - minY) * H);
+
+          // 2) Leemos los 52 movimientos faciales
+          const crudo = {};
+          res.faceBlendshapes[0].categories.forEach((c) => (crudo[c.categoryName] = c.score));
+          if (grabandoCara) { framesConRostroCara++; contarParpadeo(crudo); }
+
+          // 3) Calibración: aprendemos tu cara neutra en los primeros cuadros
+          if (!baselineCara) {
+            for (const k in crudo) acumuladoBase[k] = (acumuladoBase[k] || 0) + crudo[k];
+            const pose0 = calcularPose(pts);
+            acumPose.yaw += pose0.yaw; acumPose.pitch += pose0.pitch;
+            framesBase++;
+            estadoFacial.textContent =
+              `Calibrando: mantén la cara relajada y neutra... (${Math.round((framesBase / FRAMES_CALIBRACION) * 100)}%)`;
+            estadoFacial.className = "estado";
+            if (framesBase >= FRAMES_CALIBRACION) {
+              baselineCara = {};
+              for (const k in acumuladoBase) baselineCara[k] = acumuladoBase[k] / framesBase;
+              baselinePose = { yaw: acumPose.yaw / framesBase, pitch: acumPose.pitch / framesBase };
+            }
+          } else {
+            // 4) Movimiento real = lo actual menos tu cara neutra
+            const delta = {};
+            for (const k in crudo) delta[k] = Math.max(0, crudo[k] - (baselineCara[k] || 0));
+            const emo = calcularEmociones(delta);
+
+            // 5) Suavizado en el tiempo (evita que salte de una a otra)
+            for (const k in emo) {
+              emocionesSuaves[k] = k in emocionesSuaves
+                ? emocionesSuaves[k] * (1 - ALFA_SUAVIZADO) + emo[k] * ALFA_SUAVIZADO
+                : emo[k];
+            }
+
+            if (grabandoCara) registrarMuestra(emocionesSuaves, delta, pts);
+
+            const orden = Object.entries(emocionesSuaves).sort((a, b) => b[1] - a[1]);
+            const [nombreTop, valorTop] = orden[0];
+            const ganadora = valorTop < UMBRAL_NEUTRAL ? "neutral" : nombreTop;
+            const pct = ganadora === "neutral" ? Math.round((1 - valorTop) * 100) : Math.round(valorTop * 100);
+            const detalle = orden.slice(0, 3).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(" · ");
+
+            estadoFacial.textContent = `Rostro detectado — expresión: ${ganadora} (${pct}%)  |  ${detalle}`;
+            estadoFacial.className = "estado ok";
+          }
+        } else {
+          estadoFacial.textContent = "No se detecta tu rostro. Mira a la cámara con buena luz de frente.";
+          estadoFacial.className = "estado";
+        }
+      }
+    } catch (error) {
+      estadoFacial.textContent = "Error durante la detección: " + error.message;
+      estadoFacial.className = "estado error";
+      console.error("Error en MediaPipe:", error);
+    }
+    requestAnimationFrame(bucleMediaPipe);
+  }
+
+  // --- Detección de expresión facial (face-api.js) — RESPALDO ---
+  // Todo esto corre en el navegador; no se manda ningún video a ningún
+  // servidor. Solo detectamos la cara y su expresión cuadro a cuadro, acá,
+  // como validación técnica (el mismo patrón que usamos con el medidor de audio).
+
+  // Usamos la fuente OFICIAL de los modelos (GitHub Pages del propio
+  // proyecto), que es más confiable que los CDN genéricos para archivos
+  // binarios grandes como estos.
+  const MODELOS_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+  let modelosFacialesListos = false;
+
+  async function iniciarDeteccionFacial() {
+    // Primero intentamos el motor de alta precisión (MediaPipe). Si no carga
+    // (sin internet, bloqueo, etc.), seguimos con face-api.js como respaldo.
+    try {
+      await iniciarMediaPipe();
+      return;
+    } catch (e) {
+      console.warn("MediaPipe no disponible, usando face-api.js como respaldo:", e);
+    }
+
+    try {
+      if (typeof faceapi === "undefined") {
+        throw new Error("No se pudo cargar la librería face-api.js (revisa tu conexión a internet).");
+      }
+
+      if (!modelosFacialesListos) {
+        estadoFacial.textContent = "Cargando modelo de expresión facial (puede tardar unos segundos)...";
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODELOS_URL);
+        await faceapi.nets.faceExpressionNet.loadFromUri(MODELOS_URL);
+        modelosFacialesListos = true;
+
+        // Diagnóstico: confirmamos en la consola que los modelos quedaron
+        // realmente cargados (con parámetros adentro, no vacíos).
+        console.log("tinyFaceDetector cargado:", faceapi.nets.tinyFaceDetector.isLoaded);
+        console.log("faceExpressionNet cargado:", faceapi.nets.faceExpressionNet.isLoaded);
+      }
+
+      // Esperamos a que el video realmente tenga cuadros de imagen
+      // (videoWidth/videoHeight en 0 significa que todavía no hay imagen).
+      let intentos = 0;
+      while ((videoVista.videoWidth === 0 || videoVista.videoHeight === 0 || videoVista.readyState < 2) && intentos < 50) {
+        await new Promise((r) => setTimeout(r, 100));
+        intentos++;
+      }
+      console.log(`Video listo: ${videoVista.videoWidth}x${videoVista.videoHeight} (esperé ${intentos * 100}ms)`);
+
+      if (videoVista.videoWidth === 0) {
+        throw new Error("El video nunca entregó imagen (videoWidth sigue en 0).");
+      }
+
+      canvasCaras.width = videoVista.videoWidth;
+      canvasCaras.height = videoVista.videoHeight;
+      console.log("Backend de TensorFlow:", faceapi.tf && faceapi.tf.getBackend && faceapi.tf.getBackend());
+
+      estadoFacial.textContent = "Buscando tu cara en la imagen...";
+      estadoFacial.className = "estado";
+
+      detectarCaraEnBucle();
+    } catch (error) {
+      estadoFacial.textContent = "No se pudo iniciar la detección facial: " + error.message;
+      estadoFacial.className = "estado error";
+      console.error(error);
+    }
+  }
+
+  let contadorCuadros = 0;
+  let algunaVezDetectado = false;
+  let yaProbeCPU = false;
+
+  async function detectarCaraEnBucle() {
+    try {
+      contadorCuadros++;
+
+      if (contadorCuadros === 60 && !algunaVezDetectado && !yaProbeCPU && faceapi.tf) {
+        yaProbeCPU = true;
+        try {
+          console.warn("Sin detecciones con WebGL, probando backend CPU...");
+          await faceapi.tf.setBackend("cpu");
+          await faceapi.tf.ready();
+        } catch (e) { console.error("No se pudo cambiar a CPU:", e); }
+      }
+
+      // Probamos con detectAllFaces y un umbral MUY bajo, para distinguir
+      // "no encuentra nada de nada" de "encuentra algo, pero con poca
+      // confianza". Esto queda visible en pantalla, no solo en consola.
+      const todasLasDetecciones = await faceapi
+        .detectAllFaces(
+          videoVista,
+          new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.1 })
+        )
+        .withFaceExpressions();
+
+      const ctx = canvasCaras.getContext("2d");
+      ctx.clearRect(0, 0, canvasCaras.width, canvasCaras.height);
+
+      // Cada 30 cuadros (~1 vez por segundo) dejamos un rastro en consola,
+      // para no inundarla.
+      if (contadorCuadros % 30 === 0) {
+        console.log(
+          `Cuadro ${contadorCuadros}: ${todasLasDetecciones.length} rostro(s) encontrado(s), ` +
+          `video=${videoVista.videoWidth}x${videoVista.videoHeight}`
+        );
+      }
+
+      if (todasLasDetecciones.length > 0) {
+        algunaVezDetectado = true;
+        const deteccion = todasLasDetecciones[0]; // usamos el primero/más grande
+
+        const medidas = faceapi.matchDimensions(canvasCaras, videoVista, true);
+        const redimensionada = faceapi.resizeResults(deteccion, medidas);
+        faceapi.draw.drawDetections(canvasCaras, redimensionada);
+
+        const expresiones = deteccion.expressions;
+        const nombreExpresion = Object.keys(expresiones).reduce((a, b) =>
+          expresiones[a] > expresiones[b] ? a : b
+        );
+        const confianza = Math.round(expresiones[nombreExpresion] * 100);
+        const confianzaDeteccion = Math.round(deteccion.detection.score * 100);
+
+        estadoFacial.textContent =
+          `Rostro detectado (confianza ${confianzaDeteccion}%) — expresión: ${nombreExpresion} (${confianza}%)`;
+        estadoFacial.className = "estado ok";
+      } else {
+        estadoFacial.textContent =
+          `No se detecta tu rostro (cuadro ${contadorCuadros}, video ${videoVista.videoWidth}x${videoVista.videoHeight}). ` +
+          `Revisa la consola (F12) para más detalle.`;
+        estadoFacial.className = "estado";
+      }
+    } catch (error) {
+      estadoFacial.textContent = "Error durante la detección: " + error.message;
+      estadoFacial.className = "estado error";
+      console.error("Error en un cuadro de detección facial:", error);
+    }
+
+    requestAnimationFrame(detectarCaraEnBucle);
+  }
+
+  // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
+  const VERSION_APP = "33";
+  (async function mostrarVersion() {
+    const el = document.getElementById("version-app");
+    el.textContent = "v" + VERSION_APP;
+    try {
+      const r = await fetch(`${URL_BACKEND}/salud`);
+      const d = await r.json();
+      if (d.version && String(d.version) !== VERSION_APP) {
+        el.textContent = `v${VERSION_APP} · servidor v${d.version}`;
+        el.classList.add("desajuste");
+        el.title = "La página y el servidor son de versiones distintas: sube y despliega todos los archivos.";
+      } else {
+        el.title = `Página v${VERSION_APP} · servidor v${d.version || "?"}`;
+      }
+    } catch (e) {
+      el.title = `Página v${VERSION_APP} · no se pudo consultar la versión del servidor`;
+    }
+  })();
+
+  // ---------- Ventana de bienvenida de la beta ----------
+  const modalBeta = document.getElementById("modal-beta");
+  const botonEntendido = document.getElementById("boton-entendido");
+  document.getElementById("beta-num-preguntas").textContent = MAX_PREGUNTAS; // siempre coincide con la entrevista real
+
+  function abrirModalBeta() {
+    modalBeta.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    botonEntendido.focus();
+  }
+  function cerrarModalBeta() {
+    modalBeta.style.display = "none";
+    document.body.style.overflow = "";
+    try { sessionStorage.setItem("voxready_beta_vista", "1"); } catch (e) { /* nada */ }
+  }
+  botonEntendido.addEventListener("click", cerrarModalBeta);
+  document.getElementById("boton-info-beta").addEventListener("click", abrirModalBeta);
+  document.addEventListener("keydown", (e) => {
+    if (modalBeta.style.display !== "flex") return;
+    if (e.key === "Escape") cerrarModalBeta();
+    if (e.key === "Tab") { e.preventDefault(); botonEntendido.focus(); } // el foco se queda dentro de la ventana
+  });
+
+  // Se muestra al entrar (una vez por pestaña), antes de la comprobación y la entrevista
+  let betaYaVista = false;
+  try { betaYaVista = sessionStorage.getItem("voxready_beta_vista") === "1"; } catch (e) { /* nada */ }
+  if (!betaYaVista) abrirModalBeta();
+
+  // ================================================================
+  // Diagnóstico: prueba cada eslabón y dice QUÉ falla y POR QUÉ
+  // ================================================================
+  const modalDiag = document.getElementById("modal-diagnostico");
+  const diagLista = document.getElementById("diag-lista");
+  const diagResumen = document.getElementById("diag-resumen");
+  let diagTexto = "";
+  let diagEjecutando = false;
+
+  async function fetchConTiempo(url, opciones, ms) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), ms);
+    try { return await fetch(url, { ...(opciones || {}), signal: ctl.signal }); }
+    finally { clearTimeout(t); }
+  }
+
+  // Consulta qué modelos de Gemini hay disponibles ahora (Google los retira con frecuencia)
+  async function catalogoGemini() {
+    const nombre = "Modelos de Gemini disponibles ahora";
+    let ayuda = "Gemini no encuentra el modelo configurado (Google los retira con frecuencia).";
+    try {
+      const r2 = await fetchConTiempo(`${URL_BACKEND}/salud?modelos=flash`, {}, 30000);
+      const d2 = await r2.json().catch(() => null);
+      const cat = d2 && d2.catalogo_gemini;
+      if (cat && !cat.error) {
+        const lista = (cat.coincidencias || []).slice(0, 15).join(", ") || "ninguno";
+        ayuda = "En Vercel agrega o cambia MODELOS_GEMINI por un modelo de la lista de abajo (varios separados por coma) y haz Redeploy.";
+        return { ayuda, fila: [nombre, "aviso", lista, "Se escribe el nombre tal cual aparece. Los alias como gemini-flash-latest pueden no figurar en la lista aunque funcionen."] };
+      }
+      return { ayuda, fila: [nombre, "aviso", "No se pudo consultar el catálogo: " + ((cat && cat.error) || "sin respuesta"), ""] };
+    } catch (e) {
+      return { ayuda, fila: [nombre, "aviso", "No se pudo consultar el catálogo: " + e.message, ""] };
+    }
+  }
+
+  // Consejo concreto según lo que dice el proveedor en su error (si se reconoce)
+  function ayudaProveedor(p) {
+    const t = `${p.mensaje_proveedor || ""} ${p.detalle || ""}`;
+    if (/ip address restriction|restricción por dirección IP/i.test(t))
+      return "La clave de Gemini está restringida por IP y Vercel usa IPs que cambian. Crea una clave nueva SIN restricción de IP (en Google AI Studio / Google Cloud → Credenciales: «Restricciones de aplicación: Ninguna» y, si quieres, «Restricción de API: solo Generative Language API»), ponla en GEMINI_API_KEY en Vercel y haz Redeploy.";
+    if (/referer|referrer|sitios web/i.test(t))
+      return "La clave de Gemini está limitada a ciertos sitios web y no sirve para el servidor. Crea una clave sin restricción de sitio web.";
+    if (/leaked|expuesto/i.test(t))
+      return "Google bloqueó la clave por haberse expuesto públicamente. Crea una nueva y ponla en Vercel.";
+    if (/has not been used in project|service_disabled|no está habilitada/i.test(t))
+      return "Falta habilitar la API de Gemini (Generative Language API) en el proyecto de Google de esa clave.";
+    if (/TypeError/i.test(t))
+      return "Error interno del servidor al llamar a este proveedor: pásale este texto a quien programa.";
+    return "";
+  }
+
+  function ayudaHTTP(codigo, esHTML) {
+    if (codigo === 404) return "El servidor responde, pero no encuentra /api: app.py no quedó en la raíz del repositorio o el despliegue no terminó.";
+    if (codigo === 401 || codigo === 403) return "Vercel está pidiendo iniciar sesión (protección del despliegue). Usa el link corto del proyecto, no el largo de un despliegue.";
+    if (codigo === 429) return "Demasiadas solicitudes desde tu conexión. Espera unos minutos.";
+    if (codigo >= 500) return "El servidor tuvo un error interno" + (esHTML ? " (Vercel devolvió una página de error)" : "") + ". Quien administra la beta debe mirar los Logs en Vercel a esta hora.";
+    return "Respuesta inesperada del servidor.";
+  }
+
+  function nombreNavegador() {
+    const ua = navigator.userAgent;
+    if (/Edg\//.test(ua)) return "Edge";
+    if (/OPR\//.test(ua)) return "Opera";
+    if (/Chrome\//.test(ua)) return "Chrome";
+    if (/Firefox\//.test(ua)) return "Firefox";
+    if (/Safari\//.test(ua)) return "Safari";
+    return "desconocido";
+  }
+
+  async function ejecutarDiagnostico() {
+    const resultados = [];
+    const agregar = (nombre, estado, detalle, ayuda) => resultados.push({ nombre, estado, detalle, ayuda: ayuda || "" });
+
+    // 1) Navegador
+    {
+      const nav = nombreNavegador();
+      const problemas = [], avisos = [];
+      if (!window.isSecureContext) problemas.push("la página no está en https (la cámara y el micrófono no funcionarán)");
+      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) problemas.push("este navegador no permite usar cámara/micrófono");
+      if (typeof WebAssembly === "undefined") avisos.push("sin WebAssembly (el análisis facial no funcionará)");
+      if (!(window.AudioContext || window.webkitAudioContext)) avisos.push("sin audio avanzado (no se medirá tu voz)");
+      if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) avisos.push("sin reconocimiento de voz (el botón Hablar no funcionará)");
+      if (!/Chrome|Edge/.test(nombreNavegador())) avisos.push("se recomienda Chrome o Edge");
+      const detalle = `${nav} · ${navigator.onLine ? "con internet" : "SIN internet"}`;
+      if (!navigator.onLine) problemas.push("el navegador indica que no tienes internet");
+      agregar("Tu navegador", problemas.length ? "mal" : avisos.length ? "aviso" : "ok",
+        detalle + (problemas.length || avisos.length ? " · " + [...problemas, ...avisos].join("; ") : ""),
+        problemas.length ? "Abre la página con el link https en Chrome o Edge y revisa tu conexión." : avisos.length ? "Usa Chrome o Edge en un computador para tener todas las funciones." : "");
+    }
+
+    // 2) Cámara y micrófono
+    {
+      try {
+        const disp = await navigator.mediaDevices.enumerateDevices();
+        const camaras = disp.filter((d) => d.kind === "videoinput").length;
+        const mics = disp.filter((d) => d.kind === "audioinput").length;
+        let permiso = "";
+        const estados = [];
+        if (navigator.permissions && navigator.permissions.query) {
+          for (const n of ["camera", "microphone"]) {
+            try { estados.push(`${n === "camera" ? "cámara" : "micrófono"}: ${(await navigator.permissions.query({ name: n })).state}`); } catch (e) { /* no soportado */ }
+          }
+        }
+        permiso = estados.length ? " · permisos → " + estados.join(", ") : "";
+        const bloqueado = estados.some((x) => x.endsWith("denied"));
+        const faltan = camaras === 0 || mics === 0;
+        agregar("Cámara y micrófono", bloqueado || faltan ? "mal" : "ok",
+          `${camaras} cámara(s), ${mics} micrófono(s)${permiso}`,
+          bloqueado ? "El permiso está bloqueado: haz clic en el candado junto a la dirección y permite cámara y micrófono."
+            : faltan ? "No se detecta una cámara o un micrófono: conéctalo y revisa que otra aplicación (Zoom, Meet) no lo esté usando." : "");
+      } catch (e) {
+        agregar("Cámara y micrófono", "aviso", "No se pudo revisar: " + e.message, "");
+      }
+    }
+
+    // 3) Servidor
+    let salud = null;
+    {
+      const t0 = performance.now();
+      try {
+        const r = await fetchConTiempo(`${URL_BACKEND}/salud`, {}, 15000);
+        const ms = Math.round(performance.now() - t0);
+        const tipo = r.headers.get("content-type") || "";
+        let datos = null;
+        try { datos = await r.json(); } catch (e) { /* no era JSON */ }
+        if (r.ok && datos && datos.estado === "ok") {
+          salud = datos;
+          const desajuste = String(datos.version) !== VERSION_APP;
+          agregar("Servidor (Vercel)", desajuste ? "aviso" : "ok",
+            `Responde en ${ms} ms · servidor v${datos.version} · página v${VERSION_APP} · región ${datos.region || "?"}`,
+            desajuste ? "La página y el servidor son de versiones distintas: sube y despliega todos los archivos, y recarga con Ctrl+F5." : "");
+        } else {
+          agregar("Servidor (Vercel)", "mal", `El servidor respondió con error HTTP ${r.status}`, ayudaHTTP(r.status, !/json/.test(tipo)));
+        }
+      } catch (e) {
+        const agotado = e.name === "AbortError";
+        agregar("Servidor (Vercel)", "mal", agotado ? "No respondió en 15 s" : "No se pudo establecer conexión con el servidor",
+          agotado ? "El servidor tardó demasiado: puede estar saturado o tu conexión es muy lenta."
+            : "Es tu internet, un firewall o proxy de tu red (por ejemplo, de una empresa), o el servidor está caído. Prueba desde otra red, como los datos del celular.");
+      }
+    }
+
+    // 4) Claves de la IA
+    if (salud) {
+      const provs = salud.proveedores || [];
+      const nombreProv = (x) => ({ gemini: "Gemini (Google)", anthropic: "Claude (Anthropic)", groq: "Groq", openrouter: "OpenRouter", nvidia: "NVIDIA" }[x] || x);
+      const claves = salud.claves || {};
+      const notas = [];
+      const prefijos = { GEMINI_API_KEY: ["Gemini", "AIza o AQ."], ANTHROPIC_API_KEY: ["Claude", "sk-ant-"], GROQ_API_KEY: ["Groq", "gsk_"], OPENROUTER_API_KEY: ["OpenRouter", "sk-or-"], NVIDIA_API_KEY: ["NVIDIA", "nvapi-"] };
+      Object.entries(prefijos).forEach(([k, [nombre, pref]]) => {
+        const c = claves[k];
+        if (!c || !c.configurada) return;
+        if (c.formato_esperado === false) notas.push(`la clave de ${nombre} no empieza con «${pref}» (¿copiaste otra cosa?)`);
+        if (c.tenia_espacios_o_comillas) notas.push(`la clave de ${nombre} tenía espacios, saltos de línea o comillas; el servidor ya la limpió`);
+      });
+      const textoNotas = notas.length ? " · " + notas.join("; ") : "";
+      const hayFormatoMalo = notas.some((n) => n.includes("no empieza"));
+      if (!salud.clave_configurada) {
+        agregar("Claves de la IA en el servidor", "mal", "No hay ninguna clave configurada",
+          "Quien administra debe agregar GEMINI_API_KEY (y, como respaldo, GROQ_API_KEY u OPENROUTER_API_KEY) en Vercel (Settings → Environment Variables) y volver a desplegar.");
+      } else if (provs.length === 1) {
+        agregar("Claves de la IA en el servidor", "aviso", `Solo hay un proveedor: ${nombreProv(provs[0])}${textoNotas}`,
+          "Si ese proveedor se cae, la beta se detiene. Se recomienda configurar al menos dos (por ejemplo GEMINI_API_KEY y GROQ_API_KEY) para que haya respaldo automático.");
+      } else {
+        agregar("Claves de la IA en el servidor", hayFormatoMalo ? "aviso" : "ok", `Proveedores en orden de uso: ${provs.map(nombreProv).join(" → ")}${textoNotas}`,
+          hayFormatoMalo ? "Vuelve a copiar la clave desde la consola del proveedor y pégala en Vercel sin espacios ni comillas." : "");
+      }
+    } else {
+      agregar("Claves de la IA en el servidor", "aviso", "No se pudo comprobar (el servidor no respondió)", "");
+    }
+
+    // 5) La IA responde
+    if (salud && salud.clave_configurada) {
+      try {
+        const t0 = performance.now();
+        const r = await fetchConTiempo(`${URL_BACKEND}/salud?probar_ia=1`, {}, 60000);
+        const datos = await r.json().catch(() => null);
+        const seg = ((performance.now() - t0) / 1000).toFixed(1);
+        if (r.ok && datos && datos.ia) {
+          const ia = datos.ia;
+          const provs = ia.proveedores || [];
+          const nombreProv = (x) => ({ gemini: "Gemini (Google)", anthropic: "Claude (Anthropic)", groq: "Groq", openrouter: "OpenRouter", nvidia: "NVIDIA" }[x] || x);
+          const lineas = provs.map((p) => p.estado === "ok"
+            ? `${nombreProv(p.proveedor)}: ✓ ${p.modelo} (${p.segundos} s)`
+            : `${nombreProv(p.proveedor)}: ✕ ${p.detalle || "error"}${p.codigo_proveedor ? ` [código ${p.codigo_proveedor}]` : ""}${p.mensaje_proveedor && !String(p.detalle || "").includes(String(p.mensaje_proveedor).replace(/^\w+: /, "").slice(0, 40)) ? ` · detalle técnico: «${String(p.mensaje_proveedor).slice(0, 220)}»` : ""}`);
+          const detalle = lineas.length ? lineas.join("  ·  ") : (ia.detalle || "Sin información");
+          if (ia.estado === "ok") {
+            agregar("La IA responde", "ok", detalle, "");
+          } else if (ia.estado === "degradado") {
+            const especificas = [...new Set(provs.filter((p) => p.estado !== "ok").map(ayudaProveedor).filter(Boolean))];
+            agregar("La IA responde", "aviso", detalle,
+              (especificas.length ? especificas.join(" ") + " " : "") +
+              "Mientras tanto la entrevista funciona con el proveedor de respaldo.");
+            if (provs.some((p) => p.proveedor === "gemini" && p.estado !== "ok" && p.codigo_proveedor === 404)) {
+              agregar(...(await catalogoGemini()).fila);
+            }
+          } else {
+            const malos = provs.filter((p) => p.estado !== "ok");
+            const hay = (c) => malos.some((p) => p.codigo_proveedor === c);
+            let ayuda;
+            let filaCatalogo = null;
+            const especificasE = [...new Set(malos.map(ayudaProveedor).filter(Boolean))];
+            if (!provs.length) {
+              ayuda = ia.detalle || "No hay proveedores de IA configurados.";
+            } else if (especificasE.length) {
+              ayuda = especificasE.join(" ");
+            } else if (malos.some((p) => p.proveedor === "gemini" && p.codigo_proveedor === 404)) {
+              const g = await catalogoGemini();
+              ayuda = g.ayuda;
+              filaCatalogo = g.fila;
+            } else if (malos.some((p) => p.proveedor === "nvidia" && p.codigo_proveedor === 404)) {
+              // NVIDIA no encuentra el modelo: consultamos su catálogo para decir qué hacer
+              ayuda = "El modelo de NVIDIA no está disponible para tu clave (lo retiró NVIDIA, o tu cuenta no tiene acceso).";
+              try {
+                const r2 = await fetchConTiempo(`${URL_BACKEND}/salud?modelos=glm`, {}, 30000);
+                const d2 = await r2.json().catch(() => null);
+                const cat = d2 && d2.catalogo;
+                if (cat && !cat.error) {
+                  const conf = cat.configurados_en_catalogo || {};
+                  const figuran = Object.keys(conf).filter((m) => conf[m]);
+                  const noFiguran = Object.keys(conf).filter((m) => !conf[m]);
+                  const estadoConf = Object.entries(conf).map(([m, v]) => `${m}: ${v ? "figura en el catálogo" : "NO figura"}`).join(" · ");
+                  const lista = (cat.coincidencias || []).slice(0, 12).join(", ") || "ninguno";
+                  ayuda = figuran.length === 0
+                    ? "Ninguno de los modelos de NVIDIA configurados figura ya en el catálogo: en Vercel cambia MODELO_IA (y, si quieres, MODELOS_RESPALDO) por uno de la lista de abajo y haz Redeploy."
+                    : `Estos modelos figuran en el catálogo pero tu clave recibe 404: ${figuran.join(", ")}. Revisa tu cuenta en build.nvidia.com (puede pedir verificación) o genera una clave nueva.`
+                      + (noFiguran.length ? ` Ya no figuran (quítalos de MODELO_IA / MODELOS_RESPALDO): ${noFiguran.join(", ")}.` : "");
+                  filaCatalogo = ["Modelos GLM en el catálogo de NVIDIA", "aviso", `${estadoConf} · Disponibles ahora: ${lista}`, "Elige uno con «Free Endpoint» en build.nvidia.com/models. El nombre se escribe tal cual aparece aquí."];
+                } else {
+                  filaCatalogo = ["Modelos GLM en el catálogo de NVIDIA", "aviso", "No se pudo consultar el catálogo: " + ((cat && cat.error) || "sin respuesta"), ""];
+                }
+              } catch (e2) {
+                filaCatalogo = ["Modelos GLM en el catálogo de NVIDIA", "aviso", "No se pudo consultar el catálogo: " + e2.message, ""];
+              }
+            } else if (hay(429)) {
+              ayuda = "El proveedor de IA está limitando las solicitudes (por uso alto o límite del plan). Suele pasar solo en uno o dos minutos.";
+            } else if ([401, 402, 403].some(hay) || malos.some((p) => /saldo|crédito|credencial/i.test(p.detalle || ""))) {
+              ayuda = "Problema de clave o de saldo en un proveedor de IA: quien administra debe revisar la clave y la cuota (Gemini: Google AI Studio; Claude: consola de Anthropic; NVIDIA: build.nvidia.com).";
+            } else {
+              ayuda = "Ningún proveedor de IA respondió. Suele ser temporal; si se repite, revisar los Logs en Vercel.";
+            }
+            agregar("La IA responde", "mal", detalle, ayuda);
+            if (filaCatalogo) agregar(...filaCatalogo);
+          }
+        } else {
+          agregar("La IA responde", "mal", `El servidor respondió con error HTTP ${r.status}`,
+            r.status === 429 ? "Hiciste demasiadas pruebas seguidas: espera unos minutos." : ayudaHTTP(r.status, false));
+        }
+      } catch (e) {
+        agregar("La IA responde", "mal", e.name === "AbortError" ? "No respondió en 60 s" : "Falló la comprobación: " + e.message,
+          "La IA o el servidor tardaron demasiado. Puede ser una caída temporal del proveedor de IA.");
+      }
+    } else {
+      agregar("La IA responde", "aviso", "No se pudo comprobar", "Primero hay que resolver el servidor o la clave.");
+    }
+
+    // 6) Servicios externos del análisis facial
+    {
+      const destinos = [
+        ["jsDelivr (motor facial)", `${MP_BASE}/package.json`],
+        ["Google (modelo facial)", MP_MODELO],
+        ["Modelos de respaldo", `${MODELOS_URL}/tiny_face_detector_model-weights_manifest.json`],
+      ];
+      const caidos = [];
+      await Promise.all(destinos.map(async ([nombre, url]) => {
+        try { await fetchConTiempo(url, { method: "HEAD", mode: "no-cors" }, 12000); }
+        catch (e) { caidos.push(nombre); }
+      }));
+      agregar("Servicios del análisis facial", caidos.length ? "aviso" : "ok",
+        caidos.length ? "No se pudo llegar a: " + caidos.join(", ") : "jsDelivr y Google accesibles",
+        caidos.length ? "Tu red parece bloquear estos servicios (firewall, proxy o extensión). La entrevista funciona, pero sin análisis de tu expresión facial." : "");
+    }
+
+    // 7) Análisis facial en esta sesión
+    {
+      const camaraActiva = document.body.classList.contains("con-camara");
+      if (typeof faceLandmarker !== "undefined" && faceLandmarker) agregar("Análisis facial en esta sesión", "ok", "Motor de alta precisión activo", "");
+      else if (!camaraActiva) agregar("Análisis facial en esta sesión", "aviso", "La cámara aún no se activó", "Completa el paso 1 (Comprobación) para activarla.");
+      else agregar("Análisis facial en esta sesión", "aviso", "El motor de alta precisión no está activo (se usa el respaldo o no cargó)", "Revisa la fila anterior y recarga la página.");
+    }
+    return resultados;
+  }
+
+  function pintarDiagnostico(resultados) {
+    diagLista.textContent = "";
+    const marca = { ok: "✓", aviso: "!", mal: "✕", cargando: "…" };
+    resultados.forEach((r) => {
+      const fila = document.createElement("div");
+      fila.className = "diag-fila " + r.estado;
+      const ic = document.createElement("div");
+      ic.className = "diag-icono";
+      ic.textContent = marca[r.estado] || "?";
+      const cont = document.createElement("div");
+      const n = document.createElement("div"); n.className = "nombre"; n.textContent = r.nombre;
+      const d = document.createElement("div"); d.className = "detalle"; d.textContent = r.detalle;
+      cont.appendChild(n); cont.appendChild(d);
+      if (r.ayuda) { const a = document.createElement("div"); a.className = "ayuda"; a.textContent = "→ " + r.ayuda; cont.appendChild(a); }
+      fila.appendChild(ic); fila.appendChild(cont);
+      diagLista.appendChild(fila);
+    });
+    const malos = resultados.filter((r) => r.estado === "mal");
+    const avisos = resultados.filter((r) => r.estado === "aviso");
+    diagResumen.className = "diag-resumen " + (malos.length ? "mal" : avisos.length ? "aviso" : "ok");
+    if (malos.length) {
+      const causa = malos[0]; // el primero que falla en el orden de dependencia es la causa más probable
+      diagResumen.textContent = `Se encontró ${malos.length} problema(s). Causa más probable: ${causa.nombre}. ${causa.ayuda}`;
+    } else if (avisos.length) {
+      diagResumen.textContent = `Todo lo esencial funciona, con ${avisos.length} aviso(s) para revisar.`;
+    } else {
+      diagResumen.textContent = "Todo en orden: navegador, servidor, IA y servicios responden bien. Si algo falló antes, fue pasajero: vuelve a intentarlo.";
+    }
+
+    const sesion = (typeof historial !== "undefined") ? `pregunta ${numPregunta}/${MAX_PREGUNTAS}, ${historial.length} mensajes` : "sin datos";
+    diagTexto = [
+      `VoxReady · diagnóstico · ${new Date().toISOString()}`,
+      `Página v${VERSION_APP} · ${location.origin}${location.pathname}`,
+      `Navegador: ${navigator.userAgent}`,
+      `Zona horaria: ${Intl.DateTimeFormat().resolvedOptions().timeZone} · Sesión: ${sesion}`,
+      "",
+      ...resultados.map((r) => `[${r.estado.toUpperCase()}] ${r.nombre}: ${r.detalle}${r.ayuda ? " → " + r.ayuda : ""}`),
+      "",
+      diagResumen.textContent,
+    ].join("\n");
+  }
+
+  async function correrDiagnostico() {
+    if (diagEjecutando) return;
+    diagEjecutando = true;
+    diagResumen.className = "diag-resumen";
+    diagResumen.textContent = "Ejecutando comprobaciones... (puede tardar hasta un minuto si algo no responde)";
+    diagLista.textContent = "";
+    document.getElementById("diag-repetir").disabled = true;
+    try { pintarDiagnostico(await ejecutarDiagnostico()); }
+    catch (e) { diagResumen.className = "diag-resumen mal"; diagResumen.textContent = "El diagnóstico falló: " + e.message; }
+    finally { diagEjecutando = false; document.getElementById("diag-repetir").disabled = false; }
+  }
+
+  function abrirDiagnostico() {
+    modalDiag.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    document.getElementById("diag-cerrar").focus();
+    correrDiagnostico();
+  }
+  function cerrarDiagnostico() {
+    modalDiag.style.display = "none";
+    document.body.style.overflow = "";
+  }
+  document.getElementById("boton-diagnostico").addEventListener("click", abrirDiagnostico);
+  document.getElementById("diag-cerrar").addEventListener("click", cerrarDiagnostico);
+  document.getElementById("diag-repetir").addEventListener("click", correrDiagnostico);
+  document.getElementById("diag-copiar").addEventListener("click", async () => {
+    const boton = document.getElementById("diag-copiar");
+    const original = "Copiar resultado";
+    try {
+      await navigator.clipboard.writeText(diagTexto);
+      boton.textContent = "¡Copiado!";
+    } catch (e) {
+      const ta = document.createElement("textarea");
+      ta.value = diagTexto; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); boton.textContent = "¡Copiado!"; } catch (e2) { boton.textContent = "No se pudo copiar"; }
+      ta.remove();
+    }
+    setTimeout(() => { boton.textContent = original; }, 1800);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (modalDiag.style.display !== "flex") return;
+    if (e.key === "Escape") cerrarDiagnostico();
+    if (e.key === "Tab") { // el foco se queda dentro de la ventana
+      const f = [...modalDiag.querySelectorAll("button:not(:disabled)")];
+      if (!f.length) return;
+      const i = f.indexOf(document.activeElement);
+      e.preventDefault();
+      f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+    }
+  });
+</script>
+
+</body>
+</html>
