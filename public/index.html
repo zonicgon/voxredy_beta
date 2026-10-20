@@ -49,6 +49,24 @@
   .enlace-beta { background: transparent; color: #C9D6E3; border: 1px solid rgba(255,255,255,0.35); padding: 6px 14px; font-size: 13px; border-radius: 999px; }
   .enlace-beta:hover:not(:disabled) { background: rgba(255,255,255,0.12); opacity: 1; }
 
+  /* ---------- Indicador discreto de las IAs trabajando ---------- */
+  #ia-estado { display: none; align-items: center; gap: 12px; font-size: 12px; color: #C9D6E3; padding: 5px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); }
+  #ia-estado .ia-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .ia-punto { width: 8px; height: 8px; border-radius: 50%; background: #6E8398; display: inline-block; }
+  .ia-punto.on { background: #3DDC84; }
+  .ia-punto.warn { background: #F5B041; }
+  .ia-punto.work { background: var(--orange); animation: iaPulso 1s ease-in-out infinite; }
+  @keyframes iaPulso { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
+  @media (prefers-reduced-motion: reduce) { .ia-punto.work { animation: none; } }
+
+  /* ---------- Calibración ---------- */
+  #seccion-calibracion { display: none; }
+  .calib-lentes { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 0 0 14px 0; }
+  .calib-instruccion { background: var(--navy); color: white; padding: 18px 20px; border-radius: 12px; font-size: 18px; line-height: 1.5; min-height: 72px; }
+  .calib-instruccion small { display: block; color: #C9D6E3; font-size: 13px; margin-bottom: 4px; }
+  .calib-pista { height: 8px; background: #E5E7EB; border-radius: 999px; overflow: hidden; margin-top: 12px; }
+  .calib-relleno { height: 100%; width: 0; background: var(--orange); transition: width 0.2s linear; }
+
   /* ---------- Ventana de bienvenida (beta) ---------- */
   #modal-beta, #modal-diagnostico {
     display: none; position: fixed; inset: 0; z-index: 1000;
@@ -293,8 +311,14 @@
 <body>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v34</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v35</span></div>
   <div class="derecha">
+    <div id="ia-estado" title="Estado de las IAs durante la sesión">
+      <span class="ia-item" id="ia-entrevistador" title="IA entrevistadora"><i class="ia-punto"></i>Entrevistador</span>
+      <span class="ia-item" id="ia-voz" title="Análisis de voz (en tu navegador)"><i class="ia-punto"></i>Voz</span>
+      <span class="ia-item" id="ia-cara" title="Análisis de expresión facial (en tu navegador)"><i class="ia-punto"></i>Cara</span>
+    </div>
+    <button type="button" class="enlace-beta" id="boton-reiniciar" style="display:none;">↺ Reiniciar entrevista</button>
     <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
     <button type="button" class="enlace-beta" id="boton-diagnostico">🩺 Diagnóstico</button>
     <div class="pasos" id="pasos">
@@ -333,56 +357,30 @@
     <div class="modal-cab">
       <span class="etiqueta-beta">VERSIÓN BETA</span>
       <h2 id="modal-beta-titulo">Bienvenido a VoxReady</h2>
-      <p>Entrenamiento de vocería en situaciones de crisis, con inteligencia artificial.</p>
+      <p>Simulador de entrevistas de prensa en crisis, con inteligencia artificial.</p>
     </div>
 
     <div class="modal-cuerpo">
       <div class="modal-bloque">
-        <h3>¿Qué es esto?</h3>
-        <p>VoxReady es un simulador para practicar entrevistas de prensa cuando una organización enfrenta una crisis. Esta es una <b>beta</b>: está en etapa de pruebas y todavía la estamos afinando contigo.</p>
+        <h3>Para qué sirve esta beta</h3>
+        <p>Probar si entrenar con IA es útil y justo, y encontrar fallas técnicas antes del lanzamiento. Tu opinión es parte de la prueba.</p>
       </div>
 
       <div class="modal-bloque">
-        <h3>La situación que vas a enfrentar</h3>
+        <h3>Tu rol</h3>
         <div class="modal-situacion">
-          <p>Eres el <b>vocero de una empresa</b>. Hubo un <b>derrame químico que afectó el agua de tres comunidades</b>.</p>
-          <p>Un <b>periodista exigente</b> te entrevistará: hace una pregunta a la vez, repregunta sobre lo que digas y presiona si evades. Serán <b><span id="beta-num-preguntas">5</span> preguntas</b>, y puedes responder hablando o escribiendo.</p>
+          <p>Eres el <b>vocero de una empresa</b> tras un <b>derrame químico</b> que afectó el agua de tres comunidades. Un <b>periodista IA</b> te hará <b><span id="beta-num-preguntas">5</span> preguntas</b> y repreguntará si evades. Puedes hablar o escribir.</p>
         </div>
       </div>
 
       <div class="modal-bloque">
-        <h3>Qué evaluaremos al terminar</h3>
+        <h3>Qué se evalúa</h3>
         <div class="modal-evalua">
-          <div><b>Contenido</b>Claridad, transparencia, manejo de la presión y responsabilidad al responder.</div>
-          <div><b>Voz</b>Tono, ritmo, pausas y volumen. Solo se evalúa si respondes hablando.</div>
-          <div><b>Expresión facial</b>Serenidad, empatía y presencia frente a la cámara.</div>
+          <div><b>Contenido</b>Claridad, transparencia y manejo de la presión.</div>
+          <div><b>Voz</b>Tono, ritmo, pausas y volumen (si hablas).</div>
+          <div><b>Expresión</b>Serenidad y presencia ante la cámara.</div>
         </div>
-        <p style="margin-top:10px;">Todo se une en un <b>informe de coach</b> con una nota global, cuatro áreas (Expresión, Tono de voz, Coherencia y Empatía) y la recomendación más importante para mejorar.</p>
-      </div>
-
-      <div class="modal-bloque">
-        <h3>Para qué es esta beta</h3>
-        <ul>
-          <li>Probar qué tan útil y justo resulta entrenar con IA.</li>
-          <li>Medir qué tan bien funciona la IA en sus dos roles: <b>entrevistador</b> y <b>evaluador</b>.</li>
-          <li>Detectar fallas técnicas (cámara, micrófono, navegador).</li>
-        </ul>
-        <p style="margin-top:8px;">Las notas son <b>estimaciones automáticas</b>, no un diagnóstico, y pueden tener errores. Si algo te parece raro o injusto, cuéntalo: es justo lo que queremos descubrir.</p>
-      </div>
-
-      <div class="modal-bloque">
-        <h3>Tu privacidad</h3>
-        <p>Tu video y tu audio se procesan en tu navegador y <b>no se guardan</b>. A la IA solo se envía el texto de tus respuestas y métricas numéricas de tu voz y tu expresión. Si usas el botón de hablar, el reconocimiento de voz de Chrome o Edge envía tu audio al servicio de voz del navegador para transcribirlo.</p>
-      </div>
-
-      <div class="modal-bloque">
-        <h3>Antes de empezar</h3>
-        <ul>
-          <li>Usa <b>Chrome o Edge</b> en un computador, con cámara y micrófono.</li>
-          <li>Busca un lugar silencioso y con buena luz sobre tu cara.</li>
-          <li>Para que se evalúe tu voz, responde con el botón <b>🎤 Hablar</b>.</li>
-          <li>Mira a la cámara y responde como lo harías frente a un periodista real.</li>
-        </ul>
+        <p style="margin-top:10px;">Las notas son <b>estimaciones automáticas</b> y pueden tener errores. Tu video y audio se procesan en tu navegador y <b>no se guardan</b>.</p>
       </div>
     </div>
 
@@ -433,6 +431,19 @@
         <p class="estado" id="mensaje-estado">Marca la casilla para habilitar el botón.</p>
       </div>
 
+      <div id="seccion-calibracion">
+        <h1>Calibración rápida</h1>
+        <p class="subtitulo">Unos 30 segundos para que la IA aprenda cómo es <b>tu</b> cara y <b>tu</b> voz y mida con más precisión. No tienes que actuar emociones: son movimientos simples.</p>
+        <label class="calib-lentes"><input type="checkbox" id="check-lentes" /> Uso lentes (ajusta la lectura de los ojos)</label>
+        <div class="calib-instruccion" id="calib-instruccion">Mira a la cámara, con buena luz de frente. Presiona <b>Comenzar calibración</b> cuando estés listo.</div>
+        <div class="calib-pista"><div class="calib-relleno" id="calib-relleno"></div></div>
+        <div class="fila-botones">
+          <button id="boton-calibrar" type="button" disabled>Cargando modelo de cara...</button>
+          <button id="boton-omitir-calibracion" type="button" style="background: var(--navy);">Omitir</button>
+        </div>
+        <p class="estado" id="calib-estado"></p>
+      </div>
+
       <div id="seccion-entrevista">
         <h2>Entrevista de práctica</h2>
         <div id="pregunta-actual">Presiona "Comenzar entrevista" para empezar.</div>
@@ -453,7 +464,10 @@
   <section id="panel-resultados">
     <div class="cabecera-resultados">
       <h2>Tu evaluación</h2>
-      <button id="boton-pdf" type="button" style="display:none; background: var(--navy);">Descargar informes como PDF</button>
+      <div class="fila-botones" style="margin:0;">
+        <button id="boton-nueva" type="button" style="background: var(--navy);">↺ Hacer otra entrevista</button>
+        <button id="boton-pdf" type="button" style="display:none; background: var(--navy);">Descargar informes como PDF</button>
+      </div>
     </div>
     <div id="resumen-general"></div>
     <h3 class="subtitulo-detalle" id="titulo-detalle" style="display:none;">Detalle por evaluación</h3>
@@ -497,6 +511,13 @@
   let historial = [];
   let numPregunta = 0;
   const MAX_PREGUNTAS = 5; // debe coincidir con lo que usábamos en entrevista.py
+
+  // Estado de la sesión (para el botón de reinicio y el indicador de IAs)
+  let idSesion = 0;               // sube con cada reinicio: las respuestas "viejas" que llegan tarde se descartan
+  let iaPensando = false;         // el entrevistador está generando una pregunta
+  let iaEvaluando = false;        // los jueces están generando los informes
+  let entrevistaActiva = false;   // entre "Comenzar entrevista" y el fin de las preguntas
+  let calibracionPendiente = false; // la pantalla de calibración está abierta (o corriendo)
 
   // Para la grabación de audio real (para el análisis de voz más adelante).
   let flujoMedios = null;       // el stream de cámara/mic ya autorizado
@@ -559,8 +580,12 @@
       botonSolicitar.disabled = true;
 
       // Ya comprobamos cámara/mic: mostramos la sección de la entrevista.
-      seccionEntrevista.style.display = "block";
-      setPaso(2);
+      // Primero la calibración (se puede omitir) y luego la entrevista
+      calibracionPendiente = true;
+      document.getElementById("seccion-calibracion").style.display = "block";
+      document.getElementById("ia-estado").style.display = "flex";
+      document.getElementById("boton-reiniciar").style.display = "inline-block";
+      setPaso(1);
 
       // Guardamos el flujo para poder grabar el audio real más adelante.
       flujoMedios = flujo;
@@ -675,6 +700,8 @@
       : "Hubo un problema pasajero, reintentando...";
     botonResponder.disabled = true; // evita mandar dos respuestas mientras la IA piensa
     const carga = iniciarCarga(barraCarga, "pregunta", FASES_PREGUNTA, 6);
+    const sid = idSesion;
+    iaPensando = true;
 
     let problema = "";
     let pasajero = false;
@@ -687,7 +714,10 @@
       let datos = {};
       try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON (por ejemplo, una página de error) */ }
 
+      if (sid !== idSesion) { carga.terminar(false); return false; } // la persona reinició mientras tanto
+
       if (respuesta.ok && datos.pregunta) {
+        iaPensando = false;
         carga.terminar(true);
         botonResponder.disabled = false;
         iniciarVentanaVoz(); // a partir de aquí medimos tu voz, hasta que envíes la respuesta
@@ -706,7 +736,9 @@
       console.error(error);
     }
 
+    iaPensando = false;
     carga.terminar(false);
+    if (sid !== idSesion) return false;
     if (pasajero && intento < 2) {
       await esperar(3000);
       return pedirPreguntaAlBackend(intento + 1);
@@ -768,6 +800,19 @@
   function iniciarVentanaVoz() { vozVentana++; vozUltimo = performance.now(); vozMidiendo = true; }
   function detenerVentanaVoz() { vozMidiendo = false; }
 
+  // Apaga el análisis de voz sin evaluar nada (se usa al reiniciar)
+  function detenerAnalisisVoz() {
+    if (vozTimer) { clearInterval(vozTimer); vozTimer = null; }
+    vozMidiendo = false;
+    if (vozCtx) { try { vozCtx.close(); } catch (e) { /* nada */ } vozCtx = null; }
+    vozAnalizador = null;
+    vozMuestras = [];
+    vozVentana = 0;
+  }
+
+  // Calibración de voz (se llena en la pantalla de calibración): cómo suena ESTA persona normalmente
+  let calVoz = null; // {tono_base, volumen_base, piso_ruido}
+
   // Tono por autocorrelación normalizada (rango de voz humana: 70 a 400 Hz)
   function estimarTono(buf, sr) {
     const minLag = Math.floor(sr / 400), maxLag = Math.floor(sr / 70);
@@ -818,7 +863,10 @@
     const ordenados = vozMuestras.map((x) => x.rms).sort((a, b) => a - b);
     const pisoRuido = ordenados[Math.floor(ordenados.length * 0.1)] || 0;
     // Voz = al menos 30 dB sobre el máximo (como antes), 3 veces el ruido de fondo, y un mínimo absoluto bajo
-    const umbral = Math.max(maximo * Math.pow(10, -30 / 20), pisoRuido * 3, 0.003);
+    // Con calibración: el umbral sale de TU ruido de fondo y TU volumen normal (más preciso que adivinarlo)
+    const umbral = calVoz
+      ? Math.max(calVoz.piso_ruido * 2.5, calVoz.volumen_base * 0.1, 0.003)
+      : Math.max(maximo * Math.pow(10, -30 / 20), pisoRuido * 3, 0.003);
     const porVentana = {};
     vozMuestras.forEach((x) => { (porVentana[x.v] = porVentana[x.v] || []).push(x); });
 
@@ -866,7 +914,10 @@
     if (tonos.length >= 4) {
       const orden = [...tonos].sort((a, b) => a - b);
       const mediana = orden[Math.floor(orden.length / 2)];
-      const limpios = tonos.filter((t) => t > mediana * 0.6 && t < mediana * 1.6);
+      // Con calibración, la referencia es tu tono normal medido antes; sin ella, la mediana de la sesión
+      const ref = calVoz && calVoz.tono_base > 0 ? calVoz.tono_base : mediana;
+      let limpios = tonos.filter((t) => t > ref * 0.6 && t < ref * 1.6);
+      if (limpios.length < 4) limpios = tonos.filter((t) => t > mediana * 0.6 && t < mediana * 1.6);
       tonoMedio = media(limpios);
       tonoVar = desv(limpios);
     }
@@ -884,6 +935,8 @@
         respuestas_con_voz: respuestasConVoz,
         habla_total_segundos: Math.round(hablado * 10) / 10,
         fiabilidad_muestra: fiabilidad,
+        ...(calVoz && calVoz.tono_base > 0 ? { tono_referencia_hz: calVoz.tono_base } : {}),
+        ...(calVoz ? { volumen_referencia: calVoz.volumen_base } : {}),
       },
     };
   }
@@ -893,6 +946,7 @@
   let datosCara = null;
 
   async function finalizarEntrevista() {
+    entrevistaActiva = false;
     botonHablar.style.display = "none";
     botonResponder.style.display = "none";
     campoRespuesta.style.display = "none";
@@ -909,6 +963,7 @@
     botonResponder.style.display = "inline-block"; // por si prefiere escribir en vez de hablar
     historial = [{ role: "user", content: "Estoy listo para empezar." }];
     numPregunta = 0;
+    entrevistaActiva = true;
 
     iniciarAnalisisVoz();    // mide tu voz EN EL NAVEGADOR (no se sube ningún audio)
     iniciarGrabacionCara();  // registra la expresión facial durante la entrevista
@@ -1006,6 +1061,9 @@
   const UMBRAL_NEUTRAL = 0.30;     // bajo esto, se considera cara neutra
 
   let faceLandmarker = null;
+  let mediaPipeFallo = false;
+  let rostroVisible = false;   // lo usa el indicador de la barra superior
+  let calibActiva = null;      // {alimentar(crudo, pts)}: recibe los cuadros mientras se captura un paso de la calibración
   let baselineCara = null;
   let acumuladoBase = {};
   let framesBase = 0;
@@ -1022,13 +1080,23 @@
   const prom = (b, ...n) => n.reduce((s, k) => s + (b[k] || 0), 0) / n.length;
   const tope = (x) => Math.max(0, Math.min(1, x));
 
+  // Calibración de la cara (se llena en la pantalla de calibración; sin ella todo vale 1 = sin ajuste)
+  const calCara = {
+    hecha: false, usaLentes: false, ojosFiables: true,
+    gSonrisa: 1, gCejas: 1,          // cuánto amplificar tu sonrisa / tus cejas (según tu rango real)
+    cierreParpadeo: 0.5, aperturaParpadeo: 0.3, // umbrales de parpadeo propios
+  };
+  // Con lentes (o si los ojos no se leen bien) se les da menos peso a los gestos que dependen de los ojos
+  const pesoOjos = () => (!calCara.ojosFiables ? 0.3 : calCara.usaLentes ? 0.6 : 1);
+
   // b = cuánto se movió cada músculo respecto a tu cara neutra (0 a 1)
   function calcularEmociones(b) {
+    const po = pesoOjos(), gs = calCara.gSonrisa, gc = calCara.gCejas;
     return {
-      feliz: tope(prom(b, "mouthSmileLeft", "mouthSmileRight") * 1.8 + prom(b, "cheekSquintLeft", "cheekSquintRight") * 0.5),
+      feliz: tope(prom(b, "mouthSmileLeft", "mouthSmileRight") * 1.8 * gs + prom(b, "cheekSquintLeft", "cheekSquintRight") * 0.5 * po),
       triste: tope(
         prom(b, "mouthFrownLeft", "mouthFrownRight") * 2.4 +
-        (b.browInnerUp || 0) * 1.7 +
+        (b.browInnerUp || 0) * 1.7 * gc +
         (b.mouthShrugLower || 0) * 0.8 +
         prom(b, "mouthPressLeft", "mouthPressRight") * 0.4 +
         (b.mouthRollLower || 0) * 0.4
@@ -1036,17 +1104,17 @@
       enojo: tope(
         prom(b, "browDownLeft", "browDownRight") * 1.7 +
         prom(b, "noseSneerLeft", "noseSneerRight") * 1.0 +
-        prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.8 +
+        prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.8 * po +
         prom(b, "mouthPressLeft", "mouthPressRight") * 0.8
       ),
       sorpresa: tope(
-        prom(b, "eyeWideLeft", "eyeWideRight") * 1.5 +
-        prom(b, "browOuterUpLeft", "browOuterUpRight") * 1.2 +
+        prom(b, "eyeWideLeft", "eyeWideRight") * 1.5 * po +
+        prom(b, "browOuterUpLeft", "browOuterUpRight") * 1.2 * gc +
         (b.jawOpen || 0) * 1.3
       ),
       miedo: tope(
-        prom(b, "eyeWideLeft", "eyeWideRight") * 1.0 +
-        (b.browInnerUp || 0) * 1.0 +
+        prom(b, "eyeWideLeft", "eyeWideRight") * 1.0 * po +
+        (b.browInnerUp || 0) * 1.0 * gc +
         prom(b, "mouthStretchLeft", "mouthStretchRight") * 1.6
       ),
       asco: tope(
@@ -1088,8 +1156,8 @@
 
   function contarParpadeo(crudo) {
     const v = prom(crudo, "eyeBlinkLeft", "eyeBlinkRight");
-    if (!ojosCerrados && v > 0.5) { ojosCerrados = true; parpadeosCara++; }
-    else if (ojosCerrados && v < 0.3) { ojosCerrados = false; }
+    if (!ojosCerrados && v > calCara.cierreParpadeo) { ojosCerrados = true; parpadeosCara++; }
+    else if (ojosCerrados && v < calCara.aperturaParpadeo) { ojosCerrados = false; }
   }
 
   function registrarMuestra(emo, delta, pts) {
@@ -1146,6 +1214,7 @@
       frames_totales: framesTotalesCara,
       frames_con_rostro: framesConRostroCara,
       duracion_segundos: (performance.now() - inicioCara) / 1000,
+      calibracion: { calibrada: calCara.hecha, usa_lentes: calCara.usaLentes, ojos_fiables: calCara.ojosFiables },
     };
   }
 
@@ -1314,6 +1383,7 @@
     if (ESTADO_FINAL.generando) return;
     if (!Object.keys(informesCrudos).length) { cont.style.display = "none"; return; }
     ESTADO_FINAL.generando = true;
+    const sid = idSesion;
 
     cont.textContent = "";
     cont.style.display = "block";
@@ -1336,10 +1406,12 @@
       });
       let datos = {};
       try { datos = await respuesta.json(); } catch (e) { /* sin JSON */ }
+      if (sid !== idSesion) return;
       if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
       ok = true;
       renderizarInformeFinal(cont, datos);
     } catch (error) {
+      if (sid !== idSesion) return;
       cuerpo.textContent = "";
       const p = document.createElement("p");
       p.className = "estado error";
@@ -1376,6 +1448,7 @@
 
   // tarea = {titulo, corto, url, cuerpo, clavePuntaje, clave, esperado, fases}
   async function ejecutarTarea(tarea, seccion) {
+    const sid = idSesion;
     seccion.cuerpo.textContent = "";
     const carga = iniciarCarga(seccion.barra, tarea.clave, tarea.fases, tarea.esperado);
     let ok = false;
@@ -1387,11 +1460,13 @@
       });
       let datos = {};
       try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON */ }
+      if (sid !== idSesion) return; // se reinició mientras tanto
       if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
       ok = true;
       renderizarInforme(seccion.cuerpo, tarea.titulo, datos, tarea.clavePuntaje);
       informesCrudos[tarea.fuente] = datos;
     } catch (error) {
+      if (sid !== idSesion) return;
       const p = document.createElement("p");
       p.textContent = `No se pudo generar "${tarea.titulo}": ${error.message}`;
       const reintentar = document.createElement("button");
@@ -1407,6 +1482,8 @@
   }
 
   botonEvaluar.addEventListener("click", async () => {
+    const sid = idSesion;
+    iaEvaluando = true;
     botonEvaluar.style.display = "none";
     contenedorInformes.textContent = "";
     contenedorInformes.style.display = "block";
@@ -1456,7 +1533,10 @@
       contenedorInformes.appendChild(aviso);
     }
     await Promise.allSettled(tareas.map((t, i) => ejecutarTarea(t, secciones[i])));
+    if (sid !== idSesion) return;
     await generarInformeFinal();
+    if (sid !== idSesion) return;
+    iaEvaluando = false;
     document.getElementById("boton-pdf").style.display = "inline-block";
   });
 
@@ -1491,6 +1571,7 @@
     canvasCaras.width = videoVista.videoWidth;
     canvasCaras.height = videoVista.videoHeight;
     botonRecalibrar.style.display = "inline-block";
+    habilitarCalibracion();
     console.log("MediaPipe listo. Motor de alta precisión activo.");
     bucleMediaPipe();
   }
@@ -1523,8 +1604,14 @@
           res.faceBlendshapes[0].categories.forEach((c) => (crudo[c.categoryName] = c.score));
           if (grabandoCara) { framesConRostroCara++; contarParpadeo(crudo); }
 
-          // 3) Calibración: aprendemos tu cara neutra en los primeros cuadros
-          if (!baselineCara) {
+          rostroVisible = true;
+
+          // 3) Calibración: si la pantalla de calibración está abierta, ella manda; si no,
+          //    aprendemos tu cara neutra en los primeros cuadros
+          if (calibracionPendiente) {
+            if (calibActiva) calibActiva.alimentar(crudo, pts);
+            else { estadoFacial.textContent = "Rostro detectado. Listo para calibrar."; estadoFacial.className = "estado ok"; }
+          } else if (!baselineCara) {
             for (const k in crudo) acumuladoBase[k] = (acumuladoBase[k] || 0) + crudo[k];
             const pose0 = calcularPose(pts);
             acumPose.yaw += pose0.yaw; acumPose.pitch += pose0.pitch;
@@ -1562,6 +1649,7 @@
             estadoFacial.className = "estado ok";
           }
         } else {
+          rostroVisible = false;
           estadoFacial.textContent = "No se detecta tu rostro. Mira a la cámara con buena luz de frente.";
           estadoFacial.className = "estado";
         }
@@ -1593,6 +1681,8 @@
       return;
     } catch (e) {
       console.warn("MediaPipe no disponible, usando face-api.js como respaldo:", e);
+      mediaPipeFallo = true;
+      habilitarCalibracion(); // sin motor de cara, la calibración será solo de voz
     }
 
     try {
@@ -1712,8 +1802,383 @@
     requestAnimationFrame(detectarCaraEnBucle);
   }
 
+  // ================================================================
+  // Calibración guiada de CARA y VOZ (≈ 30 s, se puede omitir)
+  // Mide cómo es ESTA persona para interpretar mejor lo que se vea y se oiga:
+  //  · cara neutra (línea base), rango real de sonrisa y de cejas, y umbral propio de parpadeo
+  //    (con lentes o reflejos, los ojos se leen peor: se detecta y se les da menos peso)
+  //  · voz: ruido de fondo, volumen normal y tono normal
+  // No se pide actuar emociones, solo movimientos simples. Nada se guarda ni se sube.
+  // ================================================================
+  const seccionCalibracion = document.getElementById("seccion-calibracion");
+  const botonCalibrar = document.getElementById("boton-calibrar");
+  const botonOmitirCal = document.getElementById("boton-omitir-calibracion");
+  const calInstruccion = document.getElementById("calib-instruccion");
+  const calRelleno = document.getElementById("calib-relleno");
+  const calEstado = document.getElementById("calib-estado");
+  const checkLentes = document.getElementById("check-lentes");
+
+  const TEXTO_CAL_INICIAL = "Mira a la cámara, con buena luz de frente. Presiona «Comenzar calibración» cuando estés listo.";
+  const PASOS_CALIB = [
+    { id: "neutral",  tipo: "cara", seg: 3, texto: "Mira a la cámara con la cara relajada, sin sonreír." },
+    { id: "sonrisa",  tipo: "cara", seg: 3, texto: "Haz una sonrisa suave y mantenla." },
+    { id: "cejas",    tipo: "cara", seg: 3, texto: "Sube las cejas, como con un poco de sorpresa, y mantenlas." },
+    { id: "parpadeo", tipo: "cara", seg: 4, texto: "Parpadea lento y completo, 3 veces." },
+    { id: "silencio", tipo: "voz",  seg: 3, texto: "Quédate en silencio un momento (medimos el ruido de fondo)." },
+    { id: "frase",    tipo: "voz",  seg: 7, texto: "Lee en voz alta, con tu tono normal: «Buenos días. Les habla el vocero de la empresa y vamos a responder sus preguntas.»" },
+  ];
+
+  let idCalib = 0;          // sube al cancelar: el proceso en curso se detiene
+  let calCorriendo = false;
+  let calTerminada = false;
+
+  const acotar = (x, a, b) => Math.max(a, Math.min(b, x));
+  const pctl = (a, q) => {
+    if (!a.length) return 0;
+    const o = [...a].sort((x, y) => x - y);
+    return o[Math.min(o.length - 1, Math.floor(o.length * q))];
+  };
+
+  function pintarInstruccion(pequeno, texto) {
+    calInstruccion.textContent = "";
+    if (pequeno) {
+      const s = document.createElement("small");
+      s.textContent = pequeno;
+      calInstruccion.appendChild(s);
+    }
+    calInstruccion.appendChild(document.createTextNode(texto));
+  }
+
+  function habilitarCalibracion() {
+    if (calCorriendo || calTerminada) return;
+    botonCalibrar.disabled = false;
+    botonCalibrar.textContent = "Comenzar calibración";
+    if (mediaPipeFallo) {
+      calEstado.textContent = "El motor de cara no cargó: la calibración será solo de voz.";
+      calEstado.className = "estado";
+    }
+  }
+
+  function restaurarPantallaCalibracion() {
+    calCorriendo = false;
+    calTerminada = false;
+    calibActiva = null;
+    checkLentes.disabled = false;
+    botonOmitirCal.textContent = "Omitir";
+    calRelleno.style.transition = "none";
+    calRelleno.style.width = "0";
+    pintarInstruccion("", TEXTO_CAL_INICIAL);
+    if (faceLandmarker || mediaPipeFallo) habilitarCalibracion();
+    else { botonCalibrar.disabled = true; botonCalibrar.textContent = "Cargando modelo de cara..."; }
+  }
+
+  function cancelarCalibracion() {
+    idCalib++;
+    calEstado.textContent = "";
+    restaurarPantallaCalibracion();
+  }
+
+  function irAEntrevista() {
+    idCalib++;
+    calibracionPendiente = false;
+    calibActiva = null;
+    seccionCalibracion.style.display = "none";
+    seccionEntrevista.style.display = "block";
+    setPaso(2);
+  }
+
+  // Recibe los cuadros de la cara durante `ms` milisegundos
+  function capturarCara(ms) {
+    return new Promise((resolve) => {
+      const frames = [];
+      calibActiva = { alimentar(crudo, pts) { frames.push({ c: { ...crudo }, pose: calcularPose(pts) }); } };
+      setTimeout(() => { calibActiva = null; resolve(frames); }, ms);
+    });
+  }
+
+  // Lee el micrófono durante `ms` milisegundos y llama a alMuestra(rms, buffer, sampleRate) ~20 veces por segundo
+  async function capturarVoz(ms, alMuestra) {
+    const pistas = flujoMedios ? flujoMedios.getAudioTracks() : [];
+    if (!pistas.length) throw new Error("no hay pista de audio");
+    const ctx = new AudioContext();
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+      const an = ctx.createAnalyser();
+      an.fftSize = 2048;
+      ctx.createMediaStreamSource(new MediaStream(pistas)).connect(an);
+      const buf = new Float32Array(an.fftSize);
+      const t0 = performance.now();
+      while (performance.now() - t0 < ms) {
+        await esperar(50);
+        an.getFloatTimeDomainData(buf);
+        let s = 0;
+        for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+        alMuestra(Math.sqrt(s / buf.length), buf, ctx.sampleRate);
+      }
+    } finally {
+      try { ctx.close(); } catch (e) { /* nada */ }
+    }
+  }
+
+  // Tu cara neutra = promedio de los cuadros del primer paso
+  function fijarBaseDesdeNeutral(frames) {
+    const base = {};
+    let yaw = 0, pitch = 0;
+    frames.forEach((f) => {
+      for (const k in f.c) base[k] = (base[k] || 0) + f.c[k];
+      yaw += f.pose.yaw; pitch += f.pose.pitch;
+    });
+    for (const k in base) base[k] /= frames.length;
+    baselineCara = base;
+    baselinePose = { yaw: yaw / frames.length, pitch: pitch / frames.length };
+    emocionesSuaves = {};
+  }
+
+  // Convierte lo medido en ajustes; devuelve un resumen para mostrar
+  function aplicarCalibracion(res) {
+    const partes = [];
+    if (res.neutral && baselineCara) {
+      const base = baselineCara;
+      const sonrisa = (res.sonrisa || []).map((f) => Math.max(0, prom(f.c, "mouthSmileLeft", "mouthSmileRight") - prom(base, "mouthSmileLeft", "mouthSmileRight")));
+      const cejas = (res.cejas || []).map((f) => Math.max(0,
+        Math.max(prom(f.c, "browOuterUpLeft", "browOuterUpRight") - prom(base, "browOuterUpLeft", "browOuterUpRight"),
+                 (f.c.browInnerUp || 0) - (base.browInnerUp || 0))));
+      const parpadeo = (res.parpadeo || []).map((f) => prom(f.c, "eyeBlinkLeft", "eyeBlinkRight"));
+      const pS = sonrisa.length >= 10 ? pctl(sonrisa, 0.85) : 0;
+      const pC = cejas.length >= 10 ? pctl(cejas, 0.85) : 0;
+      const pB = parpadeo.length >= 10 ? pctl(parpadeo, 0.98) : 0;
+
+      calCara.gSonrisa = pS > 0.05 ? acotar(0.55 / pS, 0.8, 2.5) : 1;
+      calCara.gCejas = pC > 0.05 ? acotar(0.5 / pC, 0.8, 2.5) : 1;
+      if (pB >= 0.35) {
+        calCara.ojosFiables = true;
+        calCara.cierreParpadeo = acotar(pB * 0.5, 0.25, 0.6);
+        calCara.aperturaParpadeo = calCara.cierreParpadeo * 0.6;
+      } else {
+        calCara.ojosFiables = false; // no se vio un parpadeo claro (lentes, reflejos, ángulo o luz)
+      }
+      calCara.usaLentes = checkLentes.checked;
+      calCara.hecha = true;
+      partes.push(calCara.ojosFiables
+        ? "cara ajustada a tus gestos"
+        : "cara ajustada (tus ojos se leen poco: parpadeo y mirada pesarán menos en la evaluación)");
+    }
+
+    if (res.frase && res.frase.rms.length >= 15) {
+      const r4 = (x) => Math.round(x * 10000) / 10000;
+      calVoz = {
+        piso_ruido: r4(pctl(res.silencio || [], 0.9)),
+        volumen_base: r4(pctl(res.frase.rms, 0.5)),
+        tono_base: res.frase.f0.length >= 8 ? Math.round(pctl(res.frase.f0, 0.5) * 10) / 10 : 0,
+      };
+      partes.push(calVoz.tono_base > 0 ? `voz ajustada (tu tono normal ≈ ${Math.round(calVoz.tono_base)} Hz)` : "voz ajustada (volumen y ruido de fondo)");
+    } else {
+      calVoz = null;
+      partes.push("no te escuché lo suficiente para calibrar la voz (revisa el micrófono; puedes repetir)");
+    }
+    return partes;
+  }
+
+  async function ejecutarCalibracion() {
+    if (calCorriendo) return;
+    calCorriendo = true;
+    calTerminada = false;
+    const mio = ++idCalib;
+    const cancelado = () => mio !== idCalib;
+
+    botonCalibrar.disabled = true;
+    botonOmitirCal.textContent = "Cancelar";
+    checkLentes.disabled = true;
+    calEstado.textContent = "";
+    calEstado.className = "estado";
+
+    const hayCara = !!faceLandmarker;
+    const pasos = PASOS_CALIB.filter((p) => p.tipo === "voz" || hayCara);
+    const n = pasos.length;
+    const res = {};
+    try {
+      for (let i = 0; i < n; i++) {
+        const p = pasos[i];
+        pintarInstruccion(`Paso ${i + 1} de ${n} · prepárate`, p.texto);
+        calRelleno.style.transition = "none";
+        calRelleno.style.width = (i / n) * 100 + "%";
+        await esperar(1300);
+        if (cancelado()) return;
+
+        pintarInstruccion(`Paso ${i + 1} de ${n} · ¡ahora!`, p.texto);
+        calRelleno.style.transition = `width ${p.seg * 1000}ms linear`;
+        calRelleno.style.width = ((i + 1) / n) * 100 + "%";
+
+        if (p.tipo === "cara") {
+          res[p.id] = await capturarCara(p.seg * 1000);
+          if (cancelado()) return;
+          if (p.id === "neutral") {
+            if (res.neutral.length < 15) throw new Error("No te veo bien. Sube la luz de frente, mira a la cámara y repite.");
+            fijarBaseDesdeNeutral(res.neutral);
+          }
+        } else {
+          try {
+            if (p.id === "silencio") {
+              const rms = [];
+              await capturarVoz(p.seg * 1000, (r) => rms.push(r));
+              res.silencio = rms;
+            } else {
+              const minVoz = Math.max(pctl(res.silencio || [], 0.9) * 3, 0.004);
+              const ref = { rms: [], f0: [] };
+              await capturarVoz(p.seg * 1000, (r, buf, sr) => {
+                if (r < minVoz) return;
+                ref.rms.push(r);
+                const f = estimarTono(buf, sr);
+                if (f > 0) ref.f0.push(f);
+              });
+              res.frase = ref;
+            }
+          } catch (e) {
+            console.warn("Calibración de voz no disponible:", e);
+          }
+          if (cancelado()) return;
+        }
+      }
+
+      const partes = aplicarCalibracion(res);
+      calTerminada = true;
+      calRelleno.style.transition = "none";
+      calRelleno.style.width = "100%";
+      pintarInstruccion("", "¡Listo! Ya sabemos cómo eres. Cuando quieras, pasa a la entrevista.");
+      calEstado.textContent = "✓ Calibración lista: " + partes.join("; ") + ".";
+      calEstado.className = "estado ok";
+      botonCalibrar.textContent = "Continuar a la entrevista";
+      botonCalibrar.disabled = false;
+      botonOmitirCal.textContent = "Repetir calibración";
+    } catch (error) {
+      calibActiva = null;
+      pintarInstruccion("", TEXTO_CAL_INICIAL);
+      calEstado.textContent = error.message;
+      calEstado.className = "estado error";
+      botonCalibrar.textContent = "Reintentar calibración";
+      botonCalibrar.disabled = false;
+      botonOmitirCal.textContent = "Omitir";
+      checkLentes.disabled = false;
+    } finally {
+      if (!cancelado()) calCorriendo = false;
+    }
+  }
+
+  botonCalibrar.addEventListener("click", () => {
+    if (calTerminada) irAEntrevista();
+    else ejecutarCalibracion();
+  });
+  botonOmitirCal.addEventListener("click", () => {
+    if (calCorriendo) { cancelarCalibracion(); return; }  // "Cancelar"
+    if (calTerminada) { calTerminada = false; ejecutarCalibracion(); return; } // "Repetir calibración"
+    calCara.usaLentes = checkLentes.checked;               // "Omitir": al menos se respeta lo de los lentes
+    irAEntrevista();
+  });
+
+  // ================================================================
+  // Indicador discreto de las IAs (barra superior)
+  // ================================================================
+  const iaItems = {
+    entrevistador: document.getElementById("ia-entrevistador"),
+    voz: document.getElementById("ia-voz"),
+    cara: document.getElementById("ia-cara"),
+  };
+  function ponerIA(clave, estado, titulo) {
+    const el = iaItems[clave];
+    el.firstElementChild.className = "ia-punto" + (estado ? " " + estado : "");
+    el.title = titulo;
+  }
+  function pintarIA() {
+    // Entrevistador (IA en el servidor)
+    if (iaEvaluando) ponerIA("entrevistador", "work", "Evaluando el contenido de tus respuestas…");
+    else if (iaPensando) ponerIA("entrevistador", "work", "El entrevistador está redactando la pregunta…");
+    else if (entrevistaActiva) ponerIA("entrevistador", "on", "Entrevistador activo");
+    else ponerIA("entrevistador", "", "Entrevistador en espera");
+
+    // Voz (se mide en tu navegador)
+    if (iaEvaluando && resultadoVoz && resultadoVoz.metricas) ponerIA("voz", "work", "Evaluando tu voz…");
+    else if (calCorriendo) ponerIA("voz", "work", "Calibrando tu voz…");
+    else if (entrevistaActiva && errorVoz) ponerIA("voz", "warn", "No se pudo medir la voz: " + errorVoz);
+    else if (entrevistaActiva && vozMidiendo) ponerIA("voz", "work", "Midiendo tu voz mientras respondes");
+    else if (entrevistaActiva) ponerIA("voz", "on", "Análisis de voz activo");
+    else ponerIA("voz", "", "Análisis de voz en espera");
+
+    // Cara (se mide en tu navegador)
+    if (iaEvaluando && datosCara) ponerIA("cara", "work", "Evaluando tu expresión facial…");
+    else if (calCorriendo && faceLandmarker) ponerIA("cara", "work", "Calibrando tu cara…");
+    else if (mediaPipeFallo) ponerIA("cara", "warn", "Motor de cara principal no disponible: usando respaldo, sin evaluación facial");
+    else if (!faceLandmarker) ponerIA("cara", "", "Cargando el modelo de cara…");
+    else if (!rostroVisible) ponerIA("cara", "warn", "No te veo: mira a la cámara con buena luz de frente");
+    else if (entrevistaActiva && grabandoCara) ponerIA("cara", "on", "Analizando tu expresión facial");
+    else ponerIA("cara", "on", "Cara detectada");
+  }
+  setInterval(pintarIA, 400);
+  pintarIA();
+
+  // ================================================================
+  // Reiniciar la entrevista (conserva la cámara, el micrófono y la calibración)
+  // ================================================================
+  function reiniciarEntrevista(preguntar) {
+    if (calibracionPendiente) { cancelarCalibracion(); return; }
+    const haySesion = entrevistaActiva || historial.length > 1 || iaEvaluando || document.body.classList.contains("con-resultados");
+    if (preguntar && haySesion &&
+        !confirm("¿Reiniciar la entrevista? Se borran tus respuestas y la evaluación actual. Tu cámara y tu calibración se conservan.")) return;
+
+    idSesion++; // las respuestas de la IA que lleguen tarde se descartan
+
+    if (escuchando) {
+      try { reconocimiento.stop(); } catch (e) { /* nada */ }
+      escuchando = false;
+      botonHablar.textContent = "🎤 Hablar";
+      botonHablar.style.background = "var(--navy)";
+    }
+    detenerAnalisisVoz();
+    errorVoz = null;
+    grabandoCara = false;
+    muestrasCara = [];
+    parpadeosCara = 0;
+    framesTotalesCara = 0;
+    framesConRostroCara = 0;
+    ojosCerrados = false;
+
+    historial = [];
+    numPregunta = 0;
+    resultadoVoz = null;
+    datosCara = null;
+    informesCrudos = {};
+    ESTADO_FINAL.generando = false;
+    entrevistaActiva = false;
+    iaPensando = false;
+    iaEvaluando = false;
+
+    quitarBotonReintentoPregunta();
+    barraCarga.textContent = "";
+    barraCarga.style.display = "none";
+    historialConversacion.textContent = "";
+    campoRespuesta.value = "";
+    campoRespuesta.style.display = "";
+    preguntaActual.textContent = "Presiona \"Comenzar entrevista\" para empezar.";
+    botonComenzar.style.display = "inline-block";
+    botonHablar.style.display = "none";
+    botonResponder.style.display = "none";
+    botonResponder.disabled = false;
+    botonEvaluar.style.display = "none";
+
+    document.body.classList.remove("con-resultados");
+    ["resumen-general", "titulo-detalle", "boton-pdf"].forEach((id) => { document.getElementById(id).style.display = "none"; });
+    document.getElementById("resumen-general").textContent = "";
+    contenedorInformes.textContent = "";
+    contenedorInformes.style.display = "none";
+    document.getElementById("transcripcion-final").textContent = "";
+
+    setPaso(2);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  document.getElementById("boton-reiniciar").addEventListener("click", () => reiniciarEntrevista(true));
+  document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
+
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "34";
+  const VERSION_APP = "35";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;

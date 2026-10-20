@@ -117,3 +117,14 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - Tiempos máximos por proveedor más cortos (entrevistador 15 s, jueces 35 s, prueba 12 s) para pasar rápido al siguiente.
 - El entrevistador responde con máximo 2 frases cortas (se generan más rápido).
 - Recomendado en Vercel: `PROVEEDORES_IA` = `groq,openrouter,nvidia` (Gemini solo cuando esté desbloqueado).
+
+### v35 — Reinicio, calibración e indicador de IAs
+- **↺ Reiniciar entrevista** (barra superior) y **↺ Hacer otra entrevista** (en los resultados): borran respuestas, métricas y evaluación y vuelven a empezar sin recargar la página. Conservan cámara, micrófono y calibración. Si la IA estaba respondiendo, esa respuesta tardía se descarta.
+- **"Acerca de esta beta" más corto:** para qué sirve la beta, tu rol, qué se evalúa y una línea de privacidad. Se edita en `public/index.html`, bloque "Ventana de bienvenida".
+- **Indicador discreto de IAs** (barra superior, aparece al dar permiso a la cámara): tres puntos, *Entrevistador* (naranja pulsante mientras redacta la pregunta o evalúa), *Voz* (pulsa mientras mide tu voz) y *Cara* (verde si te ve, ámbar si no te detecta). Pasa el mouse por encima para ver el detalle.
+- **Calibración guiada (≈ 30 s, se puede omitir)** antes de la entrevista. No pide actuar emociones, solo movimientos simples:
+  - Cara: rostro relajado (línea base), sonrisa suave, subir cejas y 3 parpadeos. Con eso se ajusta cuánto pesan tu sonrisa y tus cejas, y se fija un umbral de parpadeo propio.
+  - **Lentes:** casilla "Uso lentes". Si además no se ve un parpadeo claro, los ojos se marcan como poco fiables: bajan de peso los gestos de ojos y el servidor **no evalúa mirada ni parpadeos** (llegan en `null` y el juez lo menciona en vez de penalizar).
+  - Voz: 3 s de silencio (ruido de fondo) y lectura de una frase (volumen y tono normales). El análisis usa ese umbral propio y compara el tono y el volumen contra TU referencia, no contra un ideal.
+  - Si el motor de cara no carga, la calibración es solo de voz.
+- Backend: `PeticionCara.calibracion`, `MetricasVoz.tono_referencia_hz` / `volumen_referencia` y rúbricas actualizadas. Hay que subir **app.py y public/index.html** juntos.

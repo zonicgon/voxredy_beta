@@ -31,7 +31,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "34"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "35"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -417,6 +417,9 @@ class MetricasVoz(BaseModel):
     respuestas_con_voz: Optional[int] = None
     habla_total_segundos: Optional[float] = None
     fiabilidad_muestra: Optional[str] = None
+    # De la calibración (cómo suena ESTA persona normalmente); pueden no venir
+    tono_referencia_hz: Optional[float] = None
+    volumen_referencia: Optional[float] = None
 
 
 class PeticionVoz(BaseModel):
@@ -436,8 +439,15 @@ class MuestraCara(BaseModel):
     mirada: float
 
 
+class CalibracionCara(BaseModel):
+    calibrada: bool = False
+    usa_lentes: bool = False
+    ojos_fiables: bool = True  # False si en la calibración no se vio un parpadeo claro (lentes, reflejos, luz)
+
+
 class PeticionCara(BaseModel):
     muestras: list[MuestraCara] = Field(min_length=1, max_length=4000)
+    calibracion: Optional[CalibracionCara] = None
     parpadeos: int = 0
     frames_totales: int = 0
     frames_con_rostro: int = 0
@@ -629,6 +639,11 @@ Te entrego:
   medición es orientativa"), usa notas moderadas salvo que algo sea muy evidente
   y no inventes tendencias que no se puedan ver en una muestra tan corta.
 
+- tono_referencia_hz y volumen_referencia (si vienen): cómo suena ESTA persona
+  normalmente, medido antes en una calibración leyendo una frase. Compara contra
+  eso: un tono o un volumen muy distinto de su referencia puede indicar tensión o
+  nervios. No juzgues su tono contra un tono "ideal": hay voces graves y agudas.
+
 Evalúa 3 áreas (nota de 1 a 5, donde 5 es excelente):
 1. Modulación del tono: ¿suena expresivo o monótono?
 2. Ritmo y pausas: ¿el ritmo transmite control, o suena nervioso/entrecortado?
@@ -703,9 +718,12 @@ def resumir_cara(p: PeticionCara):
     desalineacion = _media([(a * a + b * b) ** 0.5 for a, b in zip(yaw, pitch)])
     variabilidad = (_desv(yaw) ** 2 + _desv(pitch) ** 2) ** 0.5
     mirada_fuera = _media([1.0 if x["mirada"] > UMBRAL_MIRADA_FUERA else 0.0 for x in m]) * 100
+    cal = p.calibracion or CalibracionCara()
 
     pct_rostro = (p.frames_con_rostro / p.frames_totales * 100) if p.frames_totales else 100.0
     parpadeos_min = round(p.parpadeos / (duracion / 60), 1) if duracion >= 10 else None
+    if not cal.ojos_fiables:  # los ojos no se leen bien (lentes, reflejos): mejor no medir que medir mal
+        parpadeos_min = None
 
     return {
         "duracion_segundos": round(duracion, 1),
@@ -716,8 +734,9 @@ def resumir_cara(p: PeticionCara):
         "expresividad_media_0a100": round(expresividad, 1),
         "desalineacion_cabeza": round(desalineacion, 3),
         "variabilidad_cabeza": round(variabilidad, 3),
-        "mirada_fuera_de_camara_pct": round(mirada_fuera, 1),
+        "mirada_fuera_de_camara_pct": round(mirada_fuera, 1) if cal.ojos_fiables else None,
         "parpadeos_por_minuto": parpadeos_min,
+        "calibracion": {"calibrada": cal.calibrada, "usa_lentes": cal.usa_lentes, "ojos_fiables": cal.ojos_fiables},
     }
 
 
@@ -743,6 +762,12 @@ Te entrego:
   movimiento moderado; más de 0.12 = giros o balanceos amplios)
 - mirada_fuera_de_camara_pct: % del tiempo con la mirada desviada del centro
 - parpadeos_por_minuto: lo normal es 12 a 25; más de 30 sugiere nerviosismo
+- calibracion: si calibrada es true, las expresiones ya están ajustadas al rango
+  de gestos de esa persona. Si usa_lentes es true u ojos_fiables es false, los
+  gestos de los ojos se leen peor: mirada_fuera_de_camara_pct y
+  parpadeos_por_minuto pueden venir en null. Si vienen null, NO los evalúes ni los
+  penalices y dilo en una frase (por ejemplo "los ojos no se pudieron medir con
+  fiabilidad"); apóyate en boca, cejas y estabilidad de la cabeza.
 
 Criterios importantes:
 - En una crisis con afectados, algo de tristeza o preocupación moderada es
