@@ -18,6 +18,7 @@ import os
 import statistics
 import time
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -30,7 +31,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "33"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "34"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -66,7 +67,7 @@ PROVEEDORES_ORDEN = [p.lower() for p in _lista_env("PROVEEDORES_IA", "gemini,ant
 # así no se rompe cuando retiran un modelo concreto. Se pueden cambiar con MODELOS_GROQ / MODELOS_OPENROUTER.
 COMPAT = {
     "groq": {"clave": "GROQ_API_KEY", "url": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-             "modelos": _lista_env("MODELOS_GROQ", "openai/gpt-oss-120b,llama-3.3-70b-versatile")},
+             "modelos": _lista_env("MODELOS_GROQ", "llama-3.3-70b-versatile,openai/gpt-oss-120b")},
     "openrouter": {"clave": "OPENROUTER_API_KEY", "url": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
                    "modelos": _lista_env("MODELOS_OPENROUTER", "openrouter/free")},
 }
@@ -79,8 +80,9 @@ _modelo_activo_gemini = None
 # El entrevistador necesita rapidez; los jueces, calidad. Si el primer modelo de la lista no existe (404), se usa el siguiente.
 MODELOS_ANTHROPIC_RAPIDO = _lista_env("MODELOS_ANTHROPIC_RAPIDO", "claude-haiku-4-5-20251001")
 MODELOS_ANTHROPIC_EVALUADOR = _lista_env("MODELOS_ANTHROPIC_EVALUADOR", "claude-sonnet-5-5,claude-haiku-4-5-20251001")
-TIEMPO_LIMITE = {"entrevistador": 25, "evaluador": 45, "prueba": 20}  # segundos POR proveedor
+TIEMPO_LIMITE = {"entrevistador": 15, "evaluador": 35, "prueba": 12}  # segundos POR proveedor
 ENFRIAMIENTO_S = 60  # un proveedor que falló se salta durante este tiempo (si hay otro disponible)
+ENFRIAMIENTO_CLAVE_S = 600  # si falló por clave/permisos (401/402/403), no se reintenta durante 10 min
 _enfriar_hasta = {}
 _clientes = {}
 
@@ -338,7 +340,8 @@ def generar_texto(mensajes, temperature, max_tokens, esfuerzo, rol="evaluador"):
             return texto, prov, modelo
         except Exception as e:
             ultimo = e
-            _enfriar_hasta[prov] = time.time() + ENFRIAMIENTO_S
+            permanente = getattr(e, "status_code", None) in (401, 402, 403) or isinstance(e, ConfiguracionIA)
+            _enfriar_hasta[prov] = time.time() + (ENFRIAMIENTO_CLAVE_S if permanente else ENFRIAMIENTO_S)
             fallos.append(f"{prov}: {type(e).__name__} {getattr(e, 'status_code', '') or ''}".strip())
             # Queda en los logs de Vercel (Project -> Logs)
             print("Error llamando a la IA:", prov, type(e).__name__, getattr(e, "status_code", None), repr(e)[:300])
@@ -450,7 +453,7 @@ SYSTEM_PROMPT = (
     "Escucha la respuesta del vocero y repregunta sobre lo que dijo: si "
     "evade, presiona; si da un dato nuevo, profundiza en ese dato. "
     "Sé firme pero profesional, como un periodista real, no un robot. "
-    "Máximo 3 frases por turno."
+    "Máximo 2 frases cortas por turno."
 )
 
 
@@ -458,7 +461,7 @@ SYSTEM_PROMPT = (
 def entrevistar(peticion: PeticionEntrevista):
     mensajes = [{"role": "system", "content": SYSTEM_PROMPT}]
     mensajes += [{"role": m.role, "content": m.content} for m in peticion.historial]
-    texto = llamar_ia(mensajes, temperature=0.7, max_tokens=1024, esfuerzo="low", rol="entrevistador")
+    texto = llamar_ia(mensajes, temperature=0.7, max_tokens=500, esfuerzo="low", rol="entrevistador")
     return {"pregunta": texto}
 
 
@@ -508,7 +511,9 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = ""):
         if not configurados:
             info["ia"] = {"estado": "error", "proveedores": [], "detalle": "No hay ninguna clave de IA configurada (GEMINI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY o NVIDIA_API_KEY)."}
         else:
-            resultados = [probar_proveedor(p) for p in configurados]
+            # En paralelo: el diagnóstico tarda lo del proveedor más lento, no la suma de todos
+            with ThreadPoolExecutor(max_workers=len(configurados)) as pool:
+                resultados = list(pool.map(probar_proveedor, configurados))
             funcionan = [r for r in resultados if r["estado"] == "ok"]
             estado = "error" if not funcionan else ("ok" if resultados[0]["estado"] == "ok" else "degradado")
             info["ia"] = {"estado": estado, "proveedores": resultados}

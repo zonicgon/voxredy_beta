@@ -109,3 +109,11 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - Orden por defecto: **Gemini → Claude → Groq → OpenRouter → NVIDIA**. Solo se usan los que tengan clave. Para forzar un orden o un solo proveedor, usa `PROVEEDORES_IA` (por ejemplo `groq,openrouter` o solo `anthropic`).
 - El 🩺 Diagnóstico reconoce los nuevos proveedores y valida el formato de sus claves.
 - Ningún nivel gratuito es 100 % estable (los proveedores cambian cupos y retiran modelos sin aviso). Para un cliente de verdad, lo estable es un proveedor **de pago** (Claude o Gemini con facturación) como principal, y los gratuitos como respaldo.
+
+### v34 — Más rápido
+- **Groq usa primero `llama-3.3-70b-versatile`** (responde directo, sin "pensar"); `openai/gpt-oss-120b` queda de respaldo.
+- **🩺 Diagnóstico en paralelo:** prueba todos los proveedores a la vez, así tarda lo del más lento y no la suma (antes podía pasarse del tiempo de espera y salir como error).
+- **Un proveedor con error de clave o permisos (401/402/403) se salta 10 minutos** (antes 60 s), para no perder tiempo reintentándolo en cada pregunta.
+- Tiempos máximos por proveedor más cortos (entrevistador 15 s, jueces 35 s, prueba 12 s) para pasar rápido al siguiente.
+- El entrevistador responde con máximo 2 frases cortas (se generan más rápido).
+- Recomendado en Vercel: `PROVEEDORES_IA` = `groq,openrouter,nvidia` (Gemini solo cuando esté desbloqueado).
