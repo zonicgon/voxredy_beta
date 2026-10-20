@@ -31,7 +31,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "35"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "36"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -434,6 +434,11 @@ class MuestraCara(BaseModel):
     sorpresa: float
     miedo: float
     asco: float
+    # Expresiones nuevas (v36); si la página no las manda valen 0
+    desprecio: float = 0.0
+    tension: float = 0.0
+    sonrisa_falsa: float = 0.0
+    duda: float = 0.0
     yaw: float
     pitch: float
     mirada: float
@@ -566,9 +571,26 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = ""):
 # ------------------------------------------------ Evaluación: CONTENIDO -------
 
 RUBRICA = """
-Evalúa la siguiente entrevista de un vocero de crisis, según estas 4 áreas
-(nota de 1 a 5 en cada una, donde 5 es excelente):
+Eres un evaluador MUY EXIGENTE de vocerías de crisis. Evalúa la entrevista de un
+vocero (un derrame químico afectó el agua de tres comunidades) en estas 4 áreas.
+Nota de 0 a 5 (se permiten decimales de 0,5 en 0,5).
 
+ESCALA (aplícala con rigor; la mayoría de las prácticas reales están entre 2 y 3,5):
+- 0   = no respondió, escribió texto sin sentido, o nada de lo que dijo tiene relación con la pregunta.
+- 1   = respuestas confusas, fuera de tema o que no dicen nada útil.
+- 2   = respuestas vagas, evasivas o muy incompletas; el periodista no obtiene información.
+- 3   = aceptable: responde, pero con vacíos, generalidades o titubeos.
+- 4   = bueno: claro, directo y con datos o compromisos concretos, con fallos menores.
+- 5   = excelente: impecable en todas las respuestas, nivel profesional. Es MUY raro: no lo uses salvo que sea evidente.
+
+REGLAS DE RIGOR:
+- Una respuesta corta, genérica o de relleno ("estamos trabajando en ello", "lamentamos lo ocurrido") sin datos ni acciones NO merece más de 2.
+- Si el vocero no contesta lo que se le preguntó, la nota de "Transparencia vs. evasión" es 2 o menos.
+- Si no hay ninguna respuesta con contenido real, las 4 notas son 0 o 1.
+- No premies el esfuerzo ni la buena educación: premia solo lo que de verdad ayudaría a manejar la crisis.
+- Cada comentario DEBE incluir una cita textual corta (entre comillas) de lo que dijo el vocero como evidencia de la nota. Si no hay nada que citar, di que no hay evidencia y baja la nota.
+
+ÁREAS:
 1. Claridad del mensaje: ¿las respuestas son entendibles y van al punto?
 2. Transparencia vs. evasión: ¿responde directamente o esquiva las preguntas
    incómodas con lenguaje vago?
@@ -581,17 +603,101 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después,
 sin bloques de código markdown, con esta forma exacta:
 
 {
-  "puntaje_global": <número del 1 al 5>,
+  "puntaje_global": <número de 0 a 5>,
   "areas": [
-    {"nombre": "Claridad del mensaje", "puntaje": <1-5>, "comentario": "..."},
-    {"nombre": "Transparencia vs. evasión", "puntaje": <1-5>, "comentario": "..."},
-    {"nombre": "Manejo de la presión", "puntaje": <1-5>, "comentario": "..."},
-    {"nombre": "Responsabilidad y tono", "puntaje": <1-5>, "comentario": "..."}
+    {"nombre": "Claridad del mensaje", "puntaje": <0-5>, "comentario": "... (con cita textual)"},
+    {"nombre": "Transparencia vs. evasión", "puntaje": <0-5>, "comentario": "... (con cita textual)"},
+    {"nombre": "Manejo de la presión", "puntaje": <0-5>, "comentario": "... (con cita textual)"},
+    {"nombre": "Responsabilidad y tono", "puntaje": <0-5>, "comentario": "... (con cita textual)"}
   ],
   "resumen": "2-3 frases con la evaluación general",
   "recomendacion_principal": "1 frase con lo más importante a mejorar"
 }
 """
+
+# ------------------------------------------------------------------------------
+# Topes por CÓDIGO: la IA tiende a ser generosa, así que lo evidente (respuestas vacías,
+# sin sentido o demasiado cortas) se limita aquí, sin depender de lo que "opine" el modelo.
+# ------------------------------------------------------------------------------
+PALABRAS_MINIMAS = 8  # una respuesta con menos palabras que esto se considera de relleno
+
+
+def _es_sin_sentido(texto):
+    """Detecta texto basura: teclazos, repeticiones, casi sin letras o sin vocales."""
+    t = texto.strip().lower()
+    if not t:
+        return True
+    letras = [c for c in t if c.isalpha()]
+    # ("sí", "ok", "no" son respuestas cortas pero reales: solo es basura si casi no hay letras)
+    if not letras or len(letras) / max(len(t.replace(" ", "")), 1) < 0.6:
+        return True
+    palabras = [w for w in "".join(c if c.isalpha() or c.isspace() else " " for c in t).split() if w]
+    if not palabras:
+        return True
+    vocales = set("aeiouáéíóúü")
+    sin_vocal = [w for w in palabras if len(w) >= 4 and not (set(w) & vocales)]
+    if len(sin_vocal) / len(palabras) > 0.4:
+        return True
+    if len(palabras) >= 4 and len(set(palabras)) / len(palabras) < 0.4:
+        return True
+    if any(len(set(w)) <= 2 and len(w) >= 6 for w in palabras):  # "aaaaaa", "ababab"
+        return True
+    return False
+
+
+def estadisticas_respuestas(conversacion):
+    respuestas = [m.content for m in conversacion if m.role == "user"]
+    n = len(respuestas)
+    if n == 0:
+        return {"respuestas": 0, "pct_sin_sentido": 100.0, "pct_cortas": 100.0, "palabras_promedio": 0.0}
+    palabras = [len(r.split()) for r in respuestas]
+    sin_sentido = sum(1 for r in respuestas if _es_sin_sentido(r))
+    cortas = sum(1 for p in palabras if p < PALABRAS_MINIMAS)
+    return {
+        "respuestas": n,
+        "pct_sin_sentido": round(sin_sentido / n * 100, 1),
+        "pct_cortas": round(cortas / n * 100, 1),
+        "palabras_promedio": round(sum(palabras) / n, 1),
+    }
+
+
+def aplicar_topes_contenido(informe, est):
+    """Limita las notas según lo evidente. Devuelve la lista de topes aplicados (para mostrarlos)."""
+    if not isinstance(informe, dict) or not isinstance(informe.get("areas"), list):
+        return []
+    sin_sentido, cortas, prom = est["pct_sin_sentido"], est["pct_cortas"], est["palabras_promedio"]
+    tope, motivo = 5.0, None
+    if sin_sentido >= 80:
+        tope, motivo = 0.0, "casi todas tus respuestas no tienen sentido o están vacías"
+    elif sin_sentido >= 50:
+        tope, motivo = 1.0, "la mayoría de tus respuestas no tienen sentido"
+    elif sin_sentido > 0 and sin_sentido >= 25:
+        tope, motivo = 2.0, "varias de tus respuestas no tienen sentido"
+    elif cortas >= 80 or prom < 5:
+        tope, motivo = 1.5, "casi todas tus respuestas son demasiado cortas para evaluar"
+    elif cortas >= 50:
+        tope, motivo = 2.5, "la mayoría de tus respuestas son muy cortas"
+    elif prom < 15:
+        tope, motivo = 3.5, "tus respuestas son breves y con poco desarrollo"
+    if tope >= 5.0:
+        return []
+    cambios = False
+    suma = []
+    for a in informe["areas"]:
+        try:
+            p = float(a.get("puntaje"))
+        except (TypeError, ValueError):
+            continue
+        if p > tope:
+            a["puntaje"] = tope
+            cambios = True
+        suma.append(float(a["puntaje"]))
+    if suma:
+        informe["puntaje_global"] = round(sum(suma) / len(suma), 1)
+    if cambios:
+        informe["tope_aplicado"] = f"La nota se limitó a {tope:g}/5 porque {motivo}."
+        return [informe["tope_aplicado"]]
+    return []
 
 
 @app.post("/api/evaluar", dependencies=[Depends(limitar)])
@@ -607,11 +713,15 @@ def evaluar(peticion: PeticionConversacion):
             {"role": "system", "content": RUBRICA},
             {"role": "user", "content": f"Transcripción de la entrevista:\n\n{texto}"},
         ],
-        temperature=0.3,
-        max_tokens=1500,
+        temperature=0.1,
+        max_tokens=1800,
         esfuerzo="high",
     )
-    return extraer_json(bruto)
+    informe = extraer_json(bruto)
+    est = estadisticas_respuestas(peticion.conversacion)
+    aplicar_topes_contenido(informe, est)
+    informe["estadisticas_respuestas"] = est
+    return informe
 
 
 # ---------------------------------------------------- Evaluación: VOZ ---------
@@ -684,9 +794,11 @@ def evaluar_voz(peticion: PeticionVoz):
 
 # ---------------------------------------------------- Evaluación: CARA --------
 
-EMOCIONES_CARA = ["feliz", "triste", "enojo", "sorpresa", "miedo", "asco"]
+EMOCIONES_CARA = ["feliz", "triste", "enojo", "sorpresa", "miedo", "asco", "desprecio", "tension", "sonrisa_falsa", "duda"]
 UMBRAL_EMOCION_MARCADA = 0.30  # debe coincidir con UMBRAL_NEUTRAL de la página
 UMBRAL_MIRADA_FUERA = 0.35
+MARGEN_DUDOSA = 0.12  # si la 1ª y la 2ª expresión se parecen más que esto, la lectura es "dudosa"
+SEGUNDOS_MINIMOS_EXPRESION = 0.6  # una expresión debe sostenerse este tiempo para contarse (evita gestos fugaces)
 
 
 def _media(xs):
@@ -703,12 +815,37 @@ def resumir_cara(p: PeticionCara):
 
     duracion = p.duracion_segundos or ((m[-1]["t"] - m[0]["t"]) if n > 1 else 0)
 
+    # Etiqueta de cada muestra: la expresión dominante, "neutral" si ninguna llega al umbral,
+    # y marcada como dudosa si la segunda va casi pareja con la primera.
+    etiquetas, dudosas = [], 0
+    for x in m:
+        orden = sorted(EMOCIONES_CARA, key=lambda e: x[e], reverse=True)
+        top, segunda = orden[0], orden[1]
+        if x[top] < UMBRAL_EMOCION_MARCADA:
+            etiquetas.append("neutral")
+        else:
+            etiquetas.append(top)
+            if x[top] - x[segunda] < MARGEN_DUDOSA and x[segunda] >= UMBRAL_EMOCION_MARCADA * 0.8:
+                dudosas += 1
+    # Solo cuenta una expresión si se sostiene al menos SEGUNDOS_MINIMOS_EXPRESION (las muestras van ~cada 0,2 s);
+    # los gestos más fugaces se tratan como neutral para no inflar falsos positivos.
+    paso = (m[-1]["t"] - m[0]["t"]) / (n - 1) if n > 1 and m[-1]["t"] > m[0]["t"] else 0.2
+    minimo = max(1, round(SEGUNDOS_MINIMOS_EXPRESION / max(paso, 0.05)))
+    filtradas, i = list(etiquetas), 0
+    while i < n:
+        j = i
+        while j < n and etiquetas[j] == etiquetas[i]:
+            j += 1
+        if etiquetas[i] != "neutral" and (j - i) < minimo:
+            for k in range(i, j):
+                filtradas[k] = "neutral"
+        i = j
     conteo = {e: 0 for e in EMOCIONES_CARA}
     conteo["neutral"] = 0
-    for x in m:
-        top = max(EMOCIONES_CARA, key=lambda e: x[e])
-        conteo[top if x[top] >= UMBRAL_EMOCION_MARCADA else "neutral"] += 1
+    for e in filtradas:
+        conteo[e] += 1
     porcentaje_tiempo = {k: round(v / n * 100, 1) for k, v in conteo.items()}
+    pct_dudosa = round(dudosas / n * 100, 1)
 
     intensidad = {e: round(_media([x[e] for x in m]) * 100, 1) for e in EMOCIONES_CARA}
     expresividad = _media([max(x[e] for e in EMOCIONES_CARA) for x in m]) * 100
@@ -730,6 +867,7 @@ def resumir_cara(p: PeticionCara):
         "muestras_analizadas": n,
         "pct_rostro_visible": round(min(pct_rostro, 100.0), 1),
         "porcentaje_tiempo_por_expresion": porcentaje_tiempo,
+        "lectura_dudosa_pct": pct_dudosa,
         "intensidad_media_por_emocion_0a100": intensidad,
         "expresividad_media_0a100": round(expresividad, 1),
         "desalineacion_cabeza": round(desalineacion, 3),
@@ -755,6 +893,15 @@ Te entrego:
   70, advierte que la medición es poco fiable)
 - porcentaje_tiempo_por_expresion: % del tiempo que cada expresión fue la
   dominante ("neutral" = ninguna expresión marcada)
+  Además de las 6 básicas (feliz, triste, enojo, sorpresa, miedo, asco) hay 4
+  señales de presencia: "desprecio" (sonrisa o gesto de boca asimétrico, se lee
+  como burla o arrogancia), "tension" (labios apretados y mandíbula o mentón
+  tensos), "sonrisa_falsa" (sonrisa solo de boca, sin mejillas ni ojos) y "duda"
+  (cejas desparejas o fruncidas, gesto de incertidumbre). Desprecio, sonrisa
+  falsa y tensión sostenidos restan en Serenidad, Adecuación y Naturalidad.
+- lectura_dudosa_pct: % del tiempo en que dos expresiones iban casi parejas y la
+  lectura no es clara. Si pasa de 35, menciona que la medición facial es incierta
+  y no des notas extremas.
 - intensidad_media_por_emocion_0a100: qué tan fuerte fue cada expresión en promedio
 - expresividad_media_0a100: cuánta expresión facial hubo en general
 - desalineacion_cabeza y variabilidad_cabeza: índices aproximados de cuánto se
@@ -867,7 +1014,25 @@ def limpiar_informe(inf, fuente):
         "areas": areas,
         "resumen": _texto_corto(inf.get("resumen")),
         "recomendacion_principal": _texto_corto(inf.get("recomendacion_principal")),
+        "tope_aplicado": _texto_corto(inf.get("tope_aplicado"), 300) or None,
     }
+
+
+UMBRAL_A_TRABAJAR = 3.5  # las áreas con nota menor a esto se listan como "a trabajar"
+
+
+def calcular_areas_a_trabajar(areas):
+    """Por código: áreas con nota baja, ordenadas de menor a mayor (siempre incluye al menos la más baja si hay notas)."""
+    con_nota = sorted([a for a in areas if a["puntaje"] is not None], key=lambda a: a["puntaje"])
+    bajas = [a for a in con_nota if a["puntaje"] < UMBRAL_A_TRABAJAR]
+    if not bajas and con_nota and con_nota[0]["puntaje"] < 4.5:
+        bajas = [con_nota[0]]  # incluso con buena nota, señala la más débil si no es excelente
+    salida = []
+    for a in bajas:
+        p = a["puntaje"]
+        nivel = "Prioridad alta" if p < 2.5 else "Por reforzar" if p < UMBRAL_A_TRABAJAR else "Afinar detalles"
+        salida.append({"nombre": a["nombre"], "puntaje": p, "nivel": nivel, "fuentes": a["fuentes"]})
+    return salida
 
 
 def calcular_areas_finales(fuentes):
@@ -923,8 +1088,18 @@ Responde ÚNICAMENTE con este JSON, sin texto adicional ni bloques markdown:
   ],
   "fortaleza_principal": "1 frase",
   "recomendacion_principal": "1 a 2 frases: la acción más importante a practicar",
-  "por_que_esta_prioridad": "1 frase: por qué esta recomendación pesa más que las otras"
+  "por_que_esta_prioridad": "1 frase: por qué esta recomendación pesa más que las otras",
+  "ejercicios": [
+    {"nombre": "<nombre exacto de un área de 'areas_a_trabajar'>", "ejercicio": "1 a 2 frases: un ejercicio concreto de práctica para mejorar esa área esta semana (qué hacer, cuánto tiempo, cómo saber que mejoró)"}
+  ]
 }
+
+Sobre "areas_a_trabajar": es la lista (ya ordenada de la nota más baja a la más alta)
+de las áreas que necesitan práctica. Escribe UN ejercicio por cada área de esa lista,
+con su nombre exacto, concreto y accionable (nada genérico como "practica más"). Si la
+lista viene vacía, devuelve "ejercicios": [].
+Si algún informe trae "tope_aplicado", significa que la nota se limitó por respuestas
+cortas o sin sentido: dilo con claridad en el resumen.
 """
 
 
@@ -945,9 +1120,11 @@ def informe_final(peticion: PeticionFinal):
     areas = calcular_areas_finales(fuentes)
     con_nota = [a["puntaje"] for a in areas if a["puntaje"] is not None]
     puntaje_global = round(_media(con_nota), 1) if con_nota else None
+    areas_a_trabajar = calcular_areas_a_trabajar(areas)
 
     entrada = {
         "areas_finales": areas,
+        "areas_a_trabajar": areas_a_trabajar,
         "puntaje_global": puntaje_global,
         "fuentes_disponibles": disponibles,
         "fuentes_sin_datos": [k for k in fuentes if k not in disponibles],
@@ -971,7 +1148,18 @@ def informe_final(peticion: PeticionFinal):
     for a in areas:  # las notas son las calculadas por código; la IA solo aporta el texto
         a["comentario"] = comentarios.get(a["nombre"], "")
 
+    ejercicios = {}
+    for e in redactado.get("ejercicios", []) if isinstance(redactado.get("ejercicios"), list) else []:
+        if isinstance(e, dict) and e.get("nombre"):
+            ejercicios[str(e["nombre"])] = _texto_corto(e.get("ejercicio"), 500)
+    for a in areas_a_trabajar:
+        a["ejercicio"] = ejercicios.get(a["nombre"], "")
+
+    topes = [v["tope_aplicado"] for v in fuentes.values() if v and v.get("tope_aplicado")]
+
     return {
+        "areas_a_trabajar": areas_a_trabajar,
+        "topes_aplicados": topes,
         "puntaje_global": puntaje_global,
         "areas": areas,
         "resumen": _texto_corto(redactado.get("resumen"), 900),

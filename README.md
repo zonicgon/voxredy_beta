@@ -128,3 +128,12 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
   - Voz: 3 s de silencio (ruido de fondo) y lectura de una frase (volumen y tono normales). El análisis usa ese umbral propio y compara el tono y el volumen contra TU referencia, no contra un ideal.
   - Si el motor de cara no carga, la calibración es solo de voz.
 - Backend: `PeticionCara.calibracion`, `MetricasVoz.tono_referencia_hz` / `volumen_referencia` y rúbricas actualizadas. Hay que subir **app.py y public/index.html** juntos.
+
+### v36 — Nombre, guardado 30 días, notas más estrictas, más expresiones y áreas a trabajar
+- **Nombre y apellido obligatorios** antes de «Comenzar entrevista». Aparecen en el título de la evaluación.
+- **Guardado 30 días en el navegador** (localStorage, sin base de datos): al terminar la evaluación se guarda nombre, fecha, transcripción, los 3 informes y el informe final. Las vencidas se borran al abrir la página. Botón **📁 Mis entrevistas** (arriba): ver, descargar (JSON) y borrar una o todas. Botón **⬇ Descargar mi entrevista** en los resultados. Es personal de cada navegador/dispositivo: tú no ves las de otros. Cuando haya base de datos compartida, solo cambian `leerGuardadas` / `escribirGuardadas` en `public/index.html`.
+- Textos de consentimiento y de «Acerca de esta beta» actualizados (ahora sí se guarda texto, 30 días, solo en el navegador).
+- **Notas de contenido más estrictas:** escala 0 a 5 con anclas por nivel, temperatura 0,1 y una cita textual obligatoria por nota. **Topes por código**: respuestas sin sentido, vacías o muy cortas limitan la nota (por ejemplo, casi todo basura = 0/5; casi todo muy corto = máx. 1,5/5). El tope se muestra en pantalla.
+- **4 expresiones nuevas** (además de las 6 básicas): desprecio, tensión, sonrisa falsa y duda. Una expresión solo cuenta si se sostiene unos 0,6 s, y la lectura se marca como **«dudosa»** cuando las dos primeras expresiones van casi parejas (diferencia menor a 0,12).
+- **«Áreas a trabajar»** al final del informe: las áreas con nota menor a 3,5, de menor a mayor, con nivel (Prioridad alta / Por reforzar) y un ejercicio concreto por cada una. La lista sale de las notas por código; la IA solo redacta el ejercicio.
+- Hay que subir **app.py y public/index.html** juntos (requirements.txt y vercel.json no cambian).

@@ -285,6 +285,36 @@
   #transcripcion-final .linea.vocero { background: #FFF1E8; border-left: 4px solid var(--orange); }
   #transcripcion-final .quien { font-weight: bold; color: var(--navy); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
 
+  /* ---------- Nombre, guardado y "Áreas a aprender" (v36) ---------- */
+  #bloque-nombre { background: var(--light); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+  #bloque-nombre h3 { margin: 0 0 4px 0; color: var(--navy); font-size: 16px; }
+  #bloque-nombre p { margin: 0 0 10px 0; font-size: 13.5px; color: var(--muted); }
+  .campos-nombre { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .campos-nombre input { width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid #C9D6E3; font-size: 15px; font-family: inherit; }
+  @media (max-width: 560px) { .campos-nombre { grid-template-columns: 1fr; } }
+  #estado-guardado { margin: 0 0 14px 0; }
+  .aviso-tope { background: #FFF6E5; border-left: 5px solid #E0A100; border-radius: 8px; padding: 12px 16px; font-size: 14px; line-height: 1.5; margin-top: 10px; }
+  .bloque-trabajo { background: white; border-radius: 14px; padding: 18px 22px; box-shadow: 0 1px 3px rgba(23,53,79,0.08), 0 8px 24px rgba(23,53,79,0.06); }
+  .bloque-trabajo h3 { margin: 0 0 4px 0; color: var(--navy); font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .bloque-trabajo .sub { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .item-trabajo { border-top: 1px solid var(--light); padding: 12px 0; }
+  .item-trabajo .fila { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .item-trabajo .nombre { font-weight: 700; color: var(--navy); font-size: 16px; }
+  .item-trabajo .nivel { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--light); color: var(--navy); }
+  .item-trabajo .nivel.alta { background: #FDECEA; color: #C0392B; }
+  .item-trabajo .nivel.media { background: #FFF6E5; color: #9A6B00; }
+  .item-trabajo .nota-t { font-weight: 800; color: var(--orange); }
+  .item-trabajo .ejercicio { margin-top: 6px; font-size: 14px; line-height: 1.55; }
+  .item-trabajo .ejercicio b { color: var(--navy); }
+  /* Mis entrevistas */
+  #modal-mis { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(15,30,45,0.65); align-items: center; justify-content: center; padding: 20px; }
+  .guardada { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--light); }
+  .guardada .quien { font-weight: 700; color: var(--navy); }
+  .guardada .meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .guardada .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+  .guardada .acciones button { padding: 7px 14px; font-size: 13px; background: var(--navy); }
+  .guardada .acciones button.borrar { background: #C0392B; }
+
   /* ---------- Celulares / pantallas angostas ---------- */
   @media (max-width: 960px) {
     #escenario { grid-template-columns: 1fr; }
@@ -296,7 +326,8 @@
 
   /* ---------- Al imprimir / guardar PDF: solo los resultados ---------- */
   @media print {
-    #modal-beta, #modal-diagnostico { display: none !important; }
+    #modal-beta, #modal-diagnostico, #modal-mis { display: none !important; }
+    #boton-descargar { display: none !important; }
     body { background: white; }
     body * { visibility: hidden; }
     #panel-resultados, #panel-resultados * { visibility: visible; }
@@ -311,7 +342,7 @@
 <body>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v35</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v36</span></div>
   <div class="derecha">
     <div id="ia-estado" title="Estado de las IAs durante la sesión">
       <span class="ia-item" id="ia-entrevistador" title="IA entrevistadora"><i class="ia-punto"></i>Entrevistador</span>
@@ -319,6 +350,7 @@
       <span class="ia-item" id="ia-cara" title="Análisis de expresión facial (en tu navegador)"><i class="ia-punto"></i>Cara</span>
     </div>
     <button type="button" class="enlace-beta" id="boton-reiniciar" style="display:none;">↺ Reiniciar entrevista</button>
+    <button type="button" class="enlace-beta" id="boton-mis">📁 Mis entrevistas</button>
     <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
     <button type="button" class="enlace-beta" id="boton-diagnostico">🩺 Diagnóstico</button>
     <div class="pasos" id="pasos">
@@ -347,6 +379,23 @@
         <button type="button" class="sec" id="diag-repetir">Ejecutar de nuevo</button>
         <button type="button" id="diag-cerrar">Cerrar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Mis entrevistas guardadas (30 días, en este navegador) ============ -->
+<div id="modal-mis" role="dialog" aria-modal="true" aria-labelledby="modal-mis-titulo">
+  <div class="modal-caja">
+    <div class="modal-cab">
+      <h2 id="modal-mis-titulo">Mis entrevistas</h2>
+      <p>Se guardan 30 días en este navegador y este dispositivo. Pasado ese plazo se borran solas.</p>
+    </div>
+    <div class="modal-cuerpo">
+      <div id="mis-lista"></div>
+    </div>
+    <div class="modal-pie diag-pie">
+      <button type="button" class="sec" id="mis-borrar-todas">Borrar todas</button>
+      <button type="button" id="mis-cerrar">Cerrar</button>
     </div>
   </div>
 </div>
@@ -380,7 +429,7 @@
           <div><b>Voz</b>Tono, ritmo, pausas y volumen (si hablas).</div>
           <div><b>Expresión</b>Serenidad y presencia ante la cámara.</div>
         </div>
-        <p style="margin-top:10px;">Las notas son <b>estimaciones automáticas</b> y pueden tener errores. Tu video y audio se procesan en tu navegador y <b>no se guardan</b>.</p>
+        <p style="margin-top:10px;">Las notas son <b>estimaciones automáticas</b> y pueden tener errores. Tu video y audio se procesan en tu navegador y <b>no se guardan</b>. La transcripción y tu evaluación se guardan <b>30 días en este navegador</b> (no en un servidor) y las ves o borras en «Mis entrevistas».</p>
       </div>
     </div>
 
@@ -421,7 +470,9 @@
             Acepto que esta sesión use mi cámara y micrófono únicamente para la
             práctica de entrenamiento en VoxReady. El video y el audio se procesan
             en mi navegador y no se guardan: a la IA solo se envía el texto de mis
-            respuestas y métricas numéricas de mi voz y mi expresión. Si uso el botón
+            respuestas y métricas numéricas de mi voz y mi expresión. Al terminar, mi
+            nombre, la transcripción y mi evaluación se guardan 30 días solo en este
+            navegador (puedo verlas o borrarlas en «Mis entrevistas»). Si uso el botón
             de hablar, el reconocimiento de voz de Chrome/Edge envía mi audio al
             servicio de voz del navegador para transcribirlo.
           </label>
@@ -446,6 +497,15 @@
 
       <div id="seccion-entrevista">
         <h2>Entrevista de práctica</h2>
+        <div id="bloque-nombre">
+          <h3>¿Quién hace la entrevista?</h3>
+          <p>Escribe tu nombre y apellido: aparecerán en tu evaluación y con ellos se guardará tu entrevista 30 días en este navegador.</p>
+          <div class="campos-nombre">
+            <input type="text" id="campo-nombre" placeholder="Nombre" maxlength="60" autocomplete="given-name" />
+            <input type="text" id="campo-apellido" placeholder="Apellido" maxlength="60" autocomplete="family-name" />
+          </div>
+          <p class="estado error" id="aviso-nombre" style="display:none; margin: 8px 0 0 0;"></p>
+        </div>
         <div id="pregunta-actual">Presiona "Comenzar entrevista" para empezar.</div>
         <div id="barra-carga" class="barra-carga"></div>
         <textarea id="campo-respuesta" placeholder="Escribe aquí tu respuesta, o usa el micrófono..."></textarea>
@@ -463,12 +523,14 @@
   <!-- Resultados: ancho completo, aparece al terminar -->
   <section id="panel-resultados">
     <div class="cabecera-resultados">
-      <h2>Tu evaluación</h2>
+      <h2 id="titulo-eval">Tu evaluación</h2>
       <div class="fila-botones" style="margin:0;">
         <button id="boton-nueva" type="button" style="background: var(--navy);">↺ Hacer otra entrevista</button>
+        <button id="boton-descargar" type="button" style="display:none; background: var(--navy);">⬇ Descargar mi entrevista</button>
         <button id="boton-pdf" type="button" style="display:none; background: var(--navy);">Descargar informes como PDF</button>
       </div>
     </div>
+    <p class="estado" id="estado-guardado"></p>
     <div id="resumen-general"></div>
     <h3 class="subtitulo-detalle" id="titulo-detalle" style="display:none;">Detalle por evaluación</h3>
     <div id="informe-cara"></div>
@@ -957,7 +1019,26 @@
     botonEvaluar.style.display = "inline-block";
   }
 
+  // Nombre y apellido: se piden antes de empezar y se guardan junto con la entrevista
+  const campoNombre = document.getElementById("campo-nombre");
+  const campoApellido = document.getElementById("campo-apellido");
+  const avisoNombre = document.getElementById("aviso-nombre");
+  let personaActual = { nombre: "", apellido: "" };
+
+  function limpiarNombre(t) { return (t || "").replace(/\s+/g, " ").trim().slice(0, 60); }
+  function nombreValido(t) { return t.length >= 2 && /\p{L}/u.test(t); }
+
   botonComenzar.addEventListener("click", async () => {
+    const nom = limpiarNombre(campoNombre.value), ape = limpiarNombre(campoApellido.value);
+    if (!nombreValido(nom) || !nombreValido(ape)) {
+      avisoNombre.textContent = "Escribe tu nombre y tu apellido para comenzar.";
+      avisoNombre.style.display = "block";
+      (!nombreValido(nom) ? campoNombre : campoApellido).focus();
+      return;
+    }
+    avisoNombre.style.display = "none";
+    personaActual = { nombre: nom, apellido: ape };
+    document.getElementById("bloque-nombre").style.display = "none";
     botonComenzar.style.display = "none";
     botonHablar.style.display = "inline-block";
     botonResponder.style.display = "inline-block"; // por si prefiere escribir en vez de hablar
@@ -1059,6 +1140,7 @@
   const FRAMES_CALIBRACION = 40;   // ~1.5 s con la cara relajada
   const ALFA_SUAVIZADO = 0.35;     // 0 = muy suave/lento, 1 = sin suavizar
   const UMBRAL_NEUTRAL = 0.30;     // bajo esto, se considera cara neutra
+  const MARGEN_DUDOSA = 0.12;      // si la 1ª y la 2ª expresión se diferencian menos que esto, la lectura es "dudosa"
 
   let faceLandmarker = null;
   let mediaPipeFallo = false;
@@ -1122,6 +1204,33 @@
         prom(b, "mouthUpperUpLeft", "mouthUpperUpRight") * 1.2 +
         (b.mouthShrugUpper || 0) * 0.6
       ),
+      // --- Señales de presencia (v36) ---
+      // Desprecio / burla: la boca se mueve de un solo lado (sonrisa o labio superior asimétricos)
+      desprecio: tope(
+        Math.abs((b.mouthSmileLeft || 0) - (b.mouthSmileRight || 0)) * 2.6 +
+        Math.abs((b.mouthDimpleLeft || 0) - (b.mouthDimpleRight || 0)) * 1.6 +
+        Math.abs((b.mouthUpperUpLeft || 0) - (b.mouthUpperUpRight || 0)) * 1.3
+      ),
+      // Tensión: labios apretados o enrollados, mentón/mandíbula adelantados, ojos entrecerrados
+      tension: tope(
+        prom(b, "mouthPressLeft", "mouthPressRight") * 1.5 +
+        ((b.mouthRollLower || 0) + (b.mouthRollUpper || 0)) * 0.7 +
+        (b.jawForward || 0) * 0.9 +
+        (b.mouthShrugLower || 0) * 0.5 +
+        prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.4 * po
+      ),
+      // Sonrisa falsa: sonríe con la boca pero sin mejillas ni ojos (una sonrisa real los mueve)
+      sonrisa_falsa: tope(
+        prom(b, "mouthSmileLeft", "mouthSmileRight") * 1.8 * gs *
+        (1 - tope((prom(b, "cheekSquintLeft", "cheekSquintRight") + prom(b, "eyeSquintLeft", "eyeSquintRight")) * 2.2))
+      ) * po,
+      // Duda: cejas desparejas o una frunciendo y otra subiendo, con la boca algo encogida
+      duda: tope(
+        Math.abs((b.browOuterUpLeft || 0) - (b.browOuterUpRight || 0)) * 2.4 * gc +
+        Math.abs((b.browDownLeft || 0) - (b.browDownRight || 0)) * 1.8 +
+        (b.browInnerUp || 0) * 0.4 * gc +
+        (b.mouthShrugLower || 0) * 0.5
+      ),
     };
   }
 
@@ -1179,6 +1288,8 @@
       t: Math.round((ahora - inicioCara) / 100) / 10,
       feliz: r3(emo.feliz), triste: r3(emo.triste), enojo: r3(emo.enojo),
       sorpresa: r3(emo.sorpresa), miedo: r3(emo.miedo), asco: r3(emo.asco),
+      desprecio: r3(emo.desprecio || 0), tension: r3(emo.tension || 0),
+      sonrisa_falsa: r3(emo.sonrisa_falsa || 0), duda: r3(emo.duda || 0),
       yaw: r3(pose.yaw - baselinePose.yaw),
       pitch: r3(pose.pitch - baselinePose.pitch),
       mirada: r3(Math.max(horiz, vert)),
@@ -1235,6 +1346,13 @@
     enc.appendChild(t);
     destino.appendChild(enc);
 
+    if (d.tope_aplicado) { // la nota se limitó por código (respuestas cortas o sin sentido)
+      const tp = document.createElement("div");
+      tp.className = "aviso-tope";
+      tp.textContent = d.tope_aplicado;
+      destino.appendChild(tp);
+    }
+
     (d.areas || []).forEach((a) => {
       const div = document.createElement("div");
       div.className = "area";
@@ -1280,6 +1398,7 @@
 
   // ---------- Informe final (fusión de los 3 jueces) ----------
   let informesCrudos = {};      // lo que devolvió cada juez: {contenido, voz, cara}
+  let informeFinalDatos = null; // el informe final del coach (para guardarlo)
   const ESTADO_FINAL = { generando: false };
 
   function nivelDe(nota) {
@@ -1370,10 +1489,63 @@
     });
     wrap.appendChild(grid);
 
+    (f.topes_aplicados || []).forEach((t) => {
+      const av = document.createElement("div");
+      av.className = "aviso-tope";
+      av.textContent = "Ojo: " + t;
+      wrap.appendChild(av);
+    });
+
     if (f.fortaleza_principal) wrap.appendChild(bloqueTexto("Tu mayor fortaleza", f.fortaleza_principal));
     if (f.recomendacion_principal) {
       wrap.appendChild(bloqueTexto("Lo más importante para mejorar", f.recomendacion_principal, "prioridad", f.por_que_esta_prioridad));
     }
+
+    // Áreas a trabajar: de la nota más baja a la más alta, cada una con un ejercicio
+    const trabajo = document.createElement("div");
+    trabajo.className = "bloque-trabajo";
+    const th = document.createElement("h3");
+    th.textContent = "Áreas a trabajar";
+    trabajo.appendChild(th);
+    const lista = f.areas_a_trabajar || [];
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = lista.length
+      ? "Ordenadas de la nota más baja a la más alta. Practica primero la de arriba."
+      : "Ninguna área quedó por debajo del nivel esperado en esta práctica. ¡Buen trabajo! Repite la entrevista para confirmarlo.";
+    trabajo.appendChild(sub);
+    lista.forEach((a, i) => {
+      const it = document.createElement("div");
+      it.className = "item-trabajo";
+      const fila = document.createElement("div");
+      fila.className = "fila";
+      const nom = document.createElement("span");
+      nom.className = "nombre";
+      nom.textContent = `${i + 1}. ${a.nombre}`;
+      const der = document.createElement("span");
+      const nv = document.createElement("span");
+      nv.className = "nivel" + (a.nivel === "Prioridad alta" ? " alta" : a.nivel === "Por reforzar" ? " media" : "");
+      nv.textContent = a.nivel;
+      const nt = document.createElement("span");
+      nt.className = "nota-t";
+      nt.textContent = `  ${Number(a.puntaje).toFixed(1)} / 5`;
+      der.appendChild(nv);
+      der.appendChild(nt);
+      fila.appendChild(nom);
+      fila.appendChild(der);
+      it.appendChild(fila);
+      if (a.ejercicio) {
+        const ej = document.createElement("div");
+        ej.className = "ejercicio";
+        const eb = document.createElement("b");
+        eb.textContent = "Ejercicio: ";
+        ej.appendChild(eb);
+        ej.appendChild(document.createTextNode(a.ejercicio));
+        it.appendChild(ej);
+      }
+      trabajo.appendChild(it);
+    });
+    wrap.appendChild(trabajo);
     cont.appendChild(wrap);
     cont.style.display = "block";
   }
@@ -1409,6 +1581,7 @@
       if (sid !== idSesion) return;
       if (!respuesta.ok) throw new Error(typeof datos.detail === "string" ? datos.detail : "error " + respuesta.status);
       ok = true;
+      informeFinalDatos = datos;
       renderizarInformeFinal(cont, datos);
     } catch (error) {
       if (sid !== idSesion) return;
@@ -1428,13 +1601,13 @@
     }
   }
 
-  function renderizarTranscripcion() {
+  function renderizarTranscripcion(mensajes) {
     const cont = document.getElementById("transcripcion-final");
     cont.textContent = "";
     const h = document.createElement("h2");
     h.textContent = "Transcripción de la entrevista";
     cont.appendChild(h);
-    historial.slice(1).forEach((m) => { // se omite el "Estoy listo para empezar."
+    (mensajes || historial.slice(1)).forEach((m) => { // se omite el "Estoy listo para empezar."
       const linea = document.createElement("div");
       linea.className = "linea " + (m.role === "assistant" ? "entrevistador" : "vocero");
       const quien = document.createElement("span");
@@ -1488,9 +1661,13 @@
     contenedorInformes.textContent = "";
     contenedorInformes.style.display = "block";
     informesCrudos = {};
+    informeFinalDatos = null;
     document.getElementById("resumen-general").style.display = "none";
     document.getElementById("titulo-detalle").style.display = "block";
     document.getElementById("boton-pdf").style.display = "none";
+    document.getElementById("boton-descargar").style.display = "none";
+    document.getElementById("estado-guardado").textContent = "";
+    document.getElementById("titulo-eval").textContent = personaActual.nombre ? `Evaluación de ${personaActual.nombre} ${personaActual.apellido}` : "Tu evaluación";
     renderizarTranscripcion();
     document.body.classList.add("con-resultados");
     setPaso(3);
@@ -1538,9 +1715,184 @@
     if (sid !== idSesion) return;
     iaEvaluando = false;
     document.getElementById("boton-pdf").style.display = "inline-block";
+    document.getElementById("boton-descargar").style.display = "inline-block";
+    guardarEntrevistaActual();
   });
 
   document.getElementById("boton-pdf").addEventListener("click", () => window.print());
+
+  // ================================================================
+  // Guardado de entrevistas: 30 días, en ESTE navegador (localStorage)
+  // Se guarda: nombre, fecha, transcripción, informes de los jueces e informe final.
+  // No se guarda video ni audio. Las entrevistas vencidas se borran al abrir la página.
+  // (Si más adelante se pasa a una base de datos compartida, solo hay que cambiar
+  //  leerGuardadas / escribirGuardadas: el resto de la página no cambia.)
+  // ================================================================
+  const CLAVE_GUARDADAS = "voxready_entrevistas_v1";
+  const DIAS_GUARDADO = 30;
+  const MS_DIA = 24 * 60 * 60 * 1000;
+  let entrevistaMostrada = null; // la entrevista que se está viendo (para el botón de descarga)
+
+  function leerGuardadas() {
+    try {
+      const lista = JSON.parse(localStorage.getItem(CLAVE_GUARDADAS) || "[]");
+      return Array.isArray(lista) ? lista : [];
+    } catch (e) { return []; }
+  }
+  function escribirGuardadas(lista) {
+    try { localStorage.setItem(CLAVE_GUARDADAS, JSON.stringify(lista)); return true; }
+    catch (e) { console.warn("No se pudo guardar:", e); return false; }
+  }
+  function purgarVencidas() {
+    const ahora = Date.now();
+    const todas = leerGuardadas();
+    const vigentes = todas.filter((x) => x && x.expira > ahora);
+    if (vigentes.length !== todas.length) escribirGuardadas(vigentes);
+    return vigentes;
+  }
+  function fechaLarga(ms) {
+    return new Date(ms).toLocaleString("es-CL", { dateStyle: "medium", timeStyle: "short" });
+  }
+
+  function guardarEntrevistaActual() {
+    const estado = document.getElementById("estado-guardado");
+    const ahora = Date.now();
+    const item = {
+      id: ahora.toString(36) + Math.random().toString(36).slice(2, 7),
+      nombre: personaActual.nombre,
+      apellido: personaActual.apellido,
+      fecha: ahora,
+      expira: ahora + DIAS_GUARDADO * MS_DIA,
+      version: VERSION_APP,
+      transcripcion: historial.slice(1),
+      informes: informesCrudos,
+      final: informeFinalDatos,
+    };
+    entrevistaMostrada = item;
+    const lista = purgarVencidas();
+    lista.unshift(item);
+    // Si el navegador se queda sin espacio, se descartan las más antiguas hasta que quepa
+    let ok = escribirGuardadas(lista);
+    while (!ok && lista.length > 1) { lista.pop(); ok = escribirGuardadas(lista); }
+    estado.className = "estado" + (ok ? " ok" : " error");
+    estado.textContent = ok
+      ? `✓ Guardada a nombre de ${item.nombre} ${item.apellido} hasta el ${fechaLarga(item.expira)}. La ves en «Mis entrevistas».`
+      : "No se pudo guardar en este navegador (¿modo privado o sin espacio?). Usa «Descargar mi entrevista» para conservar tu copia.";
+  }
+
+  function descargarEntrevista(item) {
+    if (!item) return;
+    const datos = JSON.stringify(item, null, 2);
+    const blob = new Blob([datos], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const limpio = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "_");
+    a.href = url;
+    a.download = `voxready_${limpio(item.nombre)}_${limpio(item.apellido)}_${new Date(item.fecha).toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  document.getElementById("boton-descargar").addEventListener("click", () => descargarEntrevista(entrevistaMostrada));
+
+  // Muestra en pantalla una entrevista guardada
+  function verGuardada(item) {
+    cerrarMis();
+    entrevistaMostrada = item;
+    document.getElementById("titulo-eval").textContent = `Evaluación de ${item.nombre} ${item.apellido}`;
+    const est = document.getElementById("estado-guardado");
+    est.className = "estado";
+    est.textContent = `Entrevista del ${fechaLarga(item.fecha)} · se borra el ${fechaLarga(item.expira)}.`;
+    contenedorInformes.textContent = "";
+    contenedorInformes.style.display = "block";
+    const nombres = { contenido: ["Contenido de tus respuestas", "puntaje_global"], voz: ["Tu voz", "puntaje_global_voz"], cara: ["Tu expresión facial", "puntaje_global_cara"] };
+    Object.entries(item.informes || {}).forEach(([k, d]) => {
+      if (!nombres[k] || !d) return;
+      const sec = crearSeccionInforme();
+      renderizarInforme(sec.cuerpo, nombres[k][0], d, nombres[k][1]);
+    });
+    const resumen = document.getElementById("resumen-general");
+    if (item.final) renderizarInformeFinal(resumen, item.final);
+    else { resumen.textContent = ""; resumen.style.display = "none"; }
+    document.getElementById("titulo-detalle").style.display = "block";
+    document.getElementById("boton-pdf").style.display = "inline-block";
+    document.getElementById("boton-descargar").style.display = "inline-block";
+    renderizarTranscripcion(item.transcripcion || []);
+    document.body.classList.add("con-resultados");
+    document.getElementById("panel-resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // Ventana "Mis entrevistas"
+  const modalMis = document.getElementById("modal-mis");
+  function pintarMis() {
+    const cont = document.getElementById("mis-lista");
+    cont.textContent = "";
+    const lista = purgarVencidas();
+    if (!lista.length) {
+      const p = document.createElement("p");
+      p.className = "estado";
+      p.textContent = "Aún no hay entrevistas guardadas en este navegador. Al terminar una evaluación, se guarda sola.";
+      cont.appendChild(p);
+      return;
+    }
+    lista.forEach((x) => {
+      const fila = document.createElement("div");
+      fila.className = "guardada";
+      const info = document.createElement("div");
+      const q = document.createElement("div");
+      q.className = "quien";
+      q.textContent = `${x.nombre} ${x.apellido}`;
+      const m = document.createElement("div");
+      m.className = "meta";
+      const nota = x.final && x.final.puntaje_global != null ? ` · nota global ${Number(x.final.puntaje_global).toFixed(1)}/5` : "";
+      const dias = Math.max(0, Math.ceil((x.expira - Date.now()) / MS_DIA));
+      m.textContent = `${fechaLarga(x.fecha)}${nota} · se borra en ${dias} día(s)`;
+      info.appendChild(q);
+      info.appendChild(m);
+      const acc = document.createElement("div");
+      acc.className = "acciones";
+      const ver = document.createElement("button");
+      ver.type = "button"; ver.textContent = "Ver";
+      ver.addEventListener("click", () => verGuardada(x));
+      const des = document.createElement("button");
+      des.type = "button"; des.textContent = "Descargar";
+      des.addEventListener("click", () => descargarEntrevista(x));
+      const bor = document.createElement("button");
+      bor.type = "button"; bor.textContent = "Borrar"; bor.className = "borrar";
+      bor.addEventListener("click", () => {
+        if (!confirm(`¿Borrar la entrevista de ${x.nombre} ${x.apellido}? No se puede deshacer.`)) return;
+        escribirGuardadas(leerGuardadas().filter((y) => y.id !== x.id));
+        pintarMis();
+      });
+      acc.appendChild(ver); acc.appendChild(des); acc.appendChild(bor);
+      fila.appendChild(info);
+      fila.appendChild(acc);
+      cont.appendChild(fila);
+    });
+  }
+  function abrirMis() {
+    pintarMis();
+    modalMis.style.display = "flex";
+    document.body.style.overflow = "hidden";
+    document.getElementById("mis-cerrar").focus();
+  }
+  function cerrarMis() {
+    modalMis.style.display = "none";
+    document.body.style.overflow = "";
+  }
+  document.getElementById("boton-mis").addEventListener("click", abrirMis);
+  document.getElementById("mis-cerrar").addEventListener("click", cerrarMis);
+  document.getElementById("mis-borrar-todas").addEventListener("click", () => {
+    if (!leerGuardadas().length) return;
+    if (!confirm("¿Borrar TODAS las entrevistas guardadas en este navegador? No se puede deshacer.")) return;
+    escribirGuardadas([]);
+    pintarMis();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (modalMis.style.display === "flex" && e.key === "Escape") cerrarMis();
+  });
+  purgarVencidas(); // al abrir la página, se borran las vencidas
 
   async function iniciarMediaPipe() {
     estadoFacial.textContent = "Cargando modelo de alta precisión (puede tardar unos segundos)...";
@@ -1643,9 +1995,13 @@
             const [nombreTop, valorTop] = orden[0];
             const ganadora = valorTop < UMBRAL_NEUTRAL ? "neutral" : nombreTop;
             const pct = ganadora === "neutral" ? Math.round((1 - valorTop) * 100) : Math.round(valorTop * 100);
-            const detalle = orden.slice(0, 3).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(" · ");
+            const nombreBonito = (k) => k.replace("_", " ");
+            const detalle = orden.slice(0, 3).map(([k, v]) => `${nombreBonito(k)} ${Math.round(v * 100)}%`).join(" · ");
+            // Si la 1ª y la 2ª expresión van casi parejas, la lectura es dudosa: se dice en vez de apostar
+            const dudosa = ganadora !== "neutral" && orden.length > 1 && valorTop - orden[1][1] < MARGEN_DUDOSA;
+            const etiquetaExp = dudosa ? `dudosa (${nombreBonito(nombreTop)} o ${nombreBonito(orden[1][0])})` : nombreBonito(ganadora);
 
-            estadoFacial.textContent = `Rostro detectado — expresión: ${ganadora} (${pct}%)  |  ${detalle}`;
+            estadoFacial.textContent = `Rostro detectado — expresión: ${etiquetaExp} (${pct}%)  |  ${detalle}`;
             estadoFacial.className = "estado ok";
           }
         } else {
@@ -2146,6 +2502,8 @@
     resultadoVoz = null;
     datosCara = null;
     informesCrudos = {};
+    informeFinalDatos = null;
+    entrevistaMostrada = null;
     ESTADO_FINAL.generando = false;
     entrevistaActiva = false;
     iaPensando = false;
@@ -2163,9 +2521,13 @@
     botonResponder.style.display = "none";
     botonResponder.disabled = false;
     botonEvaluar.style.display = "none";
+    document.getElementById("bloque-nombre").style.display = "block"; // se conservan nombre y apellido escritos; se pueden cambiar
+    avisoNombre.style.display = "none";
+    document.getElementById("titulo-eval").textContent = "Tu evaluación";
+    document.getElementById("estado-guardado").textContent = "";
 
     document.body.classList.remove("con-resultados");
-    ["resumen-general", "titulo-detalle", "boton-pdf"].forEach((id) => { document.getElementById(id).style.display = "none"; });
+    ["resumen-general", "titulo-detalle", "boton-pdf", "boton-descargar"].forEach((id) => { document.getElementById(id).style.display = "none"; });
     document.getElementById("resumen-general").textContent = "";
     contenedorInformes.textContent = "";
     contenedorInformes.style.display = "none";
@@ -2178,7 +2540,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "35";
+  const VERSION_APP = "36";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
