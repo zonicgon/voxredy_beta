@@ -110,6 +110,31 @@
   .modal-pie.diag-pie button { font-size: 14px; padding: 11px 20px; }
   .modal-pie.diag-pie .sec { background: var(--navy); }
 
+  /* ---------- Inicio de sesión (solo usuario; shell sin base de datos aún) ---------- */
+  #pantalla-login {
+    display: flex; position: fixed; inset: 0; z-index: 2000;
+    background: var(--navy); align-items: center; justify-content: center; padding: 20px; overflow-y: auto;
+  }
+  .login-caja {
+    background: white; border-radius: 16px; width: 100%; max-width: 420px; padding: 30px 30px 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  }
+  .login-logo { font-size: 24px; font-weight: 800; color: var(--navy); margin-bottom: 18px; text-align: center; }
+  .login-logo span { color: var(--orange); }
+  #login-form h2, #registro-form h2 { margin: 0 0 4px 0; }
+  #login-form label, #registro-form label { display: block; font-size: 13px; color: var(--muted); font-weight: 600; margin: 14px 0 4px; }
+  #login-form input, #registro-form input {
+    width: 100%; padding: 11px 12px; border: 1px solid var(--light); border-radius: 8px; font-size: 15px; font-family: inherit;
+  }
+  #login-form .campos-nombre, #registro-form .campos-nombre { display: flex; gap: 10px; margin-top: 4px; }
+  #login-form .campos-nombre input, #registro-form .campos-nombre input { width: 100%; }
+  #login-form button, #registro-form button { width: 100%; margin-top: 18px; }
+  .login-cambiar { text-align: center; font-size: 14px; margin-top: 16px; }
+  .login-cambiar a { color: var(--orange); font-weight: 600; text-decoration: none; }
+  .login-cambiar a:hover { text-decoration: underline; }
+  .login-nota { font-size: 12px; color: var(--muted); text-align: center; margin-top: 18px; line-height: 1.4; }
+  #sesion-usuario { font-size: 13px; color: #C9D6E3; white-space: nowrap; }
+
   /* ---------- Pantalla completa: 2 columnas ---------- */
   main {
     flex: 1;
@@ -341,9 +366,50 @@
 </head>
 <body>
 
+<!-- ============ Inicio de sesión (solo usuario; sin base de datos todavía, se guarda en este navegador) ============ -->
+<div id="pantalla-login" role="dialog" aria-modal="true" aria-labelledby="login-titulo">
+  <div class="login-caja">
+    <div class="login-logo">Vox<span>Ready</span></div>
+
+    <div id="login-form">
+      <h2 id="login-titulo">Iniciar sesión</h2>
+      <p class="subtitulo">Ingresa con tu cuenta para comenzar tu entrevista de práctica.</p>
+      <label for="login-correo">Correo</label>
+      <input type="email" id="login-correo" autocomplete="email" placeholder="tu@correo.com" />
+      <label for="login-contrasena">Contraseña</label>
+      <input type="password" id="login-contrasena" autocomplete="current-password" placeholder="Tu contraseña" />
+      <p class="estado error" id="login-aviso" style="display:none;"></p>
+      <button type="button" id="boton-login">Iniciar sesión</button>
+      <p class="login-cambiar">¿No tienes cuenta? <a href="#" id="ir-a-registro">Crea una aquí</a></p>
+    </div>
+
+    <div id="registro-form" style="display:none;">
+      <h2>Crear cuenta</h2>
+      <p class="subtitulo">Solo toma un momento. Es una cuenta personal, para tu práctica en VoxReady.</p>
+      <div class="campos-nombre">
+        <input type="text" id="registro-nombre" placeholder="Nombre" maxlength="60" autocomplete="given-name" />
+        <input type="text" id="registro-apellido" placeholder="Apellido" maxlength="60" autocomplete="family-name" />
+      </div>
+      <label for="registro-correo">Correo</label>
+      <input type="email" id="registro-correo" autocomplete="email" placeholder="tu@correo.com" />
+      <label for="registro-contrasena">Contraseña</label>
+      <input type="password" id="registro-contrasena" autocomplete="new-password" placeholder="Al menos 6 caracteres" />
+      <label for="registro-contrasena2">Repetir contraseña</label>
+      <input type="password" id="registro-contrasena2" autocomplete="new-password" placeholder="Escríbela de nuevo" />
+      <p class="estado error" id="registro-aviso" style="display:none;"></p>
+      <button type="button" id="boton-registro">Crear cuenta</button>
+      <p class="login-cambiar">¿Ya tienes cuenta? <a href="#" id="ir-a-login">Inicia sesión</a></p>
+    </div>
+
+    <p class="login-nota">Por ahora esta cuenta se guarda solo en este navegador (es una primera versión, sin base de datos todavía). Más adelante se va a conectar a una base de datos real.</p>
+  </div>
+</div>
+
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v36</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v37</span></div>
   <div class="derecha">
+    <span id="sesion-usuario" style="display:none;"></span>
+    <button type="button" class="enlace-beta" id="boton-cerrar-sesion" style="display:none;">Cerrar sesión</button>
     <div id="ia-estado" title="Estado de las IAs durante la sesión">
       <span class="ia-item" id="ia-entrevistador" title="IA entrevistadora"><i class="ia-punto"></i>Entrevistador</span>
       <span class="ia-item" id="ia-voz" title="Análisis de voz (en tu navegador)"><i class="ia-punto"></i>Voz</span>
@@ -541,6 +607,124 @@
 <script>
   // --- Dirección de tu backend. Si usas otro puerto, cámbialo aquí. ---
   const URL_BACKEND = "/api"; // mismo dominio: funciona igual en Vercel y en local
+
+  // ================================================================
+  // Inicio de sesión (SOLO usuario; el administrador lo maneja otra gente,
+  // en otra parte). Es una CARCASA: por ahora las cuentas se guardan en
+  // este navegador (localStorage), sin backend ni base de datos todavía.
+  // Cuando haya base de datos, solo hay que cambiar las 4 funciones
+  // leerUsuarios / guardarUsuarios / iniciarSesionLocal / crearUsuarioLocal
+  // por llamadas reales al servidor; el resto de la página no cambia.
+  // ================================================================
+  const CLAVE_USUARIOS = "voxready_usuarios";
+  const CLAVE_SESION = "voxready_sesion";
+
+  function leerUsuarios() {
+    try { return JSON.parse(localStorage.getItem(CLAVE_USUARIOS) || "[]"); } catch (e) { return []; }
+  }
+  function guardarUsuarios(lista) {
+    try { localStorage.setItem(CLAVE_USUARIOS, JSON.stringify(lista)); return true; } catch (e) { return false; }
+  }
+  function limpiarTexto(t) { return (t || "").replace(/\s+/g, " ").trim(); }
+  function correoValido(c) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c); }
+  function normalizarCorreo(c) { return limpiarTexto(c).toLowerCase(); }
+
+  const pantallaLogin = document.getElementById("pantalla-login");
+  const loginForm = document.getElementById("login-form");
+  const registroForm = document.getElementById("registro-form");
+  const loginAviso = document.getElementById("login-aviso");
+  const registroAviso = document.getElementById("registro-aviso");
+  const sesionUsuarioEl = document.getElementById("sesion-usuario");
+  const botonCerrarSesion = document.getElementById("boton-cerrar-sesion");
+
+  function mostrarAviso(el, texto) { el.textContent = texto; el.style.display = "block"; }
+  function ocultarAviso(el) { el.style.display = "none"; }
+
+  document.getElementById("ir-a-registro").addEventListener("click", (e) => {
+    e.preventDefault();
+    loginForm.style.display = "none";
+    registroForm.style.display = "block";
+    ocultarAviso(loginAviso);
+    document.getElementById("registro-nombre").focus();
+  });
+  document.getElementById("ir-a-login").addEventListener("click", (e) => {
+    e.preventDefault();
+    registroForm.style.display = "none";
+    loginForm.style.display = "block";
+    ocultarAviso(registroAviso);
+    document.getElementById("login-correo").focus();
+  });
+
+  // Abre la página ya con la sesión activa (al iniciar sesión, al registrarse o al recargar la página)
+  function entrarConSesion(usuario) {
+    try { localStorage.setItem(CLAVE_SESION, normalizarCorreo(usuario.correo)); } catch (e) { /* nada */ }
+    pantallaLogin.style.display = "none";
+    document.body.style.overflow = "";
+    sesionUsuarioEl.textContent = `${usuario.nombre} ${usuario.apellido}`;
+    sesionUsuarioEl.style.display = "inline";
+    botonCerrarSesion.style.display = "inline-block";
+    // Deja el nombre y apellido de la entrevista ya escritos (el usuario los puede cambiar si quiere)
+    const cn = document.getElementById("campo-nombre"), ca = document.getElementById("campo-apellido");
+    if (cn && !cn.value) cn.value = usuario.nombre;
+    if (ca && !ca.value) ca.value = usuario.apellido;
+  }
+
+  document.getElementById("boton-login").addEventListener("click", () => {
+    const correo = normalizarCorreo(document.getElementById("login-correo").value);
+    const contrasena = document.getElementById("login-contrasena").value;
+    if (!correoValido(correo) || !contrasena) {
+      mostrarAviso(loginAviso, "Escribe tu correo y tu contraseña.");
+      return;
+    }
+    const usuario = leerUsuarios().find((u) => u.correo === correo);
+    if (!usuario || usuario.contrasena !== contrasena) {
+      mostrarAviso(loginAviso, "Correo o contraseña incorrectos.");
+      return;
+    }
+    ocultarAviso(loginAviso);
+    entrarConSesion(usuario);
+  });
+
+  document.getElementById("boton-registro").addEventListener("click", () => {
+    const nombre = limpiarTexto(document.getElementById("registro-nombre").value);
+    const apellido = limpiarTexto(document.getElementById("registro-apellido").value);
+    const correo = normalizarCorreo(document.getElementById("registro-correo").value);
+    const contrasena = document.getElementById("registro-contrasena").value;
+    const contrasena2 = document.getElementById("registro-contrasena2").value;
+    if (!nombre || !apellido) return mostrarAviso(registroAviso, "Escribe tu nombre y tu apellido.");
+    if (!correoValido(correo)) return mostrarAviso(registroAviso, "Escribe un correo válido.");
+    if (contrasena.length < 6) return mostrarAviso(registroAviso, "La contraseña debe tener al menos 6 caracteres.");
+    if (contrasena !== contrasena2) return mostrarAviso(registroAviso, "Las contraseñas no coinciden.");
+    const usuarios = leerUsuarios();
+    if (usuarios.some((u) => u.correo === correo)) return mostrarAviso(registroAviso, "Ya existe una cuenta con ese correo. Inicia sesión.");
+    const usuario = { nombre, apellido, correo, contrasena };
+    usuarios.push(usuario);
+    if (!guardarUsuarios(usuarios)) return mostrarAviso(registroAviso, "No se pudo crear la cuenta en este navegador. Prueba de nuevo.");
+    ocultarAviso(registroAviso);
+    entrarConSesion(usuario);
+  });
+
+  botonCerrarSesion.addEventListener("click", () => {
+    try { localStorage.removeItem(CLAVE_SESION); } catch (e) { /* nada */ }
+    location.reload();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (pantallaLogin.style.display === "none") return;
+    if (e.key === "Enter" && document.activeElement && document.activeElement.tagName === "INPUT") {
+      if (loginForm.style.display !== "none") document.getElementById("boton-login").click();
+      else document.getElementById("boton-registro").click();
+    }
+  });
+
+  // Si ya había una sesión guardada en este navegador, entra directo (sin pedir login de nuevo)
+  (function entrarSiHaySesion() {
+    let correoGuardado = "";
+    try { correoGuardado = localStorage.getItem(CLAVE_SESION) || ""; } catch (e) { /* nada */ }
+    const usuario = correoGuardado && leerUsuarios().find((u) => u.correo === correoGuardado);
+    if (usuario) entrarConSesion(usuario);
+    else document.body.style.overflow = "hidden"; // bloquea el scroll de atrás mientras se ve el login
+  })();
 
   const checkConsentimiento = document.getElementById("check-consentimiento");
   const botonSolicitar = document.getElementById("boton-solicitar");
@@ -2540,7 +2724,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "36";
+  const VERSION_APP = "37";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;

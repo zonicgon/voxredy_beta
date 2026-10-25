@@ -137,3 +137,11 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **4 expresiones nuevas** (además de las 6 básicas): desprecio, tensión, sonrisa falsa y duda. Una expresión solo cuenta si se sostiene unos 0,6 s, y la lectura se marca como **«dudosa»** cuando las dos primeras expresiones van casi parejas (diferencia menor a 0,12).
 - **«Áreas a trabajar»** al final del informe: las áreas con nota menor a 3,5, de menor a mayor, con nivel (Prioridad alta / Por reforzar) y un ejercicio concreto por cada una. La lista sale de las notas por código; la IA solo redacta el ejercicio.
 - Hay que subir **app.py y public/index.html** juntos (requirements.txt y vercel.json no cambian).
+
+### v37 — Inicio de sesión (solo usuario, carcasa sin base de datos)
+- **Pantalla de inicio de sesión / creación de cuenta** antes de todo lo demás (comprobación técnica, calibración, entrevista). Es **solo para usuarios**: la administración del sistema la hace otra gente, por otro lado, no está en esta pantalla.
+- Por ahora es una **carcasa sin base de datos**: las cuentas (nombre, apellido, correo, contraseña) se guardan en `localStorage`, en el navegador de cada persona. Cuando se conecte una base de datos real, solo hay que cambiar 4 funciones en `public/index.html` (`leerUsuarios` / `guardarUsuarios` / lo que hacen `boton-login` y `boton-registro`); el resto de la página no cambia.
+- Si ya inició sesión antes en ese navegador, entra directo (no pide login de nuevo). Botón **Cerrar sesión** (arriba a la derecha, junto al nombre) borra la sesión guardada y vuelve a pedir login.
+- Al crear la cuenta o iniciar sesión, el nombre y apellido quedan **precargados** en el paso "¿Quién hace la entrevista?" (se pueden cambiar igual antes de comenzar).
+- **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
+- Hay que subir **app.py y public/index.html** juntos.
