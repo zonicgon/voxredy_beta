@@ -331,6 +331,13 @@
   .item-trabajo .nota-t { font-weight: 800; color: var(--orange); }
   .item-trabajo .ejercicio { margin-top: 6px; font-size: 14px; line-height: 1.55; }
   .item-trabajo .ejercicio b { color: var(--navy); }
+  .item-trabajo .curso {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 12px;
+    border-radius: 999px; background: var(--light); color: var(--navy); font-size: 13px; font-weight: 700;
+    text-decoration: none;
+  }
+  .item-trabajo .curso:hover { background: #D7E1EC; }
+  .item-trabajo .curso .proximamente { font-weight: 500; color: var(--muted); }
   /* Mis entrevistas */
   #modal-mis { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(15,30,45,0.65); align-items: center; justify-content: center; padding: 20px; }
   .guardada { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--light); }
@@ -406,7 +413,7 @@
 </div>
 
 <header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v37</span></div>
+  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v38</span></div>
   <div class="derecha">
     <span id="sesion-usuario" style="display:none;"></span>
     <button type="button" class="enlace-beta" id="boton-cerrar-sesion" style="display:none;">Cerrar sesión</button>
@@ -1727,6 +1734,19 @@
         ej.appendChild(document.createTextNode(a.ejercicio));
         it.appendChild(ej);
       }
+      if (a.curso_url) {
+        const curso = document.createElement("a");
+        curso.className = "curso";
+        curso.href = a.curso_url;
+        curso.target = "_blank";
+        curso.rel = "noopener";
+        curso.appendChild(document.createTextNode(`📚 Curso de ${a.nombre}`));
+        const prox = document.createElement("span");
+        prox.className = "proximamente";
+        prox.textContent = "(próximamente)";
+        curso.appendChild(prox);
+        it.appendChild(curso);
+      }
       trabajo.appendChild(it);
     });
     wrap.appendChild(trabajo);
@@ -2724,7 +2744,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "37";
+  const VERSION_APP = "38";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;

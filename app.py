@@ -15,6 +15,7 @@ Vercel:  se despliega tal cual (el objeto `app` es el punto de entrada).
 
 import json
 import os
+import re
 import statistics
 import time
 from collections import defaultdict, deque
@@ -31,7 +32,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "37"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "38"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -589,6 +590,9 @@ REGLAS DE RIGOR:
 - Si no hay ninguna respuesta con contenido real, las 4 notas son 0 o 1.
 - No premies el esfuerzo ni la buena educación: premia solo lo que de verdad ayudaría a manejar la crisis.
 - Cada comentario DEBE incluir una cita textual corta (entre comillas) de lo que dijo el vocero como evidencia de la nota. Si no hay nada que citar, di que no hay evidencia y baja la nota.
+- Se te entrega, ya calculado por código, el porcentaje de palabras de relleno ("muletillas": eh, este, o sea, tipo, em...). Si es alto (8% o más), baja al menos un punto "Claridad del mensaje" y dilo explícitamente en el comentario, aunque el contenido en sí esté bien.
+- Si en cualquier respuesta el vocero es grosero, insulta, falta el respeto o descalifica al periodista, "Responsabilidad y tono" debe ser 0 o 1 sin importar lo demás, y dilo citando la frase exacta. No lo disculpes como "estrés" o "presión".
+- Una respuesta vacía, en blanco, o que solo repite la pregunta sin aportar nada, vale 0 en esa respuesta: si son la mayoría, las 4 notas deben ser 0 o 1.
 
 ÁREAS:
 1. Claridad del mensaje: ¿las respuestas son entendibles y van al punto?
@@ -619,7 +623,30 @@ sin bloques de código markdown, con esta forma exacta:
 # Topes por CÓDIGO: la IA tiende a ser generosa, así que lo evidente (respuestas vacías,
 # sin sentido o demasiado cortas) se limita aquí, sin depender de lo que "opine" el modelo.
 # ------------------------------------------------------------------------------
-PALABRAS_MINIMAS = 8  # una respuesta con menos palabras que esto se considera de relleno
+PALABRAS_MINIMAS = 10  # una respuesta con menos palabras que esto se considera de relleno
+
+# Muletillas comunes en español (y modismos chilenos) habladas por el micrófono.
+# \b exige que sea la palabra completa, no parte de otra.
+PATRONES_MULETILLAS = [
+    r"\bo sea\b", r"\beh+\b", r"\bem+\b", r"\bmm+\b", r"\beste\b", r"\bdigamos\b",
+    r"\bcomo que\b", r"\bo sea que\b", r"\btipo\b", r"\bps\b", r"\bpo\b",
+    r"\ba ver\b", r"\bcachai\b", r"\bbueno\b", r"\bentonces\b", r"\bclaro\b",
+]
+_RE_MULETILLAS = [re.compile(p, re.IGNORECASE) for p in PATRONES_MULETILLAS]
+
+# Lista acotada y poco ambigua de groserías/insultos dirigidos a una persona.
+# Es solo para DETECTAR (y limitar la nota por código); no se usa para generar texto.
+PATRON_GROSERIA = re.compile(
+    r"\b("
+    r"idiota|est[uú]pid[oa]s?|imb[eé]cil(es)?|pendej[oa]s?|in[uú]til(es)?|"
+    r"c[aá]llate|c[aá]llense|c[aá]llese|v[eé]te a la (mierda|chucha|cresta)|"
+    r"mierda|concha\s*(de\s*(tu|su)\s*madre)?|csm|ctm|hijo[s]?\s*de\s*puta|"
+    r"malparid[oa]|desgraciad[oa]|pudr[ií]ete|"
+    r"no\s*(te|le)\s*importa\s*(una\s*mierda|nada)?|incompetente|"
+    r"ignorante|est[uú]pida\s*pregunta|pregunta\s*est[uú]pida"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def _es_sin_sentido(texto):
@@ -645,19 +672,53 @@ def _es_sin_sentido(texto):
     return False
 
 
+def _contar_muletillas(texto):
+    """Cuenta coincidencias de muletillas y devuelve {muletilla: cantidad} (solo las que aparecen)."""
+    t = texto.lower()
+    conteo = {}
+    for patron, regex in zip(PATRONES_MULETILLAS, _RE_MULETILLAS):
+        n = len(regex.findall(t))
+        if n:
+            etiqueta = patron.replace(r"\b", "").replace("+", "")
+            conteo[etiqueta] = n
+    return conteo
+
+
+def _contiene_groseria(texto):
+    return bool(PATRON_GROSERIA.search(texto))
+
+
 def estadisticas_respuestas(conversacion):
     respuestas = [m.content for m in conversacion if m.role == "user"]
     n = len(respuestas)
     if n == 0:
-        return {"respuestas": 0, "pct_sin_sentido": 100.0, "pct_cortas": 100.0, "palabras_promedio": 0.0}
+        return {
+            "respuestas": 0, "pct_sin_sentido": 100.0, "pct_cortas": 100.0, "palabras_promedio": 0.0,
+            "pct_muletillas": 0.0, "muletillas_detectadas": [], "groseras": 0, "tiene_groserias": False,
+        }
     palabras = [len(r.split()) for r in respuestas]
+    total_palabras = sum(palabras) or 1
     sin_sentido = sum(1 for r in respuestas if _es_sin_sentido(r))
     cortas = sum(1 for p in palabras if p < PALABRAS_MINIMAS)
+
+    conteo_total = {}
+    for r in respuestas:
+        for muletilla, cant in _contar_muletillas(r).items():
+            conteo_total[muletilla] = conteo_total.get(muletilla, 0) + cant
+    total_muletillas = sum(conteo_total.values())
+    top_muletillas = sorted(conteo_total.items(), key=lambda kv: -kv[1])[:5]
+
+    groseras = sum(1 for r in respuestas if _contiene_groseria(r))
+
     return {
         "respuestas": n,
         "pct_sin_sentido": round(sin_sentido / n * 100, 1),
         "pct_cortas": round(cortas / n * 100, 1),
         "palabras_promedio": round(sum(palabras) / n, 1),
+        "pct_muletillas": round(total_muletillas / total_palabras * 100, 1),
+        "muletillas_detectadas": [f"{m} ({c})" for m, c in top_muletillas],
+        "groseras": groseras,
+        "tiene_groserias": groseras > 0,
     }
 
 
@@ -700,6 +761,38 @@ def aplicar_topes_contenido(informe, est):
     return []
 
 
+def aplicar_tope_respeto(informe, est):
+    """Si hubo lenguaje grosero/irrespetuoso, limita por código SOLO 'Responsabilidad y tono'
+    (las otras áreas se evalúan normal: una respuesta grosera puede igual tener info útil)."""
+    if not isinstance(informe, dict) or not isinstance(informe.get("areas"), list):
+        return []
+    if not est.get("tiene_groserias"):
+        return []
+    tope = 1.0
+    cambios = False
+    for a in informe["areas"]:
+        if a.get("nombre") != "Responsabilidad y tono":
+            continue
+        try:
+            p = float(a.get("puntaje"))
+        except (TypeError, ValueError):
+            continue
+        if p > tope:
+            a["puntaje"] = tope
+            cambios = True
+    if not cambios:
+        return []
+    mensaje = "La nota de 'Responsabilidad y tono' se limitó a 1/5 por lenguaje grosero o irrespetuoso hacia el periodista."
+    informe["tope_aplicado"] = (informe["tope_aplicado"] + " " + mensaje) if informe.get("tope_aplicado") else mensaje
+    try:
+        valores = [float(a["puntaje"]) for a in informe["areas"] if a.get("puntaje") is not None]
+        if valores:
+            informe["puntaje_global"] = round(sum(valores) / len(valores), 1)
+    except (TypeError, ValueError):
+        pass
+    return [mensaje]
+
+
 @app.post("/api/evaluar", dependencies=[Depends(limitar)])
 def evaluar(peticion: PeticionConversacion):
     lineas = []
@@ -708,18 +801,33 @@ def evaluar(peticion: PeticionConversacion):
         lineas.append(f"{quien}: {m.content}")
     texto = "\n".join(lineas)
 
+    # Estadísticas por código (muletillas, groserías, respuestas vacías/cortas): se calculan
+    # ANTES de llamar a la IA, para que el juez trabaje con números reales, no con lo que "le parece".
+    est = estadisticas_respuestas(peticion.conversacion)
+    datos_codigo = (
+        f"\n\n[Datos ya calculados por código — considéralos, no los recalcules]\n"
+        f"- Respuestas muy cortas: {est['pct_cortas']}%\n"
+        f"- Respuestas sin sentido o vacías: {est['pct_sin_sentido']}%\n"
+        f"- Palabras de relleno (muletillas) sobre el total de palabras: {est['pct_muletillas']}%"
+        + (f" — las más repetidas: {', '.join(est['muletillas_detectadas'])}" if est["muletillas_detectadas"] else "")
+        + (
+            f"\n- Lenguaje grosero o irrespetuoso detectado en {est['groseras']} de {est['respuestas']} respuestas."
+            if est["tiene_groserias"] else ""
+        )
+    )
+
     bruto = llamar_ia(
         [
             {"role": "system", "content": RUBRICA},
-            {"role": "user", "content": f"Transcripción de la entrevista:\n\n{texto}"},
+            {"role": "user", "content": f"Transcripción de la entrevista:\n\n{texto}{datos_codigo}"},
         ],
         temperature=0.1,
         max_tokens=1800,
         esfuerzo="high",
     )
     informe = extraer_json(bruto)
-    est = estadisticas_respuestas(peticion.conversacion)
     aplicar_topes_contenido(informe, est)
+    aplicar_tope_respeto(informe, est)
     informe["estadisticas_respuestas"] = est
     return informe
 
@@ -1020,6 +1128,16 @@ def limpiar_informe(inf, fuente):
 
 UMBRAL_A_TRABAJAR = 3.5  # las áreas con nota menor a esto se listan como "a trabajar"
 
+# Link de "curso" por cada área final. Por ahora NO llevan a ningún curso real
+# (son una ruta propia que todavía no existe en el sitio): solo queda lista la
+# carcasa del botón. Cuando haya cursos de verdad, se cambian solo estos 4 valores.
+CURSOS_POR_AREA = {
+    "Expresión": "/cursos/expresion",
+    "Tono de voz": "/cursos/tono-de-voz",
+    "Coherencia": "/cursos/coherencia",
+    "Empatía": "/cursos/empatia",
+}
+
 
 def calcular_areas_a_trabajar(areas):
     """Por código: áreas con nota baja, ordenadas de menor a mayor (siempre incluye al menos la más baja si hay notas)."""
@@ -1031,7 +1149,10 @@ def calcular_areas_a_trabajar(areas):
     for a in bajas:
         p = a["puntaje"]
         nivel = "Prioridad alta" if p < 2.5 else "Por reforzar" if p < UMBRAL_A_TRABAJAR else "Afinar detalles"
-        salida.append({"nombre": a["nombre"], "puntaje": p, "nivel": nivel, "fuentes": a["fuentes"]})
+        salida.append({
+            "nombre": a["nombre"], "puntaje": p, "nivel": nivel, "fuentes": a["fuentes"],
+            "curso_url": CURSOS_POR_AREA.get(a["nombre"]),
+        })
     return salida
 
 

@@ -145,3 +145,10 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - Al crear la cuenta o iniciar sesión, el nombre y apellido quedan **precargados** en el paso "¿Quién hace la entrevista?" (se pueden cambiar igual antes de comenzar).
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
+
+### v38 — Evaluación más estricta y precisa (muletillas, respeto) + links de curso
+- **Detección de muletillas** ("eh", "o sea", "este", "tipo", "em", "po", etc.): se cuentan por código en cada respuesta y se le pasa el porcentaje real al juez de contenido. Si es alto (8% o más), tiene que bajar "Claridad del mensaje" y decirlo en el comentario.
+- **Detección de lenguaje grosero o irrespetuoso** hacia el periodista (insultos, groserías, descalificaciones): si aparece en cualquier respuesta, la nota de **"Responsabilidad y tono" se limita a 1/5 por código**, sin importar lo que decida la IA (igual que ya pasaba con respuestas vacías o sin sentido). Las otras 3 áreas se evalúan normal.
+- Rúbrica de contenido más estricta: respuestas vacías/sin sentido en su mayoría ahora exigen 0 o 1 en las 4 áreas (antes dejaba margen a 1-2), y se subió el mínimo de palabras para que una respuesta no se considere "de relleno" (8 → 10 palabras).
+- **Botón "📚 Curso de [área]"** en cada ítem de "Áreas a trabajar" (por ejemplo, si falta empatía, aparece "Curso de Empatía"). **Todavía no lleva a ningún curso real** — son rutas placeholder (`/cursos/empatia`, `/cursos/expresion`, `/cursos/tono-de-voz`, `/cursos/coherencia`) que hoy no existen; se conectan después. Se definen en `app.py`, diccionario `CURSOS_POR_AREA`.
+- Hay que subir **app.py y public/index.html** juntos.
