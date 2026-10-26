@@ -3,12 +3,38 @@
 Estructura (todo debe estar en la RAIZ del repositorio):
 
 ```
-app.py            <- backend FastAPI (punto de entrada de Vercel)
-requirements.txt  <- fastapi, openai, python-dotenv, uvicorn
-vercel.json       <- duración máxima de la función
-public/index.html <- la página (Vercel la sirve desde su CDN)
-.env.example      <- modelo del .env (solo para correr en tu PC)
+app.py               <- backend FastAPI (punto de entrada de Vercel)
+requirements.txt     <- fastapi, openai, python-dotenv, uvicorn
+vercel.json          <- duración máxima de la función
+public/index.html    <- PORTADA: la maqueta/diseño nuevo (login con 3 roles, navegación, etc.)
+public/practica.html <- nuestra app real y funcional (cámara, voz, entrevistador IA, informes).
+                         index.html la carga adentro en la pestaña "🧪 Beta funcional (real)".
+.env.example         <- modelo del .env (solo para correr en tu PC)
 ```
+
+### Sobre index.html vs practica.html (desde v39)
+Nos pasaron una maqueta (wireframe) de cómo debe verse todo el producto: login con 3 roles
+(Usuario final, Admin del cliente, Configurador maestro), selector de idioma (ES/EN/PT),
+modo claro/oscuro, paleta de color y varias pantallas (inicio, escenarios, progreso, panel
+de admin, editor de rúbrica, etc.). Esa maqueta es ahora **la portada** (`public/index.html`).
+
+**Importante: la maqueta es solo diseño, casi nada está conectado al backend todavía** (son
+cajas, barras grises y números de ejemplo — tal cual la mandaron). Lo único 100% real y
+funcional hoy es la pestaña **"🧪 Beta funcional (real)"**, la primera del menú del "Usuario
+final": ahí vive, sin tocar, todo lo que ya construimos (cámara, voz, entrevistador con IA,
+diagnóstico, informes, login de usuario, etc.) cargado dentro de un iframe desde
+`public/practica.html`. Esto se hizo así a propósito: conectar las demás pantallas de la
+maqueta (catálogo de escenarios, progreso con calendario, panel de admin, editor de rúbrica,
+cola de etiquetado...) al backend real es un trabajo grande y separado — hay que ir
+viendo cuáles priorizar.
+
+Los 3 usuarios de prueba para entrar a la maqueta (login propio de la maqueta, el formulario
+de `practica.html` es otro login aparte, el que ya teníamos):
+- `ana@visum.com` — Usuario final (vocero)
+- `carlos@visum.com` — Admin del cliente
+- `marta@voxready.io` — Configurador maestro
+
+Contraseña de los tres: `demo1234`.
 
 ## Desplegar (con GitHub)
 1. Crea un repositorio en GitHub y sube el CONTENIDO de esta carpeta (app.py, public/, etc. en la raíz, no dentro de otra carpeta).
@@ -145,6 +171,13 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - Al crear la cuenta o iniciar sesión, el nombre y apellido quedan **precargados** en el paso "¿Quién hace la entrevista?" (se pueden cambiar igual antes de comenzar).
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
+
+### v39 — Nueva portada (maqueta) + nuestra beta como pestaña aparte
+- **`public/index.html` pasó a ser la maqueta** que mandaron: login con 3 roles (Usuario final / Admin del cliente / Configurador maestro), selector de idioma ES/EN/PT, modo claro/oscuro, selector de paleta y todas sus pantallas (inicio, escenarios, sesión, progreso, panel de admin, editor de rúbrica, cola de etiquetado...).
+- **Todo lo que ya teníamos se movió a `public/practica.html`**, sin tocarle nada (login propio, cámara, voz, entrevistador IA, diagnóstico, los 3 informes, muletillas, etc. — sigue en v38).
+- Se agregó una pestaña nueva, primera del menú de "Usuario final": **"🧪 Beta funcional (real)"**. Carga `practica.html` dentro en un iframe, con permiso de cámara y micrófono. Es lo único de toda la maqueta que funciona de verdad hoy.
+- El resto de las pantallas de la maqueta (catálogo de escenarios, sesión 50/50, progreso con calendario, panel de admin, editor de rúbrica, cola de etiquetado) **siguen siendo solo diseño/wireframe**, tal cual las mandaron: no están conectadas al backend. Conectarlas una por una es el siguiente trabajo grande.
+- Hay que subir **app.py, public/index.html y public/practica.html** los tres juntos (y las imágenes `VoxReady_logo.png` y `Visum_logo.png` que pide la maqueta, si las tienen — si no están, el logo sale roto pero el resto funciona igual).
 
 ### v38 — Evaluación más estricta y precisa (muletillas, respeto) + links de curso
 - **Detección de muletillas** ("eh", "o sea", "este", "tipo", "em", "po", etc.): se cuentan por código en cada respuesta y se le pasa el porcentaje real al juez de contenido. Si es alto (8% o más), tiene que bajar "Claridad del mensaje" y decirlo en el comentario.
