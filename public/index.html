@@ -395,12 +395,182 @@
     .seccion-informe, .area-final, .bloque-coach { box-shadow: none; border: 1px solid var(--light); page-break-inside: avoid; }
     #informe-cara { grid-template-columns: 1fr; }
   }
+
+  /* =====================================================================
+     ESQUEMA DE LA MAQUETA (v40): barra superior + menú lateral + vistas,
+     paleta y modo claro/oscuro. Va al final para sobreescribir lo anterior.
+     ===================================================================== */
+  body {
+    --accent: #17354F; --accentsoft: #e4eaf1; --accent2: #DB6427;
+    --bg: #f4f4f2; --sidebar: #fbfbfa; --panel: #ffffff; --line: #cfcfcf; --line2: #b5b5b5;
+    --soft: #eef0f2; --barfill: #e2e2df; --stat: #fafafa; --topbar: #ffffff;
+    --note: #fff5ec; --noteline: #f0c49e; --notetext: #9c5320; --ph1: #f0f0ee; --ph2: #e8e8e5;
+    --navy: var(--accent); --orange: var(--accent2); --light: var(--accentsoft); --fondo: var(--bg);
+  }
+  body[data-palette="voxready"] { --accent:#17354F; --accentsoft:#e4eaf1; --navy:#17354F; --light:#e4eaf1; }
+  body[data-palette="teal"]     { --accent:#0f6e56; --accentsoft:#dcf1ea; --navy:#0f6e56; --light:#dcf1ea; }
+  body[data-palette="coral"]    { --accent:#b1502b; --accentsoft:#f7e6dd; --navy:#b1502b; --light:#f7e6dd; }
+  body[data-palette="violet"]   { --accent:#534ab7; --accentsoft:#eae8fa; --navy:#534ab7; --light:#eae8fa; }
+  body[data-theme="dark"] {
+    --bg:#15191d; --sidebar:#1b2128; --panel:#222a31; --ink:#e7eaed; --muted:#9aa3ab;
+    --line:#374049; --line2:#475159; --soft:#2a333b; --barfill:#3a444d; --stat:#262f37; --topbar:#1b2128;
+    --note:#2f2719; --noteline:#5e4a26; --notetext:#e3b483; --ph1:#283038; --ph2:#222a31;
+    --accentsoft:#26384a; --light:#26384a; --fondo:#15191d;
+  }
+  body[data-theme="dark"][data-palette="teal"]   { --accentsoft:#1f352e; --light:#1f352e; --accent:#2fa584; --navy:#2fa584; }
+  body[data-theme="dark"][data-palette="coral"]  { --accentsoft:#3a2a22; --light:#3a2a22; --accent:#d4764f; --navy:#d4764f; }
+  body[data-theme="dark"][data-palette="violet"] { --accentsoft:#2c2945; --light:#2c2945; --accent:#8b82e0; --navy:#8b82e0; }
+  body[data-theme="dark"][data-palette="voxready"] { --accent:#6fa3d4; --navy:#6fa3d4; }
+
+  body { font-family: "Poppins", "Segoe UI", Helvetica, Arial, sans-serif; font-size: 14px; background: var(--bg); color: var(--ink); }
+  input, textarea, button, select { font-family: inherit; }
+
+  /* ---- Barra superior ---- */
+  .topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; height: 58px; padding: 0 18px; background: var(--topbar); border-bottom: 1px solid var(--line); gap: 14px; }
+  .tb-title { font-size: 13px; color: var(--muted); }
+  .tb-right { margin-left: auto; display: flex; align-items: center; gap: 14px; flex-wrap: nowrap; }
+  .ctrl { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+  .iconbtn { width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .iconbtn:hover:not(:disabled) { background: var(--soft); opacity: 1; }
+  .swatches { display: flex; gap: 6px; }
+  .sw { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
+  .sw.on { border-color: var(--ink); }
+  .userchip { display: flex; align-items: center; gap: 10px; }
+  .userchip .uava { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .userchip .umeta { display: flex; flex-direction: column; line-height: 1.2; }
+  .userchip .uname { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .userchip .urole { font-size: 10.5px; color: var(--muted); }
+  .logoutbtn { height: 30px; border: 1px solid var(--line2); border-radius: 6px; background: var(--panel); color: var(--ink); font-size: 12px; padding: 0 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .logoutbtn:hover:not(:disabled) { background: var(--soft); opacity: 1; }
+  #sesion-usuario { color: var(--ink); }
+  .enlace-beta { background: var(--panel); color: var(--ink); border: 1px solid var(--line2); border-radius: 6px; padding: 7px 14px; font-size: 12px; }
+  .enlace-beta:hover:not(:disabled) { background: var(--soft); opacity: 1; }
+  #ia-estado { color: var(--muted); background: var(--soft); border-radius: 999px; }
+  .ia-punto { background: var(--line2); }
+
+  /* ---- Menú lateral ---- */
+  .app { display: flex; min-height: calc(100vh - 58px); }
+  .sidebar { width: 262px; background: var(--sidebar); border-right: 1px solid var(--line); padding: 14px 0; position: sticky; top: 58px; height: calc(100vh - 58px); overflow-y: auto; flex-shrink: 0; }
+  .brand { padding: 0 18px 14px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+  .brandlogo-wrap { background: #fff; border-radius: 8px; padding: 6px 9px; display: inline-block; }
+  .brandlogo-wrap .logo { font-size: 20px; color: #17354F; }
+  .brand p { font-size: 11px; color: var(--muted); margin: 7px 0 0; }
+  .brand .version { font-size: 11px; font-weight: 600; background: var(--soft); color: var(--muted); padding: 2px 8px; border-radius: 999px; margin: 0; }
+  .brand .version.desajuste { background: #C0392B; color: #fff; }
+  .role { padding: 14px 18px 4px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .navitem { display: flex; align-items: center; gap: 9px; padding: 8px 18px; cursor: pointer; font-size: 13px; color: var(--ink); border-left: 3px solid transparent; }
+  .navitem:hover { background: var(--soft); }
+  .navitem.active { background: var(--accentsoft); border-left-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .navitem .n { width: 20px; height: 20px; border-radius: 50%; background: var(--barfill); color: var(--muted); font-size: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .navitem.active .n { background: var(--accent); color: #fff; }
+  .navitem.hecho .n { background: var(--accent2); color: #fff; }
+
+  /* ---- Zona principal ---- */
+  main.main { flex: 1; min-width: 0; max-width: none; margin: 0; padding: 26px 30px 60px; overflow-x: hidden; }
+  .crumbs { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .screen-title { font-size: 20px; font-weight: 600; margin: 0 0 2px; color: var(--ink); }
+  .screen-sub { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+  .vista { display: none; }
+  body[data-vista="inicio"] #vista-inicio, body[data-vista="escenarios"] #vista-escenarios,
+  body[data-vista="progreso"] #vista-progreso, body[data-vista="herramientas"] #vista-herramientas { display: block; }
+  #escenario { display: none; }
+  body[data-vista="practica"] #escenario { display: grid; }
+  #panel-resultados { display: none; margin-top: 0; }
+  body.con-resultados[data-vista="resultados"] #panel-resultados { display: block; }
+  body:not(.con-resultados)[data-vista="resultados"] #resultados-vacio { display: block !important; }
+
+  /* ---- Tarjetas y piezas de la maqueta ---- */
+  .panel, .seccion-informe, .area-final, .bloque-coach, .bloque-trabajo { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: none; }
+  .card { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 14px; }
+  .scard { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 13px; display: flex; flex-direction: column; }
+  .scard h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  .scard .ctx { font-size: 12px; color: var(--muted); margin: 0 0 9px; line-height: 1.4; }
+  .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 11px; }
+  .tagm { font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; }
+  .stat { border: 1px solid var(--line); border-radius: 8px; background: var(--stat); padding: 12px 14px; }
+  .stat .k { font-size: 11px; color: var(--muted); }
+  .stat .v { font-size: 22px; font-weight: 600; margin-top: 3px; color: var(--accent); }
+  .note { background: var(--note); border: 1px solid var(--noteline); border-radius: 7px; padding: 11px 13px; font-size: 12px; color: var(--notetext); margin-top: 16px; }
+  .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; margin-bottom: 6px; }
+  .legend { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .row { display: flex; gap: 14px; } .col { flex: 1; min-width: 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .ph { background: repeating-linear-gradient(135deg, var(--ph1), var(--ph1) 7px, var(--ph2) 7px, var(--ph2) 14px); border: 1px dashed var(--line2); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; text-align: center; }
+  .pill { display: inline-block; border: 1px solid var(--line2); border-radius: 999px; padding: 3px 11px; font-size: 11px; color: var(--ink); background: var(--panel); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line2); background: var(--panel); border-radius: 6px; padding: 7px 14px; font-size: 12px; color: var(--ink); cursor: pointer; }
+  .btn:hover:not(.disabled) { background: var(--soft); opacity: 1; }
+  .btn.pri { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+  .btn.pri:hover { filter: brightness(1.05); background: var(--accent2); }
+  .btn.nav { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.nav:hover { filter: brightness(1.1); background: var(--accent); }
+  .btn.ghost { background: transparent; }
+  .btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+  table.wf { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.wf th, table.wf td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; color: var(--ink); }
+  table.wf th { background: var(--soft); color: var(--muted); font-weight: 600; }
+  .calhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .calgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .calgrid .dow { font-size: 10px; color: var(--muted); text-align: center; padding-bottom: 2px; }
+  .calday { text-align: center; padding: 7px 0; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid transparent; color: var(--ink); }
+  .calday:hover { background: var(--soft); }
+  .calday.sel { background: var(--accent2); color: #fff; font-weight: 600; }
+  details.micro { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 9px 11px; margin-bottom: 8px; }
+  details.micro summary { font-size: 13px; font-weight: 600; cursor: pointer; }
+  details.micro p { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.5; }
+  .reco { border: 1px solid var(--line); border-radius: 6px; padding: 11px; margin-bottom: 8px; background: var(--panel); }
+  .reco b { display: block; font-size: 13px; margin-bottom: 3px; }
+  .reco span { font-size: 11px; color: var(--muted); }
+
+  /* ---- Lo que ya existía, adaptado a los colores del tema ---- */
+  h1, h2, h3 { color: var(--ink); }
+  p.subtitulo { color: var(--muted); }
+  .calib-instruccion { background: var(--accent); }
+  textarea, .campos-nombre input, #campo-respuesta { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+  .caja-consentimiento, #bloque-nombre, .linea, #historial-conversacion { color: var(--ink); }
+  #pregunta-actual { color: #fff; }
+  #transcripcion-final .linea.vocero { color: var(--ink); }
+  body[data-theme="dark"] .modal-caja, body[data-theme="dark"] .modal-pie { background: var(--panel); color: var(--ink); }
+  body[data-theme="dark"] .modal-situacion, body[data-theme="dark"] .bloque-coach.prioridad, body[data-theme="dark"] .aviso-tope,
+  body[data-theme="dark"] #transcripcion-final .linea.vocero { background: var(--note); color: var(--ink); }
+  body[data-theme="dark"] .carga-pista, body[data-theme="dark"] .calib-pista, body[data-theme="dark"] .area-final .barra { background: var(--barfill); }
+  body[data-theme="dark"] .area, body[data-theme="dark"] .mini, body[data-theme="dark"] .guardada, body[data-theme="dark"] .diag-fila { background: var(--soft); color: var(--ink); }
+  body[data-theme="dark"] .panel h1, body[data-theme="dark"] .panel h2, body[data-theme="dark"] .panel h3 { color: var(--ink); }
+
+  /* ---- Login: sigue el tema y la paleta ---- */
+  #pantalla-login { --l-accent: var(--accent); --l-accent2: var(--accent2); --l-bg: var(--bg); --l-panel: var(--panel); --l-ink: var(--ink); --l-muted: var(--muted); --l-line: var(--line); }
+  #pantalla-login .brandtexto { color: #17354F; }
+
+  @media (max-width: 960px) {
+    .sidebar { display: none; }
+    main.main { padding: 16px 14px 36px; }
+    .tb-title, .ctrl { display: none; }
+    .row, .filas-inicio, .filas-progreso { flex-direction: column; }
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+  }
+  @media print { .topbar, .sidebar, #vista-cabecera { display: none !important; } }
+
+  /* Los títulos grandes de adentro repiten el de la cabecera: se dejan más discretos */
+  #bloque-consentimiento > h1, #seccion-calibracion > h1 { font-size: 17px; font-weight: 600; }
+  #bloque-consentimiento > p.subtitulo, #seccion-calibracion > p.subtitulo { font-size: 13px; margin-bottom: 14px; }
+  #seccion-entrevista > h2 { font-size: 17px; }
+  /* Celular: el menú pasa a una franja horizontal arriba */
+  @media (max-width: 960px) {
+    .app { flex-direction: column; }
+    .sidebar { display: flex !important; width: auto; height: auto; position: static; overflow-x: auto; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--line); gap: 4px; }
+    .sidebar .brand, .sidebar .role { display: none; }
+    .navitem { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; padding: 8px 12px; }
+    .navitem.active { border-bottom-color: var(--accent); }
+    .topbar { height: auto; min-height: 52px; flex-wrap: wrap; padding: 8px 12px; }
+    .tb-right { flex-wrap: wrap; gap: 8px; }
+    .userchip .umeta { display: none; }
+  }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
+<body data-theme="light" data-palette="voxready" data-vista="inicio">
 
 <!-- ============ Inicio de sesión (estilo de la maqueta; sin base de datos todavía, se guarda en este navegador) ============ -->
 <div id="pantalla-login" role="dialog" aria-modal="true" aria-labelledby="login-titulo">
@@ -448,21 +618,30 @@
   </div>
 </div>
 
-<header class="barra-superior">
-  <div class="logo">Vox<span>Ready</span><span class="version" id="version-app">v39</span></div>
-  <div class="derecha">
-    <span id="sesion-usuario" style="display:none;"></span>
-    <button type="button" class="enlace-beta" id="boton-cerrar-sesion" style="display:none;">Cerrar sesión</button>
+<header class="topbar">
+  <span class="tb-title">VoxReady — Práctica de vocería en crisis</span>
+  <div class="tb-right">
     <div id="ia-estado" title="Estado de las IAs durante la sesión">
       <span class="ia-item" id="ia-entrevistador" title="IA entrevistadora"><i class="ia-punto"></i>Entrevistador</span>
       <span class="ia-item" id="ia-voz" title="Análisis de voz (en tu navegador)"><i class="ia-punto"></i>Voz</span>
       <span class="ia-item" id="ia-cara" title="Análisis de expresión facial (en tu navegador)"><i class="ia-punto"></i>Cara</span>
     </div>
     <button type="button" class="enlace-beta" id="boton-reiniciar" style="display:none;">↺ Reiniciar entrevista</button>
-    <button type="button" class="enlace-beta" id="boton-mis">📁 Mis entrevistas</button>
-    <button type="button" class="enlace-beta" id="boton-info-beta">ℹ️ Acerca de esta beta</button>
-    <button type="button" class="enlace-beta" id="boton-diagnostico">🩺 Diagnóstico</button>
-    <div class="pasos" id="pasos">
+    <button type="button" class="iconbtn" id="boton-tema" title="Modo claro / oscuro">🌙</button>
+    <div class="ctrl">Paleta
+      <div class="swatches" id="swatches">
+        <span class="sw on" data-p="voxready" style="background:#17354F;" title="VoxReady"></span>
+        <span class="sw" data-p="teal" style="background:#0f6e56;" title="Verde"></span>
+        <span class="sw" data-p="coral" style="background:#b1502b;" title="Coral"></span>
+        <span class="sw" data-p="violet" style="background:#534ab7;" title="Violeta"></span>
+      </div>
+    </div>
+    <div class="userchip" id="user-chip" style="display:none;">
+      <div class="uava" id="uava"></div>
+      <div class="umeta"><span class="uname" id="sesion-usuario"></span><span class="urole">Usuario final</span></div>
+      <button type="button" class="logoutbtn" id="boton-cerrar-sesion">⎋ Cerrar sesión</button>
+    </div>
+    <div class="pasos" id="pasos" style="display:none;">
       <div class="paso activo" data-paso="1">1 · Comprobación</div>
       <div class="paso" data-paso="2">2 · Entrevista</div>
       <div class="paso" data-paso="3">3 · Evaluación</div>
@@ -470,85 +649,136 @@
   </div>
 </header>
 
-<!-- ============ Diagnóstico: comprueba dónde está el problema ============ -->
-<div id="modal-diagnostico" role="dialog" aria-modal="true" aria-labelledby="modal-diag-titulo">
-  <div class="modal-caja">
-    <div class="modal-cab">
-      <h2 id="modal-diag-titulo">Diagnóstico de VoxReady</h2>
-      <p>Revisa paso a paso dónde está el problema. Si algo falla, usa "Copiar resultado" y envíaselo a quien administra la beta.</p>
+<div class="app">
+  <nav class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brandlogo-wrap">
+        <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <span class="logo" style="display:none;">Vox<span>Ready</span></span>
+      </span>
+      <p><span class="version" id="version-app">v40</span> · Beta</p>
     </div>
-    <div class="modal-cuerpo">
-      <div id="diag-resumen" class="diag-resumen">Ejecutando comprobaciones...</div>
-      <div id="diag-lista"></div>
-      <p class="estado" style="margin-bottom:14px;">La comprobación "La IA responde" hace una llamada mínima a la IA. No se guarda ninguna conversación, video ni audio.</p>
+    <div class="role">Usuario final (vocero)</div>
+    <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
+    <div class="navitem" data-vista="escenarios"><span class="n">2</span> Elegir escenario</div>
+    <div class="navitem" data-vista="practica" data-paso="1"><span class="n">3</span> Consentimiento + check técnico</div>
+    <div class="navitem" data-vista="practica" data-paso="2"><span class="n">4</span> Sesión de práctica</div>
+    <div class="navitem" data-vista="resultados"><span class="n">5</span> Informe tipo coach</div>
+    <div class="navitem" data-vista="progreso"><span class="n">6</span> Mi progreso</div>
+    <div class="role">Beta (lo que ya construimos)</div>
+    <div class="navitem" data-vista="herramientas"><span class="n">★</span> Diagnóstico, entrevistas y más</div>
+  </nav>
+
+  <main class="main">
+    <div id="vista-cabecera">
+      <div class="crumbs" id="vc-crumbs"></div>
+      <h2 class="screen-title" id="vc-titulo"></h2>
+      <p class="screen-sub" id="vc-sub"></p>
     </div>
-    <div class="modal-pie diag-pie">
-      <button type="button" class="sec" id="diag-copiar">Copiar resultado</button>
-      <div class="grupo">
-        <button type="button" class="sec" id="diag-repetir">Ejecutar de nuevo</button>
-        <button type="button" id="diag-cerrar">Cerrar</button>
+
+    <!-- ===== Inicio / mis prácticas ===== -->
+    <section id="vista-inicio" class="vista">
+      <div class="row" style="margin-bottom:16px;">
+        <div class="stat col"><div class="k">Sesiones completadas</div><div class="v" id="st-sesiones">0</div></div>
+        <div class="stat col"><div class="k">Última puntuación global</div><div class="v" id="st-ultima">–</div></div>
+        <div class="stat col"><div class="k">Área a mejorar</div><div class="v" id="st-area" style="font-size:15px;">–</div></div>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- ============ Mis entrevistas guardadas (30 días, en este navegador) ============ -->
-<div id="modal-mis" role="dialog" aria-modal="true" aria-labelledby="modal-mis-titulo">
-  <div class="modal-caja">
-    <div class="modal-cab">
-      <h2 id="modal-mis-titulo">Mis entrevistas</h2>
-      <p>Se guardan 30 días en este navegador y este dispositivo. Pasado ese plazo se borran solas.</p>
-    </div>
-    <div class="modal-cuerpo">
-      <div id="mis-lista"></div>
-    </div>
-    <div class="modal-pie diag-pie">
-      <button type="button" class="sec" id="mis-borrar-todas">Borrar todas</button>
-      <button type="button" id="mis-cerrar">Cerrar</button>
-    </div>
-  </div>
-</div>
-
-<!-- ============ Ventana de bienvenida (edita los textos aquí) ============ -->
-<div id="modal-beta" role="dialog" aria-modal="true" aria-labelledby="modal-beta-titulo">
-  <div class="modal-caja">
-    <div class="modal-cab">
-      <span class="etiqueta-beta">VERSIÓN BETA</span>
-      <h2 id="modal-beta-titulo">Bienvenido a VoxReady</h2>
-      <p>Simulador de entrevistas de prensa en crisis, con inteligencia artificial.</p>
-    </div>
-
-    <div class="modal-cuerpo">
-      <div class="modal-bloque">
-        <h3>Para qué sirve esta beta</h3>
-        <p>Probar si entrenar con IA es útil y justo, y encontrar fallas técnicas antes del lanzamiento. Tu opinión es parte de la prueba.</p>
-      </div>
-
-      <div class="modal-bloque">
-        <h3>Tu rol</h3>
-        <div class="modal-situacion">
-          <p>Eres el <b>vocero de una empresa</b> tras un <b>derrame químico</b> que afectó el agua de tres comunidades. Un <b>periodista IA</b> te hará <b><span id="beta-num-preguntas">5</span> preguntas</b> y repreguntará si evades. Puedes hablar o escribir.</p>
+      <div class="row filas-inicio">
+        <div class="card col">
+          <div class="label">Escenario para ti</div>
+          <div class="legend" style="margin:-2px 0 12px;">Al practicar pasas al consentimiento y la comprobación técnica, y luego a la sesión.</div>
+          <div class="scard">
+            <h4>Derrame químico en tres comunidades</h4>
+            <p class="ctx">Eres el vocero de una empresa tras un derrame que afectó el agua de tres comunidades. Un periodista exigente te entrevista: 5 preguntas.</p>
+            <div class="meta"><span class="tagm">≈ 8 min</span><span class="tagm">Difícil</span><span class="tagm">Crisis ambiental</span></div>
+            <div><button type="button" class="btn pri" data-ir="practica">Practicar</button></div>
+          </div>
+        </div>
+        <div class="card" style="width:300px;max-width:100%;">
+          <div class="label">Microlecciones (teoría + ejemplo)</div>
+          <details class="micro"><summary>Mensajes puente</summary><p>Cuando la pregunta te lleva a un terreno incómodo, reconoce brevemente y vuelve a tu mensaje clave: «Entiendo la preocupación. Lo más importante ahora es que…». No ignores la pregunta: puentea desde ella.</p></details>
+          <details class="micro"><summary>Preguntas hostiles</summary><p>Respira antes de responder, no repitas la acusación con tus palabras y responde primero con un dato verificable. Si no sabes algo, dilo y explica cuándo lo sabrás: evadir pesa más que admitir un vacío.</p></details>
+          <details class="micro"><summary>Lenguaje no verbal</summary><p>Mantén la mirada en la cámara en los momentos difíciles, voz firme y pausas cortas. Los gestos tensos o desviar la mirada al hablar de las personas afectadas restan empatía percibida.</p></details>
         </div>
       </div>
+      <div class="note"><b>Nota:</b> el botón «Practicar» es la acción principal. Las microlecciones son un texto de ejemplo (placeholder) que debe validar un experto.</div>
+    </section>
 
-      <div class="modal-bloque">
-        <h3>Qué se evalúa</h3>
-        <div class="modal-evalua">
-          <div><b>Contenido</b>Claridad, transparencia y manejo de la presión.</div>
-          <div><b>Voz</b>Tono, ritmo, pausas y volumen (si hablas).</div>
-          <div><b>Expresión</b>Serenidad y presencia ante la cámara.</div>
+    <!-- ===== Elegir escenario ===== -->
+    <section id="vista-escenarios" class="vista">
+      <div class="grid3">
+        <div class="card">
+          <div class="ph" style="height:80px;margin-bottom:10px;">⚗️ Derrame químico</div>
+          <h4 style="margin:0 0 4px;font-size:14px;">Derrame químico en tres comunidades</h4>
+          <p class="legend" style="margin:0 0 10px;">Crisis ambiental · 5 preguntas.</p>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="pill">Dirección</span>
+            <button type="button" class="btn pri" data-ir="practica">Empezar</button>
+          </div>
         </div>
-        <p style="margin-top:10px;">Las notas son <b>estimaciones automáticas</b> y pueden tener errores. Tu video y audio se procesan en tu navegador y <b>no se guardan</b>. La transcripción y tu evaluación se guardan <b>30 días en este navegador</b> (no en un servidor) y las ves o borras en «Mis entrevistas».</p>
+        <div class="card" style="opacity:.55;">
+          <div class="ph" style="height:80px;margin-bottom:10px;">📦 Retiro de producto</div>
+          <h4 style="margin:0 0 4px;font-size:14px;">Retiro de producto</h4>
+          <p class="legend" style="margin:0 0 10px;">Próximamente.</p>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="pill">Dirección</span><span class="btn disabled">Empezar</span>
+          </div>
+        </div>
+        <div class="card" style="opacity:.55;">
+          <div class="ph" style="height:80px;margin-bottom:10px;">🔒 Incidente de seguridad</div>
+          <h4 style="margin:0 0 4px;font-size:14px;">Incidente de seguridad</h4>
+          <p class="legend" style="margin:0 0 10px;">Próximamente.</p>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="pill">Planta</span><span class="btn disabled">Empezar</span>
+          </div>
+        </div>
       </div>
-    </div>
+      <div class="note"><b>Nota:</b> por ahora hay un solo escenario real. El catálogo de temas lo va a configurar el administrador del cliente.</div>
+    </section>
 
-    <div class="modal-pie">
-      <button type="button" id="boton-entendido">Entendido, continuar</button>
-    </div>
-  </div>
-</div>
+    <!-- ===== Mi progreso ===== -->
+    <section id="vista-progreso" class="vista">
+      <div class="row filas-progreso" style="margin-bottom:14px;align-items:stretch;">
+        <div class="card" style="flex:1.45;min-width:0;">
+          <div class="label">Tendencia de la nota global (entrevistas guardadas)</div>
+          <div id="grafico-progreso"></div>
+        </div>
+        <div class="card" style="flex:1;min-width:0;">
+          <div class="label">Avance por área</div>
+          <table class="wf" id="tabla-progreso" style="margin-top:8px;"></table>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <div class="label">Recomendaciones para ti</div>
+          <div id="recomendaciones-progreso"></div>
+        </div>
+        <div class="card">
+          <div class="label">Programa tu próxima sesión</div>
+          <div class="legend" style="margin:-2px 0 10px;">Elige un día en el calendario: queda guardado como recordatorio en este navegador.</div>
+          <div class="calhead">
+            <button type="button" class="btn ghost" id="cal-prev" style="padding:3px 10px;">‹</button>
+            <span id="cal-mes" style="font-size:13px;font-weight:600;text-transform:capitalize;"></span>
+            <button type="button" class="btn ghost" id="cal-sig" style="padding:3px 10px;">›</button>
+          </div>
+          <div class="calgrid" id="cal-dow"></div>
+          <div class="calgrid" id="cal-grid" style="margin-top:4px;"></div>
+          <div style="margin-top:10px;font-size:12px;color:var(--muted);">Próxima sesión: <b id="cal-sel" style="color:var(--accent2);">sin fecha</b></div>
+        </div>
+      </div>
+    </section>
 
-<main>
+    <!-- ===== Herramientas de la beta (lo que pusimos nosotros) ===== -->
+    <section id="vista-herramientas" class="vista">
+      <div class="grid3">
+        <div class="card"><div class="label">🩺 Diagnóstico</div><p class="legend">Comprueba navegador, cámara, micrófono, servidor y cada IA. Sirve para saber por qué algo falla y copiar el resultado.</p><button type="button" class="btn nav" id="boton-diagnostico">Abrir diagnóstico</button></div>
+        <div class="card"><div class="label">📁 Mis entrevistas</div><p class="legend">Entrevistas guardadas 30 días en este navegador: ver, descargar o borrar.</p><button type="button" class="btn nav" id="boton-mis">Abrir mis entrevistas</button></div>
+        <div class="card"><div class="label">ℹ️ Acerca de esta beta</div><p class="legend">Qué es VoxReady, la situación que se practica, qué se evalúa y privacidad.</p><button type="button" class="btn nav" id="boton-info-beta">Ver información</button></div>
+      </div>
+    </section>
+
+    <!-- ===== Práctica (comprobación técnica + calibración + entrevista) ===== -->
+
   <div id="escenario">
 
     <!-- Columna izquierda: cámara (aparece al conceder el permiso) -->
@@ -630,6 +860,7 @@
   </div>
 
   <!-- Resultados: ancho completo, aparece al terminar -->
+  <div id="resultados-vacio" class="card" style="display:none;">Todavía no hay una evaluación. Completa una entrevista en «Sesión de práctica» o abre una guardada en «Mis entrevistas».</div>
   <section id="panel-resultados">
     <div class="cabecera-resultados">
       <h2 id="titulo-eval">Tu evaluación</h2>
@@ -645,7 +876,88 @@
     <div id="informe-cara"></div>
     <div id="transcripcion-final" class="panel"></div>
   </section>
-</main>
+  </main>
+</div>
+
+<!-- ============ Diagnóstico: comprueba dónde está el problema ============ -->
+<div id="modal-diagnostico" role="dialog" aria-modal="true" aria-labelledby="modal-diag-titulo">
+  <div class="modal-caja">
+    <div class="modal-cab">
+      <h2 id="modal-diag-titulo">Diagnóstico de VoxReady</h2>
+      <p>Revisa paso a paso dónde está el problema. Si algo falla, usa "Copiar resultado" y envíaselo a quien administra la beta.</p>
+    </div>
+    <div class="modal-cuerpo">
+      <div id="diag-resumen" class="diag-resumen">Ejecutando comprobaciones...</div>
+      <div id="diag-lista"></div>
+      <p class="estado" style="margin-bottom:14px;">La comprobación "La IA responde" hace una llamada mínima a la IA. No se guarda ninguna conversación, video ni audio.</p>
+    </div>
+    <div class="modal-pie diag-pie">
+      <button type="button" class="sec" id="diag-copiar">Copiar resultado</button>
+      <div class="grupo">
+        <button type="button" class="sec" id="diag-repetir">Ejecutar de nuevo</button>
+        <button type="button" id="diag-cerrar">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Mis entrevistas guardadas (30 días, en este navegador) ============ -->
+<div id="modal-mis" role="dialog" aria-modal="true" aria-labelledby="modal-mis-titulo">
+  <div class="modal-caja">
+    <div class="modal-cab">
+      <h2 id="modal-mis-titulo">Mis entrevistas</h2>
+      <p>Se guardan 30 días en este navegador y este dispositivo. Pasado ese plazo se borran solas.</p>
+    </div>
+    <div class="modal-cuerpo">
+      <div id="mis-lista"></div>
+    </div>
+    <div class="modal-pie diag-pie">
+      <button type="button" class="sec" id="mis-borrar-todas">Borrar todas</button>
+      <button type="button" id="mis-cerrar">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Ventana de bienvenida (edita los textos aquí) ============ -->
+<div id="modal-beta" role="dialog" aria-modal="true" aria-labelledby="modal-beta-titulo">
+  <div class="modal-caja">
+    <div class="modal-cab">
+      <span class="etiqueta-beta">VERSIÓN BETA</span>
+      <h2 id="modal-beta-titulo">Bienvenido a VoxReady</h2>
+      <p>Simulador de entrevistas de prensa en crisis, con inteligencia artificial.</p>
+    </div>
+
+    <div class="modal-cuerpo">
+      <div class="modal-bloque">
+        <h3>Para qué sirve esta beta</h3>
+        <p>Probar si entrenar con IA es útil y justo, y encontrar fallas técnicas antes del lanzamiento. Tu opinión es parte de la prueba.</p>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Tu rol</h3>
+        <div class="modal-situacion">
+          <p>Eres el <b>vocero de una empresa</b> tras un <b>derrame químico</b> que afectó el agua de tres comunidades. Un <b>periodista IA</b> te hará <b><span id="beta-num-preguntas">5</span> preguntas</b> y repreguntará si evades. Puedes hablar o escribir.</p>
+        </div>
+      </div>
+
+      <div class="modal-bloque">
+        <h3>Qué se evalúa</h3>
+        <div class="modal-evalua">
+          <div><b>Contenido</b>Claridad, transparencia y manejo de la presión.</div>
+          <div><b>Voz</b>Tono, ritmo, pausas y volumen (si hablas).</div>
+          <div><b>Expresión</b>Serenidad y presencia ante la cámara.</div>
+        </div>
+        <p style="margin-top:10px;">Las notas son <b>estimaciones automáticas</b> y pueden tener errores. Tu video y audio se procesan en tu navegador y <b>no se guardan</b>. La transcripción y tu evaluación se guardan <b>30 días en este navegador</b> (no en un servidor) y las ves o borras en «Mis entrevistas».</p>
+      </div>
+    </div>
+
+    <div class="modal-pie">
+      <button type="button" id="boton-entendido">Entendido, continuar</button>
+    </div>
+  </div>
+</div>
+
+
 
 <script>
   // --- Dirección de tu backend. Si usas otro puerto, cámbialo aquí. ---
@@ -704,8 +1016,9 @@
     pantallaLogin.style.display = "none";
     document.body.style.overflow = "";
     sesionUsuarioEl.textContent = `${usuario.nombre} ${usuario.apellido}`;
-    sesionUsuarioEl.style.display = "inline";
-    botonCerrarSesion.style.display = "inline-block";
+    document.getElementById("uava").textContent = ((usuario.nombre[0] || "") + (usuario.apellido[0] || "")).toUpperCase();
+    document.getElementById("user-chip").style.display = "flex";
+    setTimeout(() => irVista("inicio"), 0); // después de cargar todo el script
     // Deja el nombre y apellido de la entrevista ya escritos (el usuario los puede cambiar si quiere)
     const cn = document.getElementById("campo-nombre"), ca = document.getElementById("campo-apellido");
     if (cn && !cn.value) cn.value = usuario.nombre;
@@ -787,7 +1100,10 @@
   const historialConversacion = document.getElementById("historial-conversacion");
 
   // Indicador de pasos (barra superior) y clases de pantalla
+  var pasoActual = 1;
   function setPaso(n) {
+    pasoActual = n;
+    if (typeof actualizarNav === "function") actualizarNav();
     document.querySelectorAll("#pasos .paso").forEach((el) => {
       const k = Number(el.dataset.paso);
       el.classList.toggle("activo", k === n);
@@ -1911,7 +2227,7 @@
     renderizarTranscripcion();
     document.body.classList.add("con-resultados");
     setPaso(3);
-    document.getElementById("panel-resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+    irVista("resultados");
 
     const tareas = [
       {
@@ -2060,7 +2376,7 @@
     document.getElementById("boton-descargar").style.display = "inline-block";
     renderizarTranscripcion(item.transcripcion || []);
     document.body.classList.add("con-resultados");
-    document.getElementById("panel-resultados").scrollIntoView({ behavior: "smooth", block: "start" });
+    irVista("resultados");
   }
 
   // Ventana "Mis entrevistas"
@@ -2774,13 +3090,13 @@
     document.getElementById("transcripcion-final").textContent = "";
 
     setPaso(2);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    irVista("practica");
   }
   document.getElementById("boton-reiniciar").addEventListener("click", () => reiniciarEntrevista(true));
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "39";
+  const VERSION_APP = "40";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -3202,6 +3518,172 @@
       f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
     }
   });
+
+  // ================================================================
+  // v40 — Esquema de la maqueta: vistas, menú lateral, tema y paleta
+  // ================================================================
+  const VISTAS = {
+    inicio:      { crumbs: "Usuario final", titulo: "Inicio / mis prácticas", sub: "Lo primero que ves. La acción principal es practicar; tu progreso te motiva a repetir." },
+    escenarios:  { crumbs: "Usuario final › Practicar", titulo: "Elegir escenario", sub: "Catálogo de situaciones de crisis para practicar." },
+    practica:    { crumbs: "Usuario final › Practicar", titulo: "Sesión de práctica", sub: "Responde como lo harías ante la prensa. Nada se evalúa en pantalla mientras practicas." },
+    resultados:  { crumbs: "Usuario final › Informe", titulo: "Informe tipo coach", sub: "Primero el relato accionable (cómo mejorar); los puntajes por área quedan como apoyo debajo." },
+    progreso:    { crumbs: "Usuario final", titulo: "Mi progreso", sub: "Evolución de tus entrevistas guardadas, recomendaciones y agenda de tu próxima sesión." },
+    herramientas:{ crumbs: "Beta › Herramientas", titulo: "Diagnóstico, entrevistas y más", sub: "Todo lo que construimos en la beta, reunido en una sola pestaña." },
+  };
+
+  function actualizarCabecera() {
+    const v = body_().dataset.vista;
+    const d = VISTAS[v] || VISTAS.inicio;
+    let titulo = d.titulo, sub = d.sub;
+    if (v === "practica" && pasoActual <= 1) {
+      titulo = "Consentimiento + comprobación técnica";
+      sub = "Paso obligatorio antes de grabar: confirma el consentimiento y valida cámara y micrófono.";
+    }
+    document.getElementById("vc-crumbs").textContent = d.crumbs;
+    document.getElementById("vc-titulo").textContent = titulo;
+    document.getElementById("vc-sub").textContent = sub;
+  }
+  function body_() { return document.body; }
+
+  function actualizarNav() {
+    const v = document.body.dataset.vista;
+    document.querySelectorAll("#sidebar .navitem").forEach((it) => {
+      let activo = it.dataset.vista === v;
+      if (activo && v === "practica") activo = Number(it.dataset.paso) === (pasoActual <= 1 ? 1 : 2);
+      it.classList.toggle("active", activo);
+      it.classList.toggle("hecho", !activo && it.dataset.vista === "practica" && Number(it.dataset.paso) < pasoActual);
+    });
+    actualizarCabecera();
+  }
+
+  function irVista(nombre) {
+    document.body.dataset.vista = nombre;
+    if (nombre === "inicio") refrescarInicio();
+    if (nombre === "progreso") refrescarProgreso();
+    actualizarNav();
+    window.scrollTo(0, 0);
+  }
+
+  document.querySelectorAll("#sidebar .navitem").forEach((it) => it.addEventListener("click", () => irVista(it.dataset.vista)));
+  document.querySelectorAll("[data-ir]").forEach((b) => b.addEventListener("click", () => irVista(b.dataset.ir)));
+
+  // ---- Tema claro/oscuro y paleta (se recuerdan en este navegador) ----
+  function aplicarTema(t) {
+    document.body.dataset.theme = t;
+    document.getElementById("boton-tema").textContent = t === "dark" ? "☀️" : "🌙";
+    try { localStorage.setItem("voxready_tema", t); } catch (e) { /* nada */ }
+  }
+  function aplicarPaleta(pal) {
+    document.body.dataset.palette = pal;
+    document.querySelectorAll("#swatches .sw").forEach((x) => x.classList.toggle("on", x.dataset.p === pal));
+    try { localStorage.setItem("voxready_paleta", pal); } catch (e) { /* nada */ }
+  }
+  document.getElementById("boton-tema").addEventListener("click", () => aplicarTema(document.body.dataset.theme === "dark" ? "light" : "dark"));
+  document.getElementById("swatches").addEventListener("click", (e) => { const sw = e.target.closest(".sw"); if (sw) aplicarPaleta(sw.dataset.p); });
+  try {
+    aplicarTema(localStorage.getItem("voxready_tema") === "dark" ? "dark" : "light");
+    aplicarPaleta(localStorage.getItem("voxready_paleta") || "voxready");
+  } catch (e) { /* nada */ }
+
+  // ---- Inicio: cifras sacadas de las entrevistas guardadas ----
+  function entrevistasOrdenadas() {
+    return purgarVencidas().filter((x) => x && x.final && x.final.puntaje_global != null).sort((a, b) => a.fecha - b.fecha);
+  }
+  function areaMasDebil(item) {
+    const con = ((item && item.final && item.final.areas) || []).filter((a) => a.puntaje != null);
+    if (!con.length) return null;
+    return con.reduce((m, a) => (a.puntaje < m.puntaje ? a : m));
+  }
+  function refrescarInicio() {
+    const lista = entrevistasOrdenadas();
+    document.getElementById("st-sesiones").textContent = purgarVencidas().length;
+    const ult = lista[lista.length - 1];
+    document.getElementById("st-ultima").textContent = ult ? Number(ult.final.puntaje_global).toFixed(1) + " / 5" : "–";
+    const debil = areaMasDebil(ult);
+    document.getElementById("st-area").textContent = debil ? debil.nombre : "–";
+  }
+
+  // ---- Mi progreso ----
+  const COLORES_AREA = ["#4f8fd1", "#e0a100", "#2f9c83", "#b07ad6"];
+  function dibujarTendencia(lista) {
+    const cont = document.getElementById("grafico-progreso");
+    if (lista.length < 1) { cont.innerHTML = '<p class="legend">Aún no hay entrevistas guardadas con nota. Completa una para ver tu tendencia.</p>'; return; }
+    const W = 520, H = 200, mx = 34, my = 16;
+    const x = (i) => (lista.length === 1 ? W / 2 : mx + (i * (W - mx - 14)) / (lista.length - 1));
+    const y = (v) => H - my - (v / 5) * (H - 2 * my);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;">`;
+    for (let g = 0; g <= 5; g++) svg += `<line x1="${mx}" x2="${W - 8}" y1="${y(g)}" y2="${y(g)}" stroke="var(--line)" stroke-width="1"/><text x="${mx - 8}" y="${y(g) + 4}" font-size="10" fill="var(--muted)" text-anchor="end">${g}</text>`;
+    const serie = (vals, color, ancho) => {
+      const pts = vals.map((v, i) => (v == null ? null : [x(i), y(v)])).filter(Boolean);
+      if (!pts.length) return "";
+      let t = pts.length > 1 ? `<polyline fill="none" stroke="${color}" stroke-width="${ancho}" points="${pts.map((q) => q.join(",")).join(" ")}"/>` : "";
+      return t + pts.map((q) => `<circle cx="${q[0]}" cy="${q[1]}" r="3.5" fill="${color}"/>`).join("");
+    };
+    const nombres = ["Expresión", "Tono de voz", "Coherencia", "Empatía"];
+    nombres.forEach((n, k) => {
+      svg += serie(lista.map((it) => { const a = ((it.final.areas) || []).find((q) => q.nombre === n); return a && a.puntaje != null ? Number(a.puntaje) : null; }), COLORES_AREA[k], 1.5);
+    });
+    svg += serie(lista.map((it) => Number(it.final.puntaje_global)), "var(--accent2)", 3);
+    svg += "</svg>";
+    const leyenda = [["Nota global", "var(--accent2)"], ...nombres.map((n, k) => [n, COLORES_AREA[k]])]
+      .map(([n, c]) => `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:11px;color:var(--muted);"><i style="width:10px;height:10px;border-radius:2px;background:${c};display:inline-block;"></i>${n}</span>`).join("");
+    cont.innerHTML = svg + `<div style="margin-top:6px;">${leyenda}</div>`;
+  }
+  function refrescarProgreso() {
+    const lista = entrevistasOrdenadas();
+    dibujarTendencia(lista);
+    // Tabla por área: actual y cambio contra la entrevista anterior
+    const tabla = document.getElementById("tabla-progreso");
+    const ult = lista[lista.length - 1], ant = lista[lista.length - 2];
+    let filas = "<tr><th>Área</th><th>Actual</th><th>Cambio</th></tr>";
+    if (!ult) filas += '<tr><td colspan="3" style="color:var(--muted);">Sin datos todavía.</td></tr>';
+    else (ult.final.areas || []).forEach((a) => {
+      const prev = ant ? ((ant.final.areas || []).find((q) => q.nombre === a.nombre) || {}).puntaje : null;
+      let cambio = "–";
+      if (a.puntaje != null && prev != null) { const d = Number(a.puntaje) - Number(prev); cambio = (d > 0 ? "▲ +" : d < 0 ? "▼ " : "= ") + d.toFixed(1); }
+      filas += `<tr><td>${a.nombre}</td><td>${a.puntaje != null ? Number(a.puntaje).toFixed(1) : "–"}</td><td>${cambio}</td></tr>`;
+    });
+    tabla.innerHTML = filas;
+    // Recomendaciones: las "áreas a trabajar" de la última entrevista
+    const reco = document.getElementById("recomendaciones-progreso");
+    reco.textContent = "";
+    const trabajo = (ult && ult.final && ult.final.areas_a_trabajar) || [];
+    if (!trabajo.length) { reco.innerHTML = '<p class="legend">Las recomendaciones aparecen después de tu primera evaluación.</p>'; }
+    trabajo.forEach((a) => {
+      const d = document.createElement("div"); d.className = "reco";
+      const b = document.createElement("b"); b.textContent = `${a.nombre} · ${a.nivel || ""}`;
+      const t = document.createElement("span"); t.textContent = a.ejercicio || "";
+      d.appendChild(b); d.appendChild(t); reco.appendChild(d);
+    });
+    dibujarCalendario();
+  }
+
+  // ---- Calendario: recordatorio de la próxima sesión (solo en este navegador) ----
+  const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const agendaEstado = { y: new Date().getFullYear(), m: new Date().getMonth(), sel: null };
+  try { agendaEstado.sel = JSON.parse(localStorage.getItem("voxready_proxima") || "null"); } catch (e) { /* nada */ }
+  function dibujarCalendario() {
+    document.getElementById("cal-dow").innerHTML = ["L","M","X","J","V","S","D"].map((w) => `<div class="dow">${w}</div>`).join("");
+    const offset = (new Date(agendaEstado.y, agendaEstado.m, 1).getDay() + 6) % 7;
+    const dias = new Date(agendaEstado.y, agendaEstado.m + 1, 0).getDate();
+    let celdas = "<div></div>".repeat(offset);
+    for (let d = 1; d <= dias; d++) {
+      const sel = agendaEstado.sel && agendaEstado.sel.y === agendaEstado.y && agendaEstado.sel.m === agendaEstado.m && agendaEstado.sel.d === d;
+      celdas += `<div class="calday${sel ? " sel" : ""}" data-d="${d}">${d}</div>`;
+    }
+    const grid = document.getElementById("cal-grid");
+    grid.innerHTML = celdas;
+    document.getElementById("cal-mes").textContent = `${MESES[agendaEstado.m]} ${agendaEstado.y}`;
+    document.getElementById("cal-sel").textContent = agendaEstado.sel ? `${agendaEstado.sel.d} de ${MESES[agendaEstado.sel.m]}` : "sin fecha";
+    grid.querySelectorAll(".calday").forEach((c) => c.addEventListener("click", () => {
+      agendaEstado.sel = { y: agendaEstado.y, m: agendaEstado.m, d: Number(c.dataset.d) };
+      try { localStorage.setItem("voxready_proxima", JSON.stringify(agendaEstado.sel)); } catch (e) { /* nada */ }
+      dibujarCalendario();
+    }));
+  }
+  document.getElementById("cal-prev").addEventListener("click", () => { agendaEstado.m--; if (agendaEstado.m < 0) { agendaEstado.m = 11; agendaEstado.y--; } dibujarCalendario(); });
+  document.getElementById("cal-sig").addEventListener("click", () => { agendaEstado.m++; if (agendaEstado.m > 11) { agendaEstado.m = 0; agendaEstado.y++; } dibujarCalendario(); });
+
 </script>
 
 </body>

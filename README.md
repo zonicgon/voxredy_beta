@@ -146,6 +146,17 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v40 — Toda la página con el esquema de la maqueta
+- **Estructura de la maqueta**: barra superior (título, modo claro/oscuro, paleta de color, chip del usuario con «Cerrar sesión») y **menú lateral** con las pantallas del Usuario final. Sigue siendo un solo `public/index.html`.
+- **Menú**: 1 Inicio / mis prácticas · 2 Elegir escenario · 3 Consentimiento + check técnico · 4 Sesión de práctica · 5 Informe tipo coach · 6 Mi progreso · y la pestaña **«Diagnóstico, entrevistas y más»** con todo lo que se construyó en la beta (Diagnóstico, Mis entrevistas, Acerca de esta beta).
+- **Inicio**: sesiones completadas, última nota global y área a mejorar (salen de las entrevistas guardadas), escenario con botón «Practicar» y 3 microlecciones (texto de ejemplo, falta validación de un experto).
+- **Elegir escenario**: hay 1 escenario real (derrame químico); «Retiro de producto» e «Incidente de seguridad» salen como «Próximamente».
+- **Mi progreso**: gráfico de tendencia, tabla de avance por área (cambio vs la entrevista anterior), recomendaciones (las «áreas a trabajar» de la última entrevista) y calendario para marcar la próxima sesión (recordatorio guardado solo en el navegador).
+- **Modo claro/oscuro y 4 paletas** (se recuerdan en el navegador). El login también las sigue.
+- La entrevista, cámara, voz, calibración, informes, diagnóstico y el backend **no cambiaron**; solo se reubicaron dentro del nuevo esquema.
+- **No implementado a propósito**: selector de idioma ES/EN/PT, logo del cliente y las pantallas de Admin del cliente y Configurador maestro.
+- Hay que subir **app.py y public/index.html** juntos (y, si la tienen, `VoxReady_logo.png` en `public/`).
+
 ### v39 — Inicio de sesión con el diseño de la maqueta (paso 1 de la migración)
 - Se partió de nuevo desde la v38 (un solo `public/index.html`; se descartó la idea de meter una página dentro de otra).
 - **Solo cambió el aspecto de la pantalla de inicio de sesión / crear cuenta**, para que se parezca a la de la maqueta: fondo gris claro, tarjeta blanca centrada, logo arriba, título "Inicia sesión en VoxReady", campos con etiquetas en mayúscula pequeña, botón naranja, tipografía Poppins. Funciona igual que antes (cuentas guardadas en el navegador).
