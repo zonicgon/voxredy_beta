@@ -146,6 +146,20 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v41 — El entrevistador lee las preguntas en voz alta
+- **Voz del entrevistador** con la síntesis de voz **del navegador** (gratis, sin clave y sin pasar por el servidor). Elige sola la mejor voz en español: primero de Chile, luego Latinoamérica y luego España, y prefiere las voces «Natural» de Edge o las de Google. Las preguntas siguen apareciendo escritas.
+- **Para que no ensucie la evaluación:**
+  - Mientras el entrevistador habla, **la medición de tu voz está apagada**. Empieza cuando termina de leer, así no se mide su voz ni se cuenta como «demora antes de hablar».
+  - Mientras habla, **🎤 Hablar y Responder quedan bloqueados**. Si no quieres esperar, está **⏭ Saltar lectura**.
+  - Si respondes con el micrófono todavía abierto, se apaga antes de la siguiente pregunta y lo que llegue tarde se descarta (antes podía transcribir al entrevistador dentro de tu próxima respuesta).
+  - Si el navegador corta la escucha solo, el botón vuelve a «🎤 Hablar» (antes se quedaba en «Detener»).
+- **🔊 Voz del entrevistador: activada / desactivada** (encima de la pregunta, se recuerda en el navegador). **🔁 Repetir pregunta** la vuelve a leer aunque esté desactivada, pausando la medición de tu voz mientras habla.
+- **Si el navegador no puede hablar** (sin voces, bloqueado o falla), la pregunta queda solo escrita y la entrevista sigue igual: hay protecciones de tiempo para que nunca se quede pegada (si no empieza a hablar en 3,5 s, se suelta).
+- El 🩺 Diagnóstico tiene una fila nueva, **«Voz del entrevistador»**, que dice qué voz se usa.
+- **Recomendación:** usar **audífonos**. Si el entrevistador sale por los parlantes y tú hablas encima, el micrófono puede captarlo. En **Edge** las voces en español suenan bastante más naturales que en Chrome.
+- Privacidad: las voces «en línea» (Natural de Edge, las de Google en Chrome) envían a Microsoft o Google **solo el texto de la pregunta** que genera la IA, nunca tu voz ni tus respuestas.
+- El backend no cambió (solo `VERSION`). Hay que subir **app.py y public/index.html** juntos.
+
 ### v40 — Toda la página con el esquema de la maqueta
 - **Estructura de la maqueta**: barra superior (título, modo claro/oscuro, paleta de color, chip del usuario con «Cerrar sesión») y **menú lateral** con las pantallas del Usuario final. Sigue siendo un solo `public/index.html`.
 - **Menú**: 1 Inicio / mis prácticas · 2 Elegir escenario · 3 Consentimiento + check técnico · 4 Sesión de práctica · 5 Informe tipo coach · 6 Mi progreso · y la pestaña **«Diagnóstico, entrevistas y más»** con todo lo que se construyó en la beta (Diagnóstico, Mis entrevistas, Acerca de esta beta).

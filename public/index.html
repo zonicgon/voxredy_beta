@@ -554,6 +554,16 @@
   #bloque-consentimiento > h1, #seccion-calibracion > h1 { font-size: 17px; font-weight: 600; }
   #bloque-consentimiento > p.subtitulo, #seccion-calibracion > p.subtitulo { font-size: 13px; margin-bottom: 14px; }
   #seccion-entrevista > h2 { font-size: 17px; }
+  /* v41 — Voz del entrevistador */
+  .fila-voz-entrev { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
+  .fila-voz-entrev .legend { margin: 0; }
+  #boton-hablar:disabled, #boton-repetir-pregunta:disabled { opacity: .45; cursor: not-allowed; }
+  #pregunta-actual.hablando { box-shadow: inset 5px 0 0 var(--accent2); }
+  #pregunta-actual.hablando::after { content: "  🔊 leyendo…"; font-size: 13px; color: #C9D6E3; white-space: nowrap; }
+  @media (prefers-reduced-motion: no-preference) {
+    #pregunta-actual.hablando { animation: vozPulso 1.4s ease-in-out infinite; }
+    @keyframes vozPulso { 0%, 100% { box-shadow: inset 5px 0 0 var(--accent2); } 50% { box-shadow: inset 9px 0 0 var(--accent2); } }
+  }
   /* Celular: el menú pasa a una franja horizontal arriba */
   @media (max-width: 960px) {
     .app { flex-direction: column; }
@@ -656,7 +666,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v40</span> · Beta</p>
+      <p><span class="version" id="version-app">v41</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -845,12 +855,18 @@
           </div>
           <p class="estado error" id="aviso-nombre" style="display:none; margin: 8px 0 0 0;"></p>
         </div>
+        <div class="fila-voz-entrev" id="fila-voz-entrev">
+          <button type="button" class="btn ghost" id="boton-voz-entrevistador" title="Activa o desactiva que el entrevistador lea las preguntas en voz alta">🔊 Voz del entrevistador: activada</button>
+          <span class="legend" id="voz-entrevistador-info">Usa audífonos: así el micrófono no capta la voz del entrevistador.</span>
+        </div>
         <div id="pregunta-actual">Presiona "Comenzar entrevista" para empezar.</div>
         <div id="barra-carga" class="barra-carga"></div>
         <textarea id="campo-respuesta" placeholder="Escribe aquí tu respuesta, o usa el micrófono..."></textarea>
         <div class="fila-botones">
           <button id="boton-comenzar">Comenzar entrevista</button>
           <button id="boton-hablar" type="button" style="display:none; background: var(--navy);">🎤 Hablar</button>
+          <button id="boton-saltar-lectura" type="button" style="display:none; background: var(--navy);">⏭ Saltar lectura</button>
+          <button id="boton-repetir-pregunta" type="button" style="display:none; background: var(--navy);">🔁 Repetir pregunta</button>
           <button id="boton-responder" style="display:none;">Responder</button>
           <button id="boton-evaluar" type="button" style="display:none; background: var(--navy);">Ver mi evaluación completa</button>
         </div>
@@ -1295,6 +1311,232 @@
     });
   }
 
+  // ================================================================
+  // v41 — VOZ DEL ENTREVISTADOR (síntesis de voz DEL NAVEGADOR, gratis)
+  // El navegador lee cada pregunta en voz alta. No pasa por nuestro servidor
+  // ni por la IA. Reglas para que NO ensucie la evaluación:
+  //  · mientras habla, la medición de tu voz está APAGADA (empieza cuando termina),
+  //    así no se mide su voz ni se cuenta como "demora antes de hablar";
+  //  · mientras habla, 🎤 Hablar y Responder quedan bloqueados (se puede «Saltar lectura»);
+  //  · si el navegador no tiene voz en español o falla, la pregunta solo se muestra escrita
+  //    y la entrevista sigue igual que antes.
+  // ================================================================
+  const tieneSintesis = typeof window.speechSynthesis !== "undefined" && typeof window.SpeechSynthesisUtterance !== "undefined";
+  const CLAVE_VOZ_ENTREV = "voxready_voz_entrevistador";
+  let vozEntrevActiva = true;
+  try { vozEntrevActiva = localStorage.getItem(CLAVE_VOZ_ENTREV) !== "0"; } catch (e) { /* nada */ }
+  let vozElegida = null;            // la mejor voz en español disponible en este navegador
+  let entrevistadorHablando = false;
+  let turnoLectura = 0;             // sube con cada lectura nueva o al callar: las lecturas viejas se ignoran
+  let turnoPregunta = 0;            // sube con cada pregunta nueva
+  let preguntaParaLeer = "";        // la última pregunta (para «Repetir pregunta»)
+  let vozBloqueadaPorNavegador = false;
+
+  const botonVozEntrev = document.getElementById("boton-voz-entrevistador");
+  const botonSaltarLectura = document.getElementById("boton-saltar-lectura");
+  const botonRepetirPregunta = document.getElementById("boton-repetir-pregunta");
+  const infoVozEntrev = document.getElementById("voz-entrevistador-info");
+
+  // Prefiere español de Chile, luego Latinoamérica, luego España; y voces "naturales" (Edge) o de Google
+  function puntajeVozEs(v) {
+    const lang = (v.lang || "").toLowerCase().replace("_", "-");
+    const nombre = (v.name || "").toLowerCase();
+    let p = 0;
+    if (lang === "es-cl") p += 40;
+    else if (["es-us", "es-419", "es-mx"].includes(lang)) p += 30;
+    else if (lang === "es-es") p += 15;
+    else if (lang.startsWith("es-")) p += 22;
+    else p += 10;
+    if (/natural|neural|online/.test(nombre)) p += 50;
+    else if (/google/.test(nombre)) p += 20;
+    return p;
+  }
+  function elegirVozEntrevistador() {
+    if (!tieneSintesis) return null;
+    let voces = [];
+    try { voces = window.speechSynthesis.getVoices() || []; } catch (e) { voces = []; }
+    const es = voces.filter((v) => /^es([-_]|$)/i.test(v.lang || ""));
+    vozElegida = es.length ? es.sort((a, b) => puntajeVozEs(b) - puntajeVozEs(a))[0] : null;
+    actualizarControlesVoz();
+    return vozElegida;
+  }
+
+  // Corta el texto en frases cortas: Chrome corta las lecturas largas (más de ~15 s) a la mitad
+  function partirEnFrases(texto) {
+    const limpio = String(texto || "").replace(/[*_#`>]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!limpio) return [];
+    const frases = limpio.replace(/([.!?…])\s+/g, "$1\n").split("\n").map((s) => s.trim()).filter(Boolean);
+    const salida = [];
+    frases.forEach((f) => {
+      if (f.length <= 220) { salida.push(f); return; }
+      let actual = "";
+      f.split(/(?<=[,;:])\s+/).forEach((parte) => {
+        if ((actual + " " + parte).trim().length > 220 && actual) { salida.push(actual.trim()); actual = parte; }
+        else actual = (actual + " " + parte).trim();
+      });
+      if (actual) salida.push(actual);
+    });
+    return salida;
+  }
+
+  // Lee el texto. Devuelve una promesa que se resuelve SIEMPRE (true si terminó de leer, false si no se pudo
+  // o se interrumpió). Tiene un "guardián" de tiempo porque a veces el navegador no avisa que terminó.
+  function leerEnVozAlta(texto, forzar) {
+    return new Promise((resolve) => {
+      const mio = ++turnoLectura;
+      const trozos = partirEnFrases(texto);
+      if (!tieneSintesis || (!vozEntrevActiva && !forzar) || !trozos.length) { resolve(false); return; }
+      const sintesis = window.speechSynthesis;
+      try { sintesis.cancel(); } catch (e) { /* nada */ }
+      const voz = vozElegida || elegirVozEntrevistador();
+      let i = 0, terminado = false, guardian = null, algunaLeida = false;
+      entrevistadorHablando = true;
+      preguntaActual.classList.add("hablando");
+      actualizarControlesVoz();
+
+      const fin = (ok) => {
+        if (terminado) return;
+        terminado = true;
+        clearTimeout(guardian);
+        clearInterval(despertador);
+        if (mio === turnoLectura) {
+          entrevistadorHablando = false;
+          preguntaActual.classList.remove("hablando");
+        }
+        actualizarControlesVoz();
+        resolve(ok);
+      };
+      // Chrome a veces se queda "en pausa" sin avisar: se le despierta cada segundo
+      const despertador = setInterval(() => {
+        if (mio !== turnoLectura) { fin(false); return; }
+        try { if (sintesis.paused) sintesis.resume(); } catch (e) { /* nada */ }
+      }, 1000);
+
+      const leerSiguiente = () => {
+        if (mio !== turnoLectura) { fin(false); return; }
+        if (i >= trozos.length) { fin(algunaLeida); return; }
+        const u = new SpeechSynthesisUtterance(trozos[i++]);
+        if (voz) { u.voice = voz; u.lang = voz.lang; } else { u.lang = "es-CL"; }
+        u.rate = 1;
+        u.pitch = 1;
+        u.volume = 1;
+        let avanzado = false, empezo = false;
+        const avanzar = () => { if (avanzado) return; avanzado = true; clearTimeout(guardian); clearTimeout(arranque); leerSiguiente(); };
+        u.onstart = () => { empezo = true; algunaLeida = true; vozBloqueadaPorNavegador = false; clearTimeout(arranque); };
+        // Si en 3,5 s ni siquiera empezó a hablar, el navegador no va a leer: se abandona la lectura
+        const arranque = setTimeout(() => {
+          if (empezo || avanzado) return;
+          avanzado = true;
+          clearTimeout(guardian);
+          try { sintesis.cancel(); } catch (e) { /* nada */ }
+          fin(algunaLeida);
+        }, 3500);
+        u.onend = avanzar;
+        u.onerror = (e) => {
+          const motivo = e && e.error;
+          if (motivo === "not-allowed") vozBloqueadaPorNavegador = true;
+          if (motivo !== "interrupted" && motivo !== "canceled") console.warn("Voz del entrevistador:", motivo);
+          avanzar();
+        };
+        // Guardián: si el navegador no avisa que terminó, se sigue igual (≈ 110 ms por letra + margen)
+        clearTimeout(guardian);
+        guardian = setTimeout(() => {
+          if (avanzado) return;
+          try { sintesis.cancel(); } catch (e) { /* nada */ }
+          avanzar();
+        }, Math.min(25000, 4000 + u.text.length * 110));
+        try { sintesis.speak(u); } catch (e) { console.warn("No se pudo leer en voz alta:", e); avanzar(); }
+      };
+      setTimeout(leerSiguiente, 80); // Chrome ignora a veces un speak() justo después de cancel()
+    });
+  }
+
+  function callarEntrevistador() {
+    turnoLectura++;
+    entrevistadorHablando = false;
+    preguntaActual.classList.remove("hablando");
+    try { if (tieneSintesis) window.speechSynthesis.cancel(); } catch (e) { /* nada */ }
+    actualizarControlesVoz();
+  }
+
+  // Safari y algunos celulares solo dejan hablar si la primera lectura sale de un clic: se "desbloquea" con un clic
+  function desbloquearVoz() {
+    if (!tieneSintesis || !vozEntrevActiva) return;
+    try {
+      const u = new SpeechSynthesisUtterance(" ");
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* nada */ }
+  }
+
+  // Muestra la pregunta, la lee y RECIÉN AHÍ empieza a medir tu voz y deja responder
+  async function presentarPregunta(texto, sid) {
+    const miPregunta = ++turnoPregunta;
+    preguntaParaLeer = texto;
+    botonHablar.disabled = true;
+    botonResponder.disabled = true;
+    await leerEnVozAlta(texto);
+    if (sid !== idSesion || miPregunta !== turnoPregunta || !entrevistaActiva) return;
+    botonHablar.disabled = false;
+    botonResponder.disabled = false;
+    iniciarVentanaVoz(); // a partir de aquí medimos tu voz, hasta que envíes la respuesta
+    actualizarControlesVoz();
+  }
+
+  async function repetirPregunta() {
+    if (!preguntaParaLeer || entrevistadorHablando || escuchando || iaPensando || !entrevistaActiva) return;
+    const sid = idSesion, miPregunta = turnoPregunta;
+    const midiendoAntes = vozMidiendo;
+    vozMidiendo = false; // pausa la medición de tu voz mientras habla el entrevistador
+    botonHablar.disabled = true;
+    botonResponder.disabled = true;
+    await leerEnVozAlta(preguntaParaLeer, true);
+    if (sid !== idSesion || miPregunta !== turnoPregunta || !entrevistaActiva) return;
+    botonHablar.disabled = false;
+    botonResponder.disabled = false;
+    if (midiendoAntes) { vozUltimo = performance.now(); vozMidiendo = true; } // sigue la MISMA respuesta
+    actualizarControlesVoz();
+  }
+
+  function actualizarControlesVoz() {
+    if (!botonVozEntrev) return;
+    if (!tieneSintesis) {
+      botonVozEntrev.style.display = "none";
+      infoVozEntrev.textContent = "Tu navegador no puede leer en voz alta: las preguntas se muestran solo escritas.";
+    } else {
+      botonVozEntrev.textContent = vozEntrevActiva ? "🔊 Voz del entrevistador: activada" : "🔇 Voz del entrevistador: desactivada";
+      if (vozBloqueadaPorNavegador) infoVozEntrev.textContent = "El navegador bloqueó la voz. Presiona «🔁 Repetir pregunta» para escucharla.";
+      else if (!vozElegida) infoVozEntrev.textContent = "No encontré una voz en español en este navegador (se usará la que tenga). Usa audífonos.";
+      else infoVozEntrev.textContent = `Voz: ${vozElegida.name}. Usa audífonos: así el micrófono no capta al entrevistador.`;
+    }
+    const mostrarControles = tieneSintesis && entrevistaActiva && !!preguntaParaLeer;
+    botonSaltarLectura.style.display = entrevistadorHablando ? "inline-block" : "none";
+    botonRepetirPregunta.style.display = mostrarControles && !entrevistadorHablando ? "inline-block" : "none";
+    let estaEscuchando = false;
+    try { estaEscuchando = escuchando; } catch (e) { /* aún no se carga el reconocimiento de voz */ }
+    botonRepetirPregunta.disabled = iaPensando || estaEscuchando;
+  }
+
+  if (tieneSintesis) {
+    elegirVozEntrevistador();
+    // Las voces cargan después de abrir la página (sobre todo en Chrome)
+    try {
+      if (window.speechSynthesis.addEventListener) window.speechSynthesis.addEventListener("voiceschanged", elegirVozEntrevistador);
+      else window.speechSynthesis.onvoiceschanged = elegirVozEntrevistador;
+    } catch (e) { /* nada */ }
+    // Si se recarga o cierra la página, el navegador no debe seguir hablando
+    window.addEventListener("beforeunload", () => { try { window.speechSynthesis.cancel(); } catch (e) { /* nada */ } });
+  }
+  botonVozEntrev.addEventListener("click", () => {
+    vozEntrevActiva = !vozEntrevActiva;
+    try { localStorage.setItem(CLAVE_VOZ_ENTREV, vozEntrevActiva ? "1" : "0"); } catch (e) { /* nada */ }
+    if (!vozEntrevActiva && entrevistadorHablando) callarEntrevistador(); // al silenciar, se corta la lectura actual
+    actualizarControlesVoz();
+  });
+  botonSaltarLectura.addEventListener("click", callarEntrevistador);
+  botonRepetirPregunta.addEventListener("click", repetirPregunta);
+  actualizarControlesVoz();
+
   // Pide la siguiente pregunta. Si falla por algo pasajero (límite, red, error temporal) reintenta
   // una vez sola; si sigue fallando, muestra el motivo real y un botón para reintentar SIN perder
   // la entrevista (tu respuesta ya quedó guardada en la conversación).
@@ -1324,12 +1566,12 @@
       if (respuesta.ok && datos.pregunta) {
         iaPensando = false;
         carga.terminar(true);
-        botonResponder.disabled = false;
-        iniciarVentanaVoz(); // a partir de aquí medimos tu voz, hasta que envíes la respuesta
         historial.push({ role: "assistant", content: datos.pregunta });
         numPregunta++;
         preguntaActual.textContent = `(${numPregunta}/${MAX_PREGUNTAS}) ${datos.pregunta}`;
         agregarAlHistorialVisual("assistant", datos.pregunta);
+        // v41: el entrevistador lee la pregunta; al terminar se habilita responder y se empieza a medir tu voz
+        presentarPregunta(datos.pregunta, sid);
         return true;
       }
       const detalle = typeof datos.detail === "string" ? datos.detail : "El servidor no pudo responder.";
@@ -1580,6 +1822,7 @@
       return;
     }
     avisoNombre.style.display = "none";
+    desbloquearVoz(); // v41: algunos navegadores solo dejan hablar si empieza desde un clic
     personaActual = { nombre: nom, apellido: ape };
     document.getElementById("bloque-nombre").style.display = "none";
     botonComenzar.style.display = "none";
@@ -1603,6 +1846,16 @@
   botonResponder.addEventListener("click", async () => {
     const texto = campoRespuesta.value.trim();
     if (!texto) return;
+    if (entrevistadorHablando) return; // v41: no se responde mientras el entrevistador habla
+    // v41: si el micrófono seguía escuchando, se apaga ANTES de la siguiente pregunta,
+    // para que no transcriba la voz del entrevistador dentro de tu próxima respuesta
+    if (escuchando) {
+      descartarTranscripcion = true;
+      try { reconocimiento.stop(); } catch (e) { /* nada */ }
+      escuchando = false;
+      botonHablar.textContent = "🎤 Hablar";
+      botonHablar.style.background = "var(--navy)";
+    }
     detenerVentanaVoz();
 
     historial.push({ role: "user", content: texto });
@@ -1625,6 +1878,7 @@
   const ClaseReconocimiento = window.SpeechRecognition || window.webkitSpeechRecognition;
   let reconocimiento = null;
   let escuchando = false;
+  let descartarTranscripcion = false; // v41: true tras enviar la respuesta; lo que llegue tarde no se pega en la siguiente
 
   if (ClaseReconocimiento) {
     reconocimiento = new ClaseReconocimiento();
@@ -1633,6 +1887,7 @@
     reconocimiento.interimResults = true; // muestra texto parcial mientras hablas
 
     reconocimiento.onresult = (evento) => {
+      if (descartarTranscripcion || entrevistadorHablando) return; // v41
       let textoNuevo = "";
       for (let i = evento.resultIndex; i < evento.results.length; i++) {
         if (evento.results[i].isFinal) {
@@ -1647,6 +1902,15 @@
     reconocimiento.onerror = (evento) => {
       console.error("Error de reconocimiento de voz:", evento.error);
     };
+
+    // v41: si el navegador corta la escucha solo (silencio largo, red), el botón vuelve a «Hablar»
+    reconocimiento.onend = () => {
+      if (!escuchando) return;
+      escuchando = false;
+      botonHablar.textContent = "🎤 Hablar";
+      botonHablar.style.background = "var(--navy)";
+      actualizarControlesVoz();
+    };
   }
 
   botonHablar.addEventListener("click", () => {
@@ -1655,10 +1919,14 @@
       return;
     }
 
+    if (entrevistadorHablando) return; // v41: no se escucha mientras habla el entrevistador
+
     if (!escuchando) {
       // Primer clic: empieza a escuchar (equivalente al primer Enter en Python)
       campoRespuesta.value = "";
-      reconocimiento.start();
+      descartarTranscripcion = false;
+      try { reconocimiento.start(); }
+      catch (e) { console.warn("El reconocimiento de voz no pudo iniciar:", e); return; } // por ejemplo, si aún se estaba cerrando
       escuchando = true;
       botonHablar.textContent = "⏹ Detener y usar este texto";
       botonHablar.style.background = "var(--orange)";
@@ -3004,6 +3272,7 @@
     // Entrevistador (IA en el servidor)
     if (iaEvaluando) ponerIA("entrevistador", "work", "Evaluando el contenido de tus respuestas…");
     else if (iaPensando) ponerIA("entrevistador", "work", "El entrevistador está redactando la pregunta…");
+    else if (entrevistadorHablando) ponerIA("entrevistador", "work", "El entrevistador está leyendo la pregunta en voz alta…");
     else if (entrevistaActiva) ponerIA("entrevistador", "on", "Entrevistador activo");
     else ponerIA("entrevistador", "", "Entrevistador en espera");
 
@@ -3023,6 +3292,7 @@
     else if (!rostroVisible) ponerIA("cara", "warn", "No te veo: mira a la cámara con buena luz de frente");
     else if (entrevistaActiva && grabandoCara) ponerIA("cara", "on", "Analizando tu expresión facial");
     else ponerIA("cara", "on", "Cara detectada");
+    actualizarControlesVoz(); // v41: botones de la voz del entrevistador al día
   }
   setInterval(pintarIA, 400);
   pintarIA();
@@ -3037,6 +3307,11 @@
         !confirm("¿Reiniciar la entrevista? Se borran tus respuestas y la evaluación actual. Tu cámara y tu calibración se conservan.")) return;
 
     idSesion++; // las respuestas de la IA que lleguen tarde se descartan
+    callarEntrevistador();   // v41: si estaba leyendo una pregunta, se calla
+    turnoPregunta++;
+    preguntaParaLeer = "";
+    vozBloqueadaPorNavegador = false;
+    botonHablar.disabled = false;
 
     if (escuchando) {
       try { reconocimiento.stop(); } catch (e) { /* nada */ }
@@ -3096,7 +3371,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "40";
+  const VERSION_APP = "41";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -3422,6 +3697,18 @@
       if (typeof faceLandmarker !== "undefined" && faceLandmarker) agregar("Análisis facial en esta sesión", "ok", "Motor de alta precisión activo", "");
       else if (!camaraActiva) agregar("Análisis facial en esta sesión", "aviso", "La cámara aún no se activó", "Completa el paso 1 (Comprobación) para activarla.");
       else agregar("Análisis facial en esta sesión", "aviso", "El motor de alta precisión no está activo (se usa el respaldo o no cargó)", "Revisa la fila anterior y recarga la página.");
+    }
+
+    // 8) Voz del entrevistador (v41)
+    {
+      if (!tieneSintesis) {
+        agregar("Voz del entrevistador", "aviso", "Este navegador no puede leer en voz alta", "Las preguntas se muestran solo escritas. Usa Chrome o Edge para escucharlas.");
+      } else {
+        const v = vozElegida || elegirVozEntrevistador();
+        const estado = vozEntrevActiva ? "activada" : "desactivada por ti";
+        if (v) agregar("Voz del entrevistador", "ok", `${v.name} (${v.lang}) · ${estado}`, vozBloqueadaPorNavegador ? "El navegador bloqueó la última lectura: usa «Repetir pregunta»." : "");
+        else agregar("Voz del entrevistador", "aviso", `No hay una voz en español en este navegador · ${estado}`, "Se usará la voz por defecto del sistema. En Edge hay voces en español de buena calidad.");
+      }
     }
     return resultados;
   }
