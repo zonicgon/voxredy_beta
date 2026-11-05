@@ -667,7 +667,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v42</span> · Beta</p>
+      <p><span class="version" id="version-app">v43</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -1467,6 +1467,7 @@
   let vozRealMotivo = "";               // por qué se está usando el respaldo (para mostrarlo)
   let ultimaVozUsada = "";              // "gemini" | "navegador"
   let ultimoModeloVoz = "";
+  let ultimoTiempoVoz = "";              // segundos que tardó Gemini en generar la última voz (v43)
 
   function asegurarCtxVozEntrev() {
     if (!tieneVozReal) return null;
@@ -1537,6 +1538,7 @@
       vozRealFallosSeguidos = 0;
       vozRealMotivo = "";
       ultimoModeloVoz = r.headers.get("X-Voz-Modelo") || "";
+      ultimoTiempoVoz = r.headers.get("X-Voz-Segundos") || "";
       audioUltimaPregunta = { texto, buffer };
     }
     if (mio !== turnoLectura) return false;
@@ -1656,7 +1658,7 @@
       if (vozBloqueadaPorNavegador) infoVozEntrev.textContent = "El navegador bloqueó el audio. Presiona «🔁 Repetir pregunta» para escucharla.";
       else if (!vozRealDisponible() && vozRealMotivo) infoVozEntrev.textContent = `Voz del navegador (respaldo): ${vozRealMotivo}. ${audif}`;
       else if (ultimaVozUsada === "navegador") infoVozEntrev.textContent = `Voz del navegador (respaldo)${vozElegida ? ": " + vozElegida.name : ""}. ${audif}`;
-      else if (tieneVozReal) infoVozEntrev.textContent = `Voz realista (Gemini)${ultimoModeloVoz ? " · " + ultimoModeloVoz : ""}, con la del navegador de respaldo. ${audif}`;
+      else if (tieneVozReal) infoVozEntrev.textContent = `Voz realista (Gemini)${ultimoModeloVoz ? " · " + ultimoModeloVoz : ""}${ultimoTiempoVoz ? " · lista en " + ultimoTiempoVoz + " s" : ""}, con la del navegador de respaldo. ${audif}`;
       else infoVozEntrev.textContent = `Voz del navegador${vozElegida ? ": " + vozElegida.name : ""}. ${audif}`;
     }
     const mostrarControles = puedeHablar && entrevistaActiva && !!preguntaParaLeer;
@@ -3524,7 +3526,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "42";
+  const VERSION_APP = "43";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -3735,7 +3737,8 @@
         agregar("Claves de la IA en el servidor", "aviso", `Solo hay un proveedor: ${nombreProv(provs[0])}${textoNotas}`,
           "Si ese proveedor se cae, la beta se detiene. Se recomienda configurar al menos dos (por ejemplo GEMINI_API_KEY y GROQ_API_KEY) para que haya respaldo automático.");
       } else {
-        agregar("Claves de la IA en el servidor", hayFormatoMalo ? "aviso" : "ok", `Proveedores en orden de uso: ${provs.map(nombreProv).join(" → ")}${textoNotas}`,
+        const ent = (salud.proveedores_entrevistador || []).map(nombreProv).join(" → ");
+        agregar("Claves de la IA en el servidor", hayFormatoMalo ? "aviso" : "ok", `Jueces: ${provs.map(nombreProv).join(" → ")}${ent ? " · Entrevistador: " + ent : ""}${textoNotas}`,
           hayFormatoMalo ? "Vuelve a copiar la clave desde la consola del proveedor y pégala en Vercel sin espacios ni comillas." : "");
       }
     } else {

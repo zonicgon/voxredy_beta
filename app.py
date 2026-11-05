@@ -39,7 +39,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "42"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "43"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -70,6 +70,9 @@ def _lista_env(nombre, por_defecto):
 
 
 PROVEEDORES_ORDEN = [p.lower() for p in _lista_env("PROVEEDORES_IA", "gemini,anthropic,groq,openrouter,nvidia")]
+# v43: el ENTREVISTADOR tiene su propio orden. Groq primero porque es el más rápido (≈0,5 s); Gemini queda para la voz.
+# Los jueces siguen usando PROVEEDORES_IA. Se cambia con PROVEEDORES_ENTREVISTADOR (por ejemplo "gemini,groq").
+PROVEEDORES_ENTREVISTADOR = [p.lower() for p in _lista_env("PROVEEDORES_ENTREVISTADOR", "groq,gemini,anthropic,openrouter,nvidia")]
 # Groq y OpenRouter también usan el formato OpenAI (no hace falta otro paquete).
 # "openrouter/free" es un alias de OpenRouter que elige solo un modelo gratuito disponible,
 # así no se rompe cuando retiran un modelo concreto. Se pueden cambiar con MODELOS_GROQ / MODELOS_OPENROUTER.
@@ -125,11 +128,11 @@ def estado_claves():
     return info
 
 
-def proveedores_configurados():
+def proveedores_configurados(orden=None):
     claves = {"gemini": clave_de("GEMINI_API_KEY"), "anthropic": clave_de("ANTHROPIC_API_KEY"), "nvidia": clave_de("NVIDIA_API_KEY")}
     for nombre, cfg in COMPAT.items():
         claves[nombre] = clave_de(cfg["clave"])
-    return [p for p in PROVEEDORES_ORDEN if claves.get(p)]
+    return [p for p in (orden or PROVEEDORES_ORDEN) if claves.get(p)]
 
 
 def _cliente_compat(prov):
@@ -329,7 +332,7 @@ def _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, 
 def generar_texto(mensajes, temperature, max_tokens, esfuerzo, rol="evaluador"):
     """Devuelve (texto, proveedor, modelo). Si un proveedor falla, usa el siguiente.
     Lanza HTTPException solo si NINGUNO responde."""
-    todos = proveedores_configurados()
+    todos = proveedores_configurados(PROVEEDORES_ENTREVISTADOR if rol == "entrevistador" else None)
     if not todos:
         raise HTTPException(
             status_code=500,
@@ -479,8 +482,23 @@ SYSTEM_PROMPT = (
     "Escucha la respuesta del vocero y repregunta sobre lo que dijo: si "
     "evade, presiona; si da un dato nuevo, profundiza en ese dato. "
     "Sé firme pero profesional, como un periodista real, no un robot. "
-    "Máximo 2 frases cortas por turno."
+    "Máximo 2 frases cortas por turno. "
+    "Responde SOLO con lo que le dices al vocero: sin presentarte, sin saludos largos, sin explicar "
+    "lo que vas a hacer, sin etiquetas como 'Periodista:' y sin comillas."
 )
+
+
+_RE_ETIQUETA = re.compile(r"^\s*(\*\*)?\s*(periodista|entrevistador|reportero|pregunta(\s*\d+)?)\s*(\*\*)?\s*[:：-]\s*", re.IGNORECASE)
+
+
+def limpiar_pregunta(texto):
+    """Deja solo lo que dice el periodista (sin razonamiento, etiquetas, markdown ni comillas envolventes)."""
+    t = re.sub(r"<think>.*?</think>", "", texto or "", flags=re.DOTALL | re.IGNORECASE)
+    t = t.replace("**", "").replace("__", "").strip()
+    t = _RE_ETIQUETA.sub("", t).strip()
+    if len(t) >= 2 and t[0] in "\"«“'" and t[-1] in "\"»”'":
+        t = t[1:-1].strip()
+    return re.sub(r"\s+", " ", t).strip() or (texto or "").strip()
 
 
 @app.post("/api/entrevistar", dependencies=[Depends(limitar)])
@@ -488,7 +506,7 @@ def entrevistar(peticion: PeticionEntrevista):
     mensajes = [{"role": "system", "content": SYSTEM_PROMPT}]
     mensajes += [{"role": m.role, "content": m.content} for m in peticion.historial]
     texto = llamar_ia(mensajes, temperature=0.7, max_tokens=500, esfuerzo="low", rol="entrevistador")
-    return {"pregunta": texto}
+    return {"pregunta": limpiar_pregunta(texto)}
 
 
 # ------------------------------------------- Voz del entrevistador (v42) -------
@@ -501,7 +519,8 @@ def entrevistar(peticion: PeticionEntrevista):
 #   VOZ_GEMINI_TTS     = nombre de la voz de Gemini (por defecto "Orus", voz masculina firme)
 #   VOZ_GEMINI_SIN_DIRECCION = 1 para mandar solo el texto, sin indicaciones de tono
 
-MODELOS_GEMINI_TTS = _lista_env("MODELOS_GEMINI_TTS", "gemini-3.8-flash-tts,gemini-3.8-flash-lite-tts,gemini-3.1-flash-tts-preview")
+# v43: Flash-Lite primero (es el más rápido); Flash y 3.1 quedan de respaldo
+MODELOS_GEMINI_TTS = _lista_env("MODELOS_GEMINI_TTS", "gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts,gemini-3.1-flash-tts-preview")
 VOZ_GEMINI_TTS = (os.getenv("VOZ_GEMINI_TTS") or "Orus").strip()
 GEMINI_API_NATIVA = os.getenv("GEMINI_API_NATIVA", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 TTS_TIEMPO_POR_MODELO_S = 11
@@ -528,15 +547,34 @@ class ErrorTTS(Exception):
 
 
 def direccion_de_voz(texto, numero):
-    """El tono sube con la entrevista y con las preguntas que insisten. Español latino neutro."""
-    base = "con voz de periodista de televisión latinoamericano, en español latino neutro, ritmo natural de entrevista en vivo"
+    """Indicación CORTA de tono (v43). Las indicaciones largas hacían que el modelo improvisara un
+    monólogo antes de la pregunta. Formato recomendado: «Di <cómo>: <texto>»."""
     if numero >= 4 or PALABRAS_PRESION.search(texto):
-        tono = "presionando: firme, serio, algo impaciente, marcando las palabras clave, como quien exige una respuesta concreta, sin gritar"
-    elif numero >= 2:
-        tono = "incisivo y exigente, serio, con un leve tono de escepticismo"
-    else:
-        tono = "serio, firme y profesional, sin exagerar"
-    return f"{base}; tono {tono}"
+        return "Di presionando, firme y algo impaciente, a ritmo ágil"
+    if numero >= 2:
+        return "Di con tono incisivo y algo escéptico, a ritmo ágil"
+    return "Di con tono serio y firme, a ritmo ágil"
+
+
+def _recortar_silencio(pcm, frecuencia, umbral=350, margen_s=0.08):
+    """Quita el silencio del principio y del final (PCM 16 bits): la voz empieza a sonar antes."""
+    n = len(pcm) // 2
+    if n == 0:
+        return pcm
+    muestras = memoryview(pcm[: n * 2]).cast("h")
+    paso = max(1, frecuencia // 1000)  # se revisa 1 muestra por milisegundo (rápido)
+    ini = next((i for i in range(0, n, paso) if abs(muestras[i]) > umbral), None)
+    if ini is None:
+        return pcm
+    fin = next((i for i in range(n - 1, -1, -paso) if abs(muestras[i]) > umbral), n - 1)
+    margen = int(margen_s * frecuencia)
+    ini, fin = max(0, ini - margen), min(n, fin + margen)
+    return pcm[ini * 2 : fin * 2]
+
+
+def _duracion_esperada_s(texto):
+    """Segundos que debería durar leer el texto a ritmo ágil (≈15 caracteres por segundo en español)."""
+    return max(1.2, len(texto) / 15)
 
 
 def _pcm_a_wav(pcm, frecuencia):
@@ -550,7 +588,7 @@ def _pcm_a_wav(pcm, frecuencia):
 
 
 def _llamar_gemini_tts(modelo, prompt, voz, timeout):
-    """Devuelve (bytes_wav). Lanza ErrorTTS(codigo_http, mensaje) si falla."""
+    """Devuelve (bytes_wav, duracion_s). Lanza ErrorTTS(codigo_http, mensaje) si falla."""
     config = {"responseModalities": ["AUDIO"]}
     if voz:
         config["speechConfig"] = {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voz}}}
@@ -585,9 +623,11 @@ def _llamar_gemini_tts(modelo, prompt, voz, timeout):
             audio = base64.b64decode(inline["data"])
             tipo = (inline.get("mimeType") or inline.get("mime_type") or "").lower()
             if "wav" in tipo:
-                return audio
+                return audio, None
             m = re.search(r"rate=(\d+)", tipo)
-            return _pcm_a_wav(audio, int(m.group(1)) if m else 24000)  # Gemini entrega PCM 16 bits, 24 kHz
+            frecuencia = int(m.group(1)) if m else 24000  # Gemini entrega PCM 16 bits, 24 kHz
+            audio = _recortar_silencio(audio, frecuencia)
+            return _pcm_a_wav(audio, frecuencia), (len(audio) / 2) / frecuencia
     motivo = ((datos.get("candidates") or [{}])[0] or {}).get("finishReason") or (datos.get("promptFeedback") or {}).get("blockReason")
     raise ErrorTTS(502, f"Gemini no devolvió audio ({motivo or 'sin motivo'})")
 
@@ -598,30 +638,29 @@ def generar_voz_entrevistador(texto, numero):
         raise HTTPException(status_code=503, detail="No hay GEMINI_API_KEY: se usa la voz del navegador.")
     texto = re.sub(r"\s+", " ", texto).strip()
     sin_direccion = os.getenv("VOZ_GEMINI_SIN_DIRECCION", "").strip() in ("1", "true", "si", "sí")
-    prompt = texto if sin_direccion else (
-        f"Lee en voz alta {direccion_de_voz(texto, numero)}. "
-        f"Lee solo la pregunta que viene después de los dos puntos, sin agregar nada:\n{texto}"
-    )
+    prompt_simple = texto
+    prompt = texto if sin_direccion else f"{direccion_de_voz(texto, numero)}: {texto}"
+    limite_duracion = _duracion_esperada_s(texto) * 1.9 + 1.5  # más largo que esto = agregó cosas que no son la pregunta
     inicio, ahora = time.time(), time.time()
     candidatos = [m for m in MODELOS_GEMINI_TTS if _tts_enfriar.get(m, 0) <= ahora]
     if not candidatos:
         raise HTTPException(status_code=429, detail="Se acabó la cuota diaria de voz de Gemini: se usa la voz del navegador.")
     fallos = []
     for modelo in candidatos:
-        restante = TTS_TIEMPO_TOTAL_S - (time.time() - inicio)
-        if restante < 3:
-            break
         voz = None if modelo in _tts_sin_voz_fija else VOZ_GEMINI_TTS
-        for intento in range(2):  # el 2º intento es sin voz fija, por si ese nombre de voz no existe en el modelo
+        texto_a_enviar = prompt
+        for intento in range(3):  # reintentos: sin voz fija (si esa voz no existe) o sin indicación de tono (si improvisó)
+            restante = TTS_TIEMPO_TOTAL_S - (time.time() - inicio)
+            if restante < 3:
+                break
             try:
-                wav = _llamar_gemini_tts(modelo, prompt, voz, min(TTS_TIEMPO_POR_MODELO_S, restante))
-                return wav, modelo, voz or "por defecto"
+                wav, duracion = _llamar_gemini_tts(modelo, texto_a_enviar, voz, min(TTS_TIEMPO_POR_MODELO_S, restante))
             except ErrorTTS as e:
                 fallos.append(f"{modelo}: {e.codigo}")
                 print("Voz Gemini falló:", modelo, e.codigo, str(e)[:200])
                 if e.codigo in (401, 403):
                     raise HTTPException(status_code=503, detail="La clave de Gemini fue rechazada para la voz (código %d): se usa la voz del navegador." % e.codigo)
-                if e.codigo == 400 and voz and "voice" in str(e).lower() and intento == 0:
+                if e.codigo == 400 and voz and "voice" in str(e).lower():
                     voz = None
                     _tts_sin_voz_fija.add(modelo)
                     continue
@@ -630,17 +669,24 @@ def generar_voz_entrevistador(texto, numero):
                 elif e.codigo == 429:
                     _tts_enfriar[modelo] = time.time() + 900  # cuota (por minuto o diaria): se salta 15 min
                 break
+            # Si el audio dura mucho más de lo que toma leer la pregunta, el modelo improvisó: se repite SOLO con el texto
+            if duracion and duracion > limite_duracion and texto_a_enviar != prompt_simple:
+                print(f"Voz Gemini: audio de {duracion:.1f} s para {len(texto)} letras (máx. {limite_duracion:.1f} s); se repite solo con el texto")
+                texto_a_enviar = prompt_simple
+                continue
+            return wav, modelo, voz or "por defecto", round(time.time() - inicio, 1)
     codigo = 429 if fallos and all(f.endswith(": 429") for f in fallos) else 502
     raise HTTPException(status_code=codigo, detail="La voz de Gemini no está disponible ahora: se usa la voz del navegador. [" + "; ".join(fallos) + "]")
 
 
 @app.post("/api/voz_entrevistador", dependencies=[Depends(limitar)])
 def voz_entrevistador(peticion: PeticionVozEntrevistador):
-    wav, modelo, voz = generar_voz_entrevistador(peticion.texto, peticion.numero)
+    wav, modelo, voz, segundos = generar_voz_entrevistador(peticion.texto, peticion.numero)
     return Response(
         content=wav,
         media_type="audio/wav",
-        headers={"X-Voz-Modelo": modelo, "X-Voz-Nombre": voz, "Cache-Control": "no-store", "Access-Control-Expose-Headers": "X-Voz-Modelo, X-Voz-Nombre"},
+        headers={"X-Voz-Modelo": modelo, "X-Voz-Nombre": voz, "X-Voz-Segundos": str(segundos), "Cache-Control": "no-store",
+                 "Access-Control-Expose-Headers": "X-Voz-Modelo, X-Voz-Nombre, X-Voz-Segundos"},
     )
 
 
@@ -678,6 +724,7 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = "", probar_voz: i
         "proveedores": configurados,
         "claves": estado_claves(),
         "orden_de_proveedores": PROVEEDORES_ORDEN,
+        "proveedores_entrevistador": proveedores_configurados(PROVEEDORES_ENTREVISTADOR),
         "modelos_gemini": MODELOS_GEMINI,
         "modelos_groq": COMPAT["groq"]["modelos"],
         "modelos_openrouter": COMPAT["openrouter"]["modelos"],
@@ -696,7 +743,7 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = "", probar_voz: i
         limitar(request)
         t0 = time.time()
         try:
-            wav, modelo, voz = generar_voz_entrevistador("Buenos días. Empecemos la entrevista.", 1)
+            wav, modelo, voz, _seg = generar_voz_entrevistador("Buenos días. Empecemos la entrevista.", 1)
             info["voz_entrevistador"]["prueba"] = {"estado": "ok", "modelo": modelo, "voz": voz, "kb": round(len(wav) / 1024), "segundos": round(time.time() - t0, 1)}
         except HTTPException as e:
             info["voz_entrevistador"]["prueba"] = {"estado": "error", "codigo": e.status_code, "detalle": e.detail, "segundos": round(time.time() - t0, 1)}

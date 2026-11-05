@@ -146,6 +146,21 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v43 — Groq para las preguntas, voz más rápida y sin monólogos
+- **Groq genera las preguntas** (es el más rápido, ≈0,5 s) y **Gemini queda para la voz**. El entrevistador tiene su propio orden: variable `PROVEEDORES_ENTREVISTADOR` (por defecto `groq,gemini,anthropic,openrouter,nvidia`). Los jueces siguen con `PROVEEDORES_IA`. Si Groq falla, el entrevistador pasa solo a Gemini.
+- **Voz más rápida:**
+  - Se usa primero **Gemini 3.8 Flash-Lite TTS** (el más rápido); Flash y 3.1 quedan de respaldo.
+  - La indicación de tono ahora es **una frase corta** («Di con tono serio y firme, a ritmo ágil: …»): menos texto para procesar y **ritmo de lectura más ágil**.
+  - Se **recorta el silencio** del principio y del final del audio: la voz empieza a sonar apenas se reproduce.
+  - El aviso encima de la pregunta muestra cuántos segundos tardó Gemini en generar la voz.
+- **Sin monólogos antes de la pregunta:**
+  - La indicación larga de la v42 hacía que Gemini improvisara antes de leer. Ahora es corta y con el formato que recomienda Google.
+  - **Protección por duración:** si el audio dura mucho más de lo que toma leer la pregunta (≈15 letras por segundo), se descarta y se pide de nuevo **solo con el texto** de la pregunta.
+  - El entrevistador recibe la orden de responder **solo lo que le dice al vocero** (sin presentarse ni explicar), y el servidor limpia etiquetas como «Periodista:», comillas, negritas o razonamientos (`<think>`).
+- El 🩺 Diagnóstico muestra el orden de los **jueces** y del **entrevistador** por separado.
+- No se probó *streaming* de voz: la documentación de Google dice que su TTS no lo soporta y hay reportes de audio cortado.
+- Hay que subir **app.py y public/index.html** juntos (requirements.txt no cambia).
+
 ### v42 — Voz REALISTA del entrevistador con Gemini (gratis) + arreglo del error 410
 - **Voz realista con emociones:** el servidor convierte cada pregunta en audio con **Gemini TTS** (plan gratuito de la API de Gemini, la misma `GEMINI_API_KEY`). Un "director de voz" le indica el tono: **serio y firme** en la 1ª pregunta, **incisivo y escéptico** en la 2ª y 3ª, y **presionando** desde la 4ª o cuando la pregunta insiste ("insisto", "no ha respondido", "sí o no"...). Español latino neutro.
 - Endpoint nuevo: `POST /api/voz_entrevistador` (`{texto, numero}`) → audio WAV. Solo recibe el **texto de la pregunta** que generó la IA; nada del vocero.
