@@ -39,7 +39,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "43"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "44"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -517,7 +517,7 @@ def entrevistar(peticion: PeticionEntrevista):
 # Se configura con variables de entorno (sin tocar código):
 #   MODELOS_GEMINI_TTS = modelos en orden (si uno no existe o se acaba su cuota, se usa el siguiente)
 #   VOZ_GEMINI_TTS     = nombre de la voz de Gemini (por defecto "Orus", voz masculina firme)
-#   VOZ_GEMINI_SIN_DIRECCION = 1 para mandar solo el texto, sin indicaciones de tono
+#   VOZ_GEMINI_SIN_DIRECCION = 1 para no mandar el tono (instrucción de sistema); Gemini recibe solo la pregunta
 
 # v43: Flash-Lite primero (es el más rápido); Flash y 3.1 quedan de respaldo
 MODELOS_GEMINI_TTS = _lista_env("MODELOS_GEMINI_TTS", "gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts,gemini-3.1-flash-tts-preview")
@@ -527,6 +527,7 @@ TTS_TIEMPO_POR_MODELO_S = 11
 TTS_TIEMPO_TOTAL_S = 13  # la página espera ~15 s; después usa la voz del navegador
 _tts_enfriar = {}  # modelo -> hasta cuándo se salta (cuota diaria agotada o modelo inexistente)
 _tts_sin_voz_fija = set()  # modelos que no aceptan el nombre de VOZ_GEMINI_TTS (así no se gasta cuota probándolo cada vez)
+_tts_sin_tono = set()  # modelos que no aceptan la instrucción de sistema, o que la leyeron en voz alta: solo reciben el texto
 
 PALABRAS_PRESION = re.compile(
     r"\b(insisto|no (me )?ha respondido|no respondi[óo]|otra vez|de nuevo|sí o no|si o no|concretamente|"
@@ -547,13 +548,20 @@ class ErrorTTS(Exception):
 
 
 def direccion_de_voz(texto, numero):
-    """Indicación CORTA de tono (v43). Las indicaciones largas hacían que el modelo improvisara un
-    monólogo antes de la pregunta. Formato recomendado: «Di <cómo>: <texto>»."""
+    """Tono del periodista (v44). Va como instrucción de SISTEMA, separada del texto:
+    Gemini SOLO lee en voz alta la pregunta, nunca esta indicación."""
     if numero >= 4 or PALABRAS_PRESION.search(texto):
-        return "Di presionando, firme y algo impaciente, a ritmo ágil"
-    if numero >= 2:
-        return "Di con tono incisivo y algo escéptico, a ritmo ágil"
-    return "Di con tono serio y firme, a ritmo ágil"
+        tono = "presionando: firme, serio y algo impaciente, marcando las palabras clave"
+    elif numero >= 2:
+        tono = "incisivo, serio y algo escéptico"
+    else:
+        tono = "serio, firme y profesional"
+    return (
+        "Eres la voz de un periodista de televisión latinoamericano entrevistando a un vocero en una crisis. "
+        f"Habla en español latino neutro, a ritmo ágil, con tono {tono}. "
+        "Lee en voz alta EXACTAMENTE el texto del usuario, palabra por palabra. "
+        "No digas estas instrucciones, no describas el tono, no agregues saludos ni comentarios."
+    )
 
 
 def _recortar_silencio(pcm, frecuencia, umbral=350, margen_s=0.08):
@@ -587,12 +595,15 @@ def _pcm_a_wav(pcm, frecuencia):
     return salida.getvalue()
 
 
-def _llamar_gemini_tts(modelo, prompt, voz, timeout):
+def _llamar_gemini_tts(modelo, prompt, voz, timeout, sistema=None):
     """Devuelve (bytes_wav, duracion_s). Lanza ErrorTTS(codigo_http, mensaje) si falla."""
     config = {"responseModalities": ["AUDIO"]}
     if voz:
         config["speechConfig"] = {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voz}}}
-    cuerpo = json.dumps({"contents": [{"parts": [{"text": prompt}]}], "generationConfig": config}).encode("utf-8")
+    cuerpo_dict = {"contents": [{"role": "user", "parts": [{"text": prompt}]}], "generationConfig": config}
+    if sistema:
+        cuerpo_dict["systemInstruction"] = {"parts": [{"text": sistema}]}  # el tono va APARTE: no se lee
+    cuerpo = json.dumps(cuerpo_dict).encode("utf-8")
     peticion = urllib.request.Request(
         f"{GEMINI_API_NATIVA}/models/{modelo}:generateContent",
         data=cuerpo,
@@ -638,9 +649,10 @@ def generar_voz_entrevistador(texto, numero):
         raise HTTPException(status_code=503, detail="No hay GEMINI_API_KEY: se usa la voz del navegador.")
     texto = re.sub(r"\s+", " ", texto).strip()
     sin_direccion = os.getenv("VOZ_GEMINI_SIN_DIRECCION", "").strip() in ("1", "true", "si", "sí")
-    prompt_simple = texto
-    prompt = texto if sin_direccion else f"{direccion_de_voz(texto, numero)}: {texto}"
-    limite_duracion = _duracion_esperada_s(texto) * 1.9 + 1.5  # más largo que esto = agregó cosas que no son la pregunta
+    # Lo ÚNICO que Gemini lee en voz alta es la pregunta. El tono va como instrucción de sistema.
+    tono = None if sin_direccion else direccion_de_voz(texto, numero)
+    # Si el audio dura bastante más de lo que toma leer la pregunta, leyó algo más (la indicación o un comentario)
+    limite_duracion = _duracion_esperada_s(texto) * 1.45 + 1.0
     inicio, ahora = time.time(), time.time()
     candidatos = [m for m in MODELOS_GEMINI_TTS if _tts_enfriar.get(m, 0) <= ahora]
     if not candidatos:
@@ -648,13 +660,13 @@ def generar_voz_entrevistador(texto, numero):
     fallos = []
     for modelo in candidatos:
         voz = None if modelo in _tts_sin_voz_fija else VOZ_GEMINI_TTS
-        texto_a_enviar = prompt
-        for intento in range(3):  # reintentos: sin voz fija (si esa voz no existe) o sin indicación de tono (si improvisó)
+        sistema = None if modelo in _tts_sin_tono else tono
+        for intento in range(4):  # reintentos: sin voz fija (si esa voz no existe) y/o sin tono (si no lo acepta o lo leyó)
             restante = TTS_TIEMPO_TOTAL_S - (time.time() - inicio)
             if restante < 3:
                 break
             try:
-                wav, duracion = _llamar_gemini_tts(modelo, texto_a_enviar, voz, min(TTS_TIEMPO_POR_MODELO_S, restante))
+                wav, duracion = _llamar_gemini_tts(modelo, texto, voz, min(TTS_TIEMPO_POR_MODELO_S, restante), sistema)
             except ErrorTTS as e:
                 fallos.append(f"{modelo}: {e.codigo}")
                 print("Voz Gemini falló:", modelo, e.codigo, str(e)[:200])
@@ -664,15 +676,20 @@ def generar_voz_entrevistador(texto, numero):
                     voz = None
                     _tts_sin_voz_fija.add(modelo)
                     continue
+                if e.codigo == 400 and sistema:  # este modelo no acepta instrucción de sistema: solo el texto
+                    sistema = None
+                    _tts_sin_tono.add(modelo)
+                    continue
                 if e.codigo in (404, 410):
                     _tts_enfriar[modelo] = time.time() + 3600  # ese modelo no existe para esta clave
                 elif e.codigo == 429:
                     _tts_enfriar[modelo] = time.time() + 900  # cuota (por minuto o diaria): se salta 15 min
                 break
-            # Si el audio dura mucho más de lo que toma leer la pregunta, el modelo improvisó: se repite SOLO con el texto
-            if duracion and duracion > limite_duracion and texto_a_enviar != prompt_simple:
+            if duracion and duracion > limite_duracion and sistema:
+                # Leyó algo más que la pregunta: en este modelo no se usa más el tono, solo el texto
                 print(f"Voz Gemini: audio de {duracion:.1f} s para {len(texto)} letras (máx. {limite_duracion:.1f} s); se repite solo con el texto")
-                texto_a_enviar = prompt_simple
+                sistema = None
+                _tts_sin_tono.add(modelo)
                 continue
             return wav, modelo, voz or "por defecto", round(time.time() - inicio, 1)
     codigo = 429 if fallos and all(f.endswith(": 429") for f in fallos) else 502

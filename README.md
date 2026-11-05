@@ -146,6 +146,15 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v44 — El entrevistador dice SOLO la pregunta
+- **Arreglo:** en la v43 la indicación de tono («Di con tono serio y firme…») iba dentro del texto que Gemini lee, y el modelo la leía en voz alta antes de la pregunta. Ahora **el texto que Gemini lee es exactamente la pregunta**, palabra por palabra, y nada más.
+- El tono (serio → incisivo → presionando) va como **instrucción de sistema**, aparte del texto: no se lee.
+- **Doble protección:**
+  - Si un modelo no acepta la instrucción de sistema (error 400), se usa solo el texto y se recuerda para ese modelo.
+  - Si el audio dura bastante más de lo que toma leer la pregunta (señal de que leyó algo más), se descarta, se pide de nuevo solo con el texto y desde ahí ese modelo recibe solo la pregunta.
+- `VOZ_GEMINI_SIN_DIRECCION=1` en Vercel apaga el tono por completo (Gemini recibe solo la pregunta, sin instrucción de sistema).
+- Hay que subir **app.py y public/index.html** juntos.
+
 ### v43 — Groq para las preguntas, voz más rápida y sin monólogos
 - **Groq genera las preguntas** (es el más rápido, ≈0,5 s) y **Gemini queda para la voz**. El entrevistador tiene su propio orden: variable `PROVEEDORES_ENTREVISTADOR` (por defecto `groq,gemini,anthropic,openrouter,nvidia`). Los jueces siguen con `PROVEEDORES_IA`. Si Groq falla, el entrevistador pasa solo a Gemini.
 - **Voz más rápida:**
