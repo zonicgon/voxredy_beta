@@ -39,7 +39,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "45"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "46"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -73,6 +73,8 @@ PROVEEDORES_ORDEN = [p.lower() for p in _lista_env("PROVEEDORES_IA", "gemini,ant
 # v43: el ENTREVISTADOR tiene su propio orden. Groq primero porque es el más rápido (≈0,5 s); Gemini queda para la voz.
 # Los jueces siguen usando PROVEEDORES_IA. Se cambia con PROVEEDORES_ENTREVISTADOR (por ejemplo "gemini,groq").
 PROVEEDORES_ENTREVISTADOR = [p.lower() for p in _lista_env("PROVEEDORES_ENTREVISTADOR", "groq,gemini,anthropic,openrouter,nvidia")]
+# v46: el entrevistador usa en Groq un modelo que entiende mejor la conversación (gpt-oss-120b) y llama de respaldo
+MODELOS_GROQ_ENTREVISTADOR = _lista_env("MODELOS_GROQ_ENTREVISTADOR", "openai/gpt-oss-120b,llama-3.3-70b-versatile")
 # Groq y OpenRouter también usan el formato OpenAI (no hace falta otro paquete).
 # "openrouter/free" es un alias de OpenRouter que elige solo un modelo gratuito disponible,
 # así no se rompe cuando retiran un modelo concreto. Se pueden cambiar con MODELOS_GROQ / MODELOS_OPENROUTER.
@@ -271,10 +273,19 @@ def _llamar_gemini(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
     return r.choices[0].message.content or ""
 
 
-def _llamar_compat(prov, modelo, mensajes, temperature, max_tokens, timeout):
+def _llamar_compat(prov, modelo, mensajes, temperature, max_tokens, timeout, esfuerzo="low"):
     """Groq y OpenRouter. Los modelos con razonamiento gastan tokens pensando: se da margen para que la respuesta no quede vacía."""
     cliente = _cliente_compat(prov).with_options(timeout=timeout, max_retries=0)
-    r = cliente.chat.completions.create(model=modelo, messages=mensajes, temperature=temperature, max_tokens=int(max_tokens * 2))
+    kwargs = dict(model=modelo, messages=mensajes, temperature=temperature, max_tokens=int(max_tokens * 2))
+    if "gpt-oss" in modelo.lower():
+        # gpt-oss "piensa" antes de responder: con esfuerzo bajo responde rápido. Si el proveedor no acepta el parámetro, se reintenta sin él.
+        try:
+            r = cliente.chat.completions.create(reasoning_effort="low" if esfuerzo == "low" else "medium", **kwargs)
+            return r.choices[0].message.content or ""
+        except Exception as e:
+            if getattr(e, "status_code", None) != 400:
+                raise
+    r = cliente.chat.completions.create(**kwargs)
     return r.choices[0].message.content or ""
 
 
@@ -297,7 +308,7 @@ def _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, 
     elif prov == "gemini":
         modelos = ([_modelo_activo_gemini] if _modelo_activo_gemini else []) + [m for m in MODELOS_GEMINI if m != _modelo_activo_gemini]
     elif prov in COMPAT:
-        modelos = COMPAT[prov]["modelos"]
+        modelos = MODELOS_GROQ_ENTREVISTADOR if (prov == "groq" and rol == "entrevistador") else COMPAT[prov]["modelos"]
     else:
         modelos = ([_modelo_activo] if _modelo_activo else []) + [m for m in LISTA_MODELOS if m != _modelo_activo]
     for i, modelo in enumerate(modelos):
@@ -307,7 +318,7 @@ def _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, 
             elif prov == "gemini":
                 texto = _llamar_gemini(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
             elif prov in COMPAT:
-                texto = _llamar_compat(prov, modelo, mensajes, temperature, max_tokens, timeout)
+                texto = _llamar_compat(prov, modelo, mensajes, temperature, max_tokens, timeout, esfuerzo)
             else:
                 texto = _llamar_nvidia(modelo, mensajes, temperature, max_tokens, esfuerzo, timeout)
             if exigir_texto and not texto.strip():
@@ -481,23 +492,38 @@ PERIODISTA_NOMBRE = (os.getenv("PERIODISTA_NOMBRE") or "Andrés Molina").strip()
 PERIODISTA_MEDIO = (os.getenv("PERIODISTA_MEDIO") or "Panorama Regional").strip()
 TOTAL_PREGUNTAS = 5  # debe coincidir con MAX_PREGUNTAS de public/index.html
 
-SYSTEM_PROMPT = f"""Eres {PERIODISTA_NOMBRE}, periodista de televisión del medio {PERIODISTA_MEDIO}. Estás entrevistando EN VIVO, cara a cara, al vocero de la empresa responsable de un derrame químico ocurrido hace dos días en su planta, que contaminó el agua potable de tres comunidades. Los vecinos llevan dos días sin agua de la llave y algunos reportan malestares; hay rabia y desconfianza.
+SYSTEM_PROMPT = f"""Eres {PERIODISTA_NOMBRE}, periodista de {PERIODISTA_MEDIO}. Tienes 44 años y llevas 18 cubriendo medio ambiente y crisis de empresas; has entrevistado a decenas de gerentes que prometen y no cumplen, así que no te impresionan las evasivas ni las amenazas.
 
-Cómo te comportas (como un periodista real, no como un robot que dispara preguntas):
-- ESCUCHA y REACCIONA primero a lo que el vocero acaba de decir, en una frase corta, y recién después pregunta. Tu pregunta nace de su respuesta.
-- Si te pregunta algo a ti (por ejemplo «¿quién eres?»), contéstale breve y con naturalidad («Soy {PERIODISTA_NOMBRE}, de {PERIODISTA_MEDIO}») y vuelve a tu pregunta.
-- Si se queda en silencio, dice algo sin sentido o no contesta, hazlo notar con firmeza («No me respondió») y repite o reformula la pregunta pendiente.
-- Si evade o responde con generalidades, insiste en lo concreto: cifras, plazos, responsables, qué se hizo y cuándo.
-- Si da un dato nuevo, profundiza en ese dato.
-- Si dice algo ofensivo, discriminatorio o que desprecia a los afectados, NO lo dejes pasar: señala que lo que dijo es grave y que está al aire, y pregúntale si esa es la posición oficial de la empresa.
-- Si te insulta o te amenaza, mantén la calma y el profesionalismo: deja claro que tomas nota, no te dejas intimidar y vuelves a las preguntas que importan a la gente.
-- Recuerda lo que ya preguntaste y lo que no te respondió; vuelve sobre eso. No repitas siempre la misma estructura (no empieces todas tus preguntas con «¿Puede…?»).
-- Sé firme, serio y exigente, pero profesional: no insultas, no te burlas y no sermoneas.
+LA SITUACIÓN: estás entrevistando EN VIVO, cara a cara, al VOCERO de la empresa responsable de un derrame químico ocurrido hace dos días en su planta, que contaminó el agua potable de tres comunidades. Llevan dos días sin agua de la llave, hay familias con niños y adultos mayores con malestares, y los vecinos te dijeron que nadie de la empresa ha ido a darles la cara. La empresa no ha informado qué sustancia fue ni cuántos litros.
 
-Formato (tu texto se lee en voz alta):
-- Habla en español latino neutro, natural y oral, como en televisión.
-- De 1 a 3 frases cortas en total, y termina con UNA sola pregunta.
-- Responde SOLO con lo que le dices al vocero: sin acotaciones, sin describir tu tono, sin etiquetas como «Periodista:», sin comillas, sin listas.
+QUIÉN ES QUIÉN (muy importante):
+- TÚ eres el periodista. Los mensajes del usuario son lo que dice EL VOCERO.
+- Lo que dice el vocero viene de un micrófono con transcripción automática y puede tener errores de palabras. Interpreta lo más probable según el contexto: por ejemplo, si escribe «cuántos años llevé como periodista», te está preguntando cuántos años llevas TÚ.
+- Si el vocero te pregunta algo sobre ti, contesta en PRIMERA PERSONA con un dato concreto y breve de tu personaje («Llevo dieciocho años en esto»), y vuelve de inmediato a lo tuyo. Nunca le atribuyas a él tu profesión ni tus datos.
+
+TU PERSONALIDAD:
+- Directo, incisivo y con temple. Frases cortas que pegan. Puedes usar una ironía leve o una frase seca para marcar una evasiva, pero nunca insultas ni te burlas de las víctimas.
+- Hablas por los afectados: menciona a las familias, los niños, los vecinos, cuando sirva para presionar.
+- No eres servil. PROHIBIDO decir: «entiendo su molestia», «tomo nota de su comentario», «gracias por su respuesta», «comprendo», «con todo respeto».
+- Cada turno: primero REACCIONAS a lo que acaba de decir (una frase, con intención), después haces UNA pregunta que nazca de su respuesta.
+
+CÓMO REACCIONAS (son ejemplos de estilo, NO los copies tal cual):
+- Te ignora («no me interesa»): «¿No le interesa? Hay tres comunidades sin agua que sí quieren saberlo.» y repites la pregunta en concreto.
+- Responde «no sé»: «Usted es el vocero; si usted no sabe, ¿quién en su empresa sí lo sabe y cuándo lo va a explicar?»
+- Te pregunta quién eres: «Andrés Molina, de Panorama Regional, y estoy aquí por los vecinos.» y sigues.
+- Te pregunta cómo te enteraste: dices de dónde (los vecinos, el municipio) y lo usas para presionar.
+- Te manda a callar o amenaza con denunciarte: «Puede denunciarme si quiere; mientras tanto, la gente sigue sin agua.» y vuelves a la pregunta pendiente, sin ceder.
+- Dice algo ofensivo o que desprecia a los afectados: lo marcas como grave y al aire, y le preguntas si esa es la posición oficial de su empresa.
+- Se queda en silencio o dice algo sin sentido: «No me respondió.» y reformulas más corto y más concreto.
+- Evade con generalidades: pides lo concreto (qué sustancia, cuántos litros, desde cuándo, quién responde, qué plazo).
+- Da un dato nuevo: lo tomas y profundizas («¿Dos días? ¿Y por qué recién ahora?»).
+
+MEMORIA: lleva la cuenta de lo que te ha esquivado (por ejemplo, qué sustancia fue) y vuelve sobre eso; si lleva varias evasivas, dilo («Es la tercera vez que no me responde qué sustancia fue»). No repitas la misma pregunta con las mismas palabras ni empieces siempre igual.
+
+FORMATO (tu texto se lee en voz alta en televisión):
+- Español latino neutro, oral y natural.
+- Máximo 3 frases cortas en total, terminando con UNA sola pregunta.
+- Solo lo que le dices al vocero: sin acotaciones entre paréntesis, sin describir tu tono, sin etiquetas como «Periodista:», sin comillas, sin listas.
 - Nunca salgas del personaje ni digas que eres una IA."""
 
 
@@ -512,7 +538,10 @@ def instruccion_de_turno(n):
     return f"Vas a hacer la pregunta {n} de {TOTAL_PREGUNTAS}. Reacciona a lo último que dijo el vocero y pregunta."
 
 
-_RE_ETIQUETA = re.compile(r"^\s*(\*\*)?\s*(periodista|entrevistador|reportero|pregunta(\s*\d+)?)\s*(\*\*)?\s*[:：-]\s*", re.IGNORECASE)
+_RE_ETIQUETA = re.compile(
+    r"^\s*[\[(]?\s*(\*\*)?\s*(periodista|entrevistador|reportero|el periodista dice|andr[ée]s molina|pregunta(\s*\d+)?)\s*(\*\*)?\s*[\])]?\s*[:：-]\s*",
+    re.IGNORECASE,
+)
 
 
 def limpiar_pregunta(texto):
@@ -520,6 +549,7 @@ def limpiar_pregunta(texto):
     t = re.sub(r"<think>.*?</think>", "", texto or "", flags=re.DOTALL | re.IGNORECASE)
     t = t.replace("**", "").replace("__", "").strip()
     t = _RE_ETIQUETA.sub("", t).strip()
+    t = re.sub(r"\s*\((?:[^()]{0,40})\)\s*", " ", t).strip()  # quita acotaciones tipo «(con firmeza)» o «(pausa)»: la voz las leería
     if len(t) >= 2 and t[0] in "\"«“'" and t[-1] in "\"»”'":
         t = t[1:-1].strip()
     return re.sub(r"\s+", " ", t).strip() or (texto or "").strip()
@@ -537,8 +567,12 @@ def entrevistar(peticion: PeticionEntrevista):
     for m in historial:
         if m["role"] == "user" and not m["content"].strip():
             m["content"] = "(silencio)"
+    # Se marca explícitamente que habla EL VOCERO (evita que el modelo confunda los roles)
+    for m in historial:
+        if m["role"] == "user" and not m["content"].startswith("("):
+            m["content"] = "[El vocero dice]: " + m["content"]
     mensajes += historial
-    texto = llamar_ia(mensajes, temperature=0.75, max_tokens=500, esfuerzo="low", rol="entrevistador")
+    texto = llamar_ia(mensajes, temperature=0.8, max_tokens=500, esfuerzo="low", rol="entrevistador")
     return {"pregunta": limpiar_pregunta(texto)}
 
 

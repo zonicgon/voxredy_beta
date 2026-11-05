@@ -146,6 +146,17 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v46 — Periodista con más personalidad y sin confundir los roles
+- **Error corregido:** al preguntarle «¿cuántos años llevas como periodista?» (transcrito como «llevé»), respondía «Usted lleva varios años como periodista», como si el periodista fuera el vocero. Ahora:
+  - Cada mensaje del vocero le llega marcado como **«[El vocero dice]: …»** y el *prompt* deja muy claro quién es quién.
+  - Se le avisa que lo del vocero viene de una **transcripción automática con posibles errores**, y que interprete lo más probable («llevé» → «llevas»).
+  - Si le preguntan por él, contesta **en primera persona** con un dato de su personaje («Llevo dieciocho años en esto») y vuelve a lo suyo.
+- **Más personalidad:** 44 años, 18 cubriendo medio ambiente y crisis de empresas; directo, frases cortas que pegan, ironía leve permitida, habla por los afectados. **Prohibidas** las frases serviles («entiendo su molestia», «tomo nota de su comentario», «gracias por su respuesta»…).
+- **Ejemplos de reacción** en el *prompt* para «no me interesa», «no sé», «¿quién eres?», «cállate o te denuncio», frases ofensivas, silencios y evasivas. Lleva la cuenta de lo que el vocero esquiva («Es la tercera vez que no me responde…»).
+- **Modelo más inteligente para el entrevistador:** en Groq usa primero `openai/gpt-oss-120b` con razonamiento bajo (rápido) y `llama-3.3-70b-versatile` de respaldo. Se cambia con `MODELOS_GROQ_ENTREVISTADOR`. Los jueces no cambian.
+- Se quitan acotaciones entre paréntesis («(pausa)», «(con firmeza)»), que la voz leería.
+- Hay que subir **app.py y public/index.html** juntos.
+
 ### v45 — El entrevistador se comporta como un periodista real
 - **Problema:** el entrevistador solo "disparaba preguntas": no respondía si le preguntabas algo («¿quién eres?»), no notaba los silencios y dejaba pasar frases ofensivas o amenazas. En parte era culpa de la v43, que le prohibía presentarse.
 - **Ahora tiene identidad y contexto:** es *Andrés Molina, de Panorama Regional* (nombre y medio **ficticios**; se cambian con `PERIODISTA_NOMBRE` y `PERIODISTA_MEDIO` en Vercel), en una entrevista **en vivo**, dos días después del derrame, con vecinos sin agua y molestos.
