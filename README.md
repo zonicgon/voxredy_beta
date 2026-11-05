@@ -146,6 +146,19 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v42 — Voz REALISTA del entrevistador con Gemini (gratis) + arreglo del error 410
+- **Voz realista con emociones:** el servidor convierte cada pregunta en audio con **Gemini TTS** (plan gratuito de la API de Gemini, la misma `GEMINI_API_KEY`). Un "director de voz" le indica el tono: **serio y firme** en la 1ª pregunta, **incisivo y escéptico** en la 2ª y 3ª, y **presionando** desde la 4ª o cuando la pregunta insiste ("insisto", "no ha respondido", "sí o no"...). Español latino neutro.
+- Endpoint nuevo: `POST /api/voz_entrevistador` (`{texto, numero}`) → audio WAV. Solo recibe el **texto de la pregunta** que generó la IA; nada del vocero.
+- **Cascada de modelos de voz:** `MODELOS_GEMINI_TTS` (por defecto `gemini-3.8-flash-tts,gemini-3.8-flash-lite-tts,gemini-3.1-flash-tts-preview`). Si uno no existe (404/410) se salta 1 hora; si se acaba su cuota (429) se salta 15 minutos y se usa el siguiente. Cada modelo tiene su propia cuota gratuita (≈100 al día), así que con 3 modelos alcanza para ≈60 entrevistas diarias.
+- **Respaldo automático:** si Gemini no responde en ~13 s, no hay clave, se acabó la cuota o falla, la página usa la **voz del navegador** (la de la v41) sin que la entrevista se detenga. El aviso encima de la pregunta dice qué voz se está usando y por qué.
+- **Voz:** `VOZ_GEMINI_TTS` (por defecto `Orus`, masculina y firme). Otras voces de Gemini que suenan serias: `Charon`, `Alnilam`, `Kore` (femenina). Si el nombre no existe para un modelo, se usa la voz por defecto de ese modelo. `VOZ_GEMINI_SIN_DIRECCION=1` manda solo el texto, sin indicaciones de tono (por si algún modelo llegara a leer las indicaciones en voz alta).
+- **🔁 Repetir pregunta** reutiliza el audio ya generado (no gasta cuota). **⏭ Saltar lectura** también cancela el audio mientras se está preparando ("🎙 preparando la voz…").
+- Se mantienen las reglas de la v41: mientras habla el entrevistador no se mide tu voz y Responder/Hablar quedan bloqueados.
+- 🩺 **Diagnóstico:** fila nueva **«Voz realista (Gemini)»**, que genera una frase de prueba (gasta 1 de la cuota diaria) y dice qué modelo y voz respondieron. También `tu-link/api/salud?probar_voz=1`. Para ver los modelos de voz que acepta tu clave: `tu-link/api/salud?modelos=tts`.
+- **Arreglo del error 410:** cuando un proveedor retira un modelo (como pasó con `z-ai/glm-5.3` de NVIDIA el 28-oct-2026), ahora se prueba el siguiente modelo de la lista igual que con un 404, y el mensaje lo explica.
+- Privacidad: en el plan gratuito Google puede usar lo que se le envía para mejorar sus productos. Aquí solo se envía el texto de la pregunta (generado por la IA).
+- `requirements.txt` **no cambia** (la llamada a Gemini usa la biblioteca estándar de Python). Hay que subir **app.py y public/index.html** juntos.
+
 ### v41 — El entrevistador lee las preguntas en voz alta
 - **Voz del entrevistador** con la síntesis de voz **del navegador** (gratis, sin clave y sin pasar por el servidor). Elige sola la mejor voz en español: primero de Chile, luego Latinoamérica y luego España, y prefiere las voces «Natural» de Edge o las de Google. Las preguntas siguen apareciendo escritas.
 - **Para que no ensucie la evaluación:**

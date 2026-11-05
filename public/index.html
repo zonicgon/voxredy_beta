@@ -560,6 +560,7 @@
   #boton-hablar:disabled, #boton-repetir-pregunta:disabled { opacity: .45; cursor: not-allowed; }
   #pregunta-actual.hablando { box-shadow: inset 5px 0 0 var(--accent2); }
   #pregunta-actual.hablando::after { content: "  🔊 leyendo…"; font-size: 13px; color: #C9D6E3; white-space: nowrap; }
+  #pregunta-actual.hablando.preparando::after { content: "  🎙 preparando la voz…"; }
   @media (prefers-reduced-motion: no-preference) {
     #pregunta-actual.hablando { animation: vozPulso 1.4s ease-in-out infinite; }
     @keyframes vozPulso { 0%, 100% { box-shadow: inset 5px 0 0 var(--accent2); } 50% { box-shadow: inset 9px 0 0 var(--accent2); } }
@@ -666,7 +667,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v41</span> · Beta</p>
+      <p><span class="version" id="version-app">v42</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -1451,17 +1452,160 @@
     });
   }
 
+  // ---------------- v42: voz REALISTA con Gemini (el servidor genera el audio) ----------------
+  // Orden: 1) voz de Gemini (con emociones), 2) si falla o no hay cuota, la voz del navegador.
+  const ClaseAudioCtx = window.AudioContext || window.webkitAudioContext;
+  const tieneVozReal = typeof ClaseAudioCtx === "function";
+  const puedeHablar = tieneSintesis || tieneVozReal;
+  const ESPERA_VOZ_REAL_MS = 15000;     // si el audio de Gemini tarda más, se usa la voz del navegador
+  let ctxVozEntrev = null;              // AudioContext propio del entrevistador (no se mezcla con el del micrófono)
+  let fuenteVozEntrev = null;           // el audio que está sonando
+  let abortVozEntrev = null;            // para cancelar el pedido de audio si se salta o reinicia
+  let audioUltimaPregunta = { texto: "", buffer: null }; // «Repetir» no gasta cuota: reusa el audio
+  let vozRealPausaHasta = 0;            // si Gemini falla, se deja descansar un rato
+  let vozRealFallosSeguidos = 0;
+  let vozRealMotivo = "";               // por qué se está usando el respaldo (para mostrarlo)
+  let ultimaVozUsada = "";              // "gemini" | "navegador"
+  let ultimoModeloVoz = "";
+
+  function asegurarCtxVozEntrev() {
+    if (!tieneVozReal) return null;
+    try {
+      if (!ctxVozEntrev) ctxVozEntrev = new ClaseAudioCtx();
+      if (ctxVozEntrev.state === "suspended") ctxVozEntrev.resume().catch(() => {});
+    } catch (e) { ctxVozEntrev = null; }
+    return ctxVozEntrev;
+  }
+
+  function vozRealDisponible() { return tieneVozReal && Date.now() >= vozRealPausaHasta; }
+
+  function pausarVozReal(ms, motivo) {
+    vozRealPausaHasta = Date.now() + ms;
+    vozRealMotivo = motivo;
+  }
+
+  // Pide el audio a /api/voz_entrevistador y lo reproduce. true = sonó completo; false = usar el respaldo.
+  async function reproducirVozReal(texto, numero, mio) {
+    let buffer = audioUltimaPregunta.texto === texto ? audioUltimaPregunta.buffer : null;
+    const ctx = asegurarCtxVozEntrev();
+    if (!ctx) return false;
+    if (!buffer) {
+      preguntaActual.classList.add("preparando");
+      actualizarControlesVoz();
+      const ctl = new AbortController();
+      abortVozEntrev = ctl;
+      const reloj = setTimeout(() => ctl.abort(), ESPERA_VOZ_REAL_MS);
+      let r = null;
+      try {
+        r = await fetch(`${URL_BACKEND}/voz_entrevistador`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ texto, numero }),
+          signal: ctl.signal,
+        });
+      } catch (e) {
+        if (mio === turnoLectura) { // no fue un «Saltar»: se demoró o no hubo red
+          vozRealFallosSeguidos++;
+          if (vozRealFallosSeguidos >= 2) pausarVozReal(5 * 60000, "la voz realista se está demorando; se usa la del navegador por unos minutos");
+        }
+        return false;
+      } finally {
+        clearTimeout(reloj);
+        if (abortVozEntrev === ctl) abortVozEntrev = null;
+        preguntaActual.classList.remove("preparando");
+      }
+      if (mio !== turnoLectura) return false;
+      if (!r.ok) {
+        let detalle = "";
+        try { detalle = (await r.json()).detail || ""; } catch (e) { /* sin JSON */ }
+        console.warn("Voz realista no disponible:", r.status, detalle);
+        if (r.status === 503) pausarVozReal(24 * 3600000, "la voz realista no está configurada en el servidor");
+        else if (r.status === 429) pausarVozReal(15 * 60000, "se acabó por ahora la cuota gratuita de voz realista");
+        else if (r.status === 404) pausarVozReal(24 * 3600000, "el servidor todavía no tiene la voz realista (¿falta subir app.py?)");
+        else if (++vozRealFallosSeguidos >= 2) pausarVozReal(5 * 60000, "la voz realista está fallando; se usa la del navegador por unos minutos");
+        return false;
+      }
+      try {
+        const bytes = await r.arrayBuffer();
+        if (mio !== turnoLectura) return false;
+        buffer = await ctx.decodeAudioData(bytes);
+      } catch (e) {
+        console.warn("No se pudo decodificar la voz realista:", e);
+        vozRealFallosSeguidos++;
+        return false;
+      }
+      vozRealFallosSeguidos = 0;
+      vozRealMotivo = "";
+      ultimoModeloVoz = r.headers.get("X-Voz-Modelo") || "";
+      audioUltimaPregunta = { texto, buffer };
+    }
+    if (mio !== turnoLectura) return false;
+
+    // El navegador puede tener el audio "dormido" hasta un clic: se intenta despertar (máx. 1,5 s)
+    if (ctx.state !== "running") {
+      try { await Promise.race([ctx.resume(), esperar(1500)]); } catch (e) { /* nada */ }
+    }
+    if (ctx.state !== "running") { vozBloqueadaPorNavegador = true; return false; }
+    if (mio !== turnoLectura) return false;
+
+    return await new Promise((resolve) => {
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(ctx.destination);
+      fuenteVozEntrev = src;
+      let listo = false;
+      const fin = (v) => {
+        if (listo) return;
+        listo = true;
+        clearTimeout(guardian);
+        if (fuenteVozEntrev === src) fuenteVozEntrev = null;
+        resolve(v);
+      };
+      src.onended = () => fin(mio === turnoLectura);
+      // Guardián por si el navegador no avisa que terminó
+      const guardian = setTimeout(() => { try { src.stop(); } catch (e) { /* nada */ } fin(mio === turnoLectura); }, buffer.duration * 1000 + 3000);
+      try { src.start(); vozBloqueadaPorNavegador = false; } catch (e) { fin(false); }
+    });
+  }
+
+  // Lee la pregunta: primero voz realista; si no se puede, la del navegador. Se resuelve SIEMPRE.
+  async function leerPreguntaEntrevistador(texto, numero, forzar) {
+    if (!vozEntrevActiva && !forzar) return false;
+    if (vozRealDisponible()) {
+      const mio = ++turnoLectura;
+      entrevistadorHablando = true;
+      preguntaActual.classList.add("hablando");
+      actualizarControlesVoz();
+      let ok = false;
+      try { ok = await reproducirVozReal(texto, numero, mio); }
+      catch (e) { console.warn("Voz realista:", e); ok = false; }
+      if (mio !== turnoLectura) return false; // se saltó la lectura o se reinició la entrevista
+      // Pase lo que pase, se suelta el estado "hablando" antes de seguir (el respaldo lo vuelve a marcar si lee)
+      entrevistadorHablando = false;
+      preguntaActual.classList.remove("hablando", "preparando");
+      actualizarControlesVoz();
+      if (ok) { ultimaVozUsada = "gemini"; return true; }
+    }
+    if (!tieneSintesis) return false; // sin respaldo: la pregunta queda solo escrita
+    ultimaVozUsada = "navegador";
+    return leerEnVozAlta(texto, forzar);
+  }
+
   function callarEntrevistador() {
     turnoLectura++;
     entrevistadorHablando = false;
-    preguntaActual.classList.remove("hablando");
+    preguntaActual.classList.remove("hablando", "preparando");
     try { if (tieneSintesis) window.speechSynthesis.cancel(); } catch (e) { /* nada */ }
+    if (abortVozEntrev) { try { abortVozEntrev.abort(); } catch (e) { /* nada */ } abortVozEntrev = null; }
+    if (fuenteVozEntrev) { try { fuenteVozEntrev.stop(); } catch (e) { /* nada */ } fuenteVozEntrev = null; }
     actualizarControlesVoz();
   }
 
-  // Safari y algunos celulares solo dejan hablar si la primera lectura sale de un clic: se "desbloquea" con un clic
-  function desbloquearVoz() {
-    if (!tieneSintesis || !vozEntrevActiva) return;
+  // Safari y algunos celulares solo dejan sonar audio si empieza desde un clic: se "desbloquea" con el clic
+  function desbloquearVoz(forzar) {
+    if (!vozEntrevActiva && !forzar) return;
+    asegurarCtxVozEntrev();
+    if (!tieneSintesis) return;
     try {
       const u = new SpeechSynthesisUtterance(" ");
       u.volume = 0;
@@ -1470,12 +1614,14 @@
   }
 
   // Muestra la pregunta, la lee y RECIÉN AHÍ empieza a medir tu voz y deja responder
+  let numeroPreguntaLeida = 1;
   async function presentarPregunta(texto, sid) {
     const miPregunta = ++turnoPregunta;
     preguntaParaLeer = texto;
+    numeroPreguntaLeida = numPregunta;
     botonHablar.disabled = true;
     botonResponder.disabled = true;
-    await leerEnVozAlta(texto);
+    await leerPreguntaEntrevistador(texto, numeroPreguntaLeida, false);
     if (sid !== idSesion || miPregunta !== turnoPregunta || !entrevistaActiva) return;
     botonHablar.disabled = false;
     botonResponder.disabled = false;
@@ -1485,12 +1631,13 @@
 
   async function repetirPregunta() {
     if (!preguntaParaLeer || entrevistadorHablando || escuchando || iaPensando || !entrevistaActiva) return;
+    desbloquearVoz(true); // viene de un clic: aprovecha para despertar el audio
     const sid = idSesion, miPregunta = turnoPregunta;
     const midiendoAntes = vozMidiendo;
     vozMidiendo = false; // pausa la medición de tu voz mientras habla el entrevistador
     botonHablar.disabled = true;
     botonResponder.disabled = true;
-    await leerEnVozAlta(preguntaParaLeer, true);
+    await leerPreguntaEntrevistador(preguntaParaLeer, numeroPreguntaLeida, true);
     if (sid !== idSesion || miPregunta !== turnoPregunta || !entrevistaActiva) return;
     botonHablar.disabled = false;
     botonResponder.disabled = false;
@@ -1500,16 +1647,19 @@
 
   function actualizarControlesVoz() {
     if (!botonVozEntrev) return;
-    if (!tieneSintesis) {
+    if (!puedeHablar) {
       botonVozEntrev.style.display = "none";
-      infoVozEntrev.textContent = "Tu navegador no puede leer en voz alta: las preguntas se muestran solo escritas.";
+      infoVozEntrev.textContent = "Tu navegador no puede reproducir la voz: las preguntas se muestran solo escritas.";
     } else {
       botonVozEntrev.textContent = vozEntrevActiva ? "🔊 Voz del entrevistador: activada" : "🔇 Voz del entrevistador: desactivada";
-      if (vozBloqueadaPorNavegador) infoVozEntrev.textContent = "El navegador bloqueó la voz. Presiona «🔁 Repetir pregunta» para escucharla.";
-      else if (!vozElegida) infoVozEntrev.textContent = "No encontré una voz en español en este navegador (se usará la que tenga). Usa audífonos.";
-      else infoVozEntrev.textContent = `Voz: ${vozElegida.name}. Usa audífonos: así el micrófono no capta al entrevistador.`;
+      const audif = "Usa audífonos: así el micrófono no capta al entrevistador.";
+      if (vozBloqueadaPorNavegador) infoVozEntrev.textContent = "El navegador bloqueó el audio. Presiona «🔁 Repetir pregunta» para escucharla.";
+      else if (!vozRealDisponible() && vozRealMotivo) infoVozEntrev.textContent = `Voz del navegador (respaldo): ${vozRealMotivo}. ${audif}`;
+      else if (ultimaVozUsada === "navegador") infoVozEntrev.textContent = `Voz del navegador (respaldo)${vozElegida ? ": " + vozElegida.name : ""}. ${audif}`;
+      else if (tieneVozReal) infoVozEntrev.textContent = `Voz realista (Gemini)${ultimoModeloVoz ? " · " + ultimoModeloVoz : ""}, con la del navegador de respaldo. ${audif}`;
+      else infoVozEntrev.textContent = `Voz del navegador${vozElegida ? ": " + vozElegida.name : ""}. ${audif}`;
     }
-    const mostrarControles = tieneSintesis && entrevistaActiva && !!preguntaParaLeer;
+    const mostrarControles = puedeHablar && entrevistaActiva && !!preguntaParaLeer;
     botonSaltarLectura.style.display = entrevistadorHablando ? "inline-block" : "none";
     botonRepetirPregunta.style.display = mostrarControles && !entrevistadorHablando ? "inline-block" : "none";
     let estaEscuchando = false;
@@ -1529,6 +1679,7 @@
   }
   botonVozEntrev.addEventListener("click", () => {
     vozEntrevActiva = !vozEntrevActiva;
+    if (vozEntrevActiva) asegurarCtxVozEntrev(); // es un clic: despierta el audio
     try { localStorage.setItem(CLAVE_VOZ_ENTREV, vozEntrevActiva ? "1" : "0"); } catch (e) { /* nada */ }
     if (!vozEntrevActiva && entrevistadorHablando) callarEntrevistador(); // al silenciar, se corta la lectura actual
     actualizarControlesVoz();
@@ -3272,6 +3423,7 @@
     // Entrevistador (IA en el servidor)
     if (iaEvaluando) ponerIA("entrevistador", "work", "Evaluando el contenido de tus respuestas…");
     else if (iaPensando) ponerIA("entrevistador", "work", "El entrevistador está redactando la pregunta…");
+    else if (entrevistadorHablando && preguntaActual.classList.contains("preparando")) ponerIA("entrevistador", "work", "Preparando la voz del entrevistador…");
     else if (entrevistadorHablando) ponerIA("entrevistador", "work", "El entrevistador está leyendo la pregunta en voz alta…");
     else if (entrevistaActiva) ponerIA("entrevistador", "on", "Entrevistador activo");
     else ponerIA("entrevistador", "", "Entrevistador en espera");
@@ -3311,6 +3463,7 @@
     turnoPregunta++;
     preguntaParaLeer = "";
     vozBloqueadaPorNavegador = false;
+    audioUltimaPregunta = { texto: "", buffer: null };
     botonHablar.disabled = false;
 
     if (escuchando) {
@@ -3371,7 +3524,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "41";
+  const VERSION_APP = "42";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -3699,15 +3852,45 @@
       else agregar("Análisis facial en esta sesión", "aviso", "El motor de alta precisión no está activo (se usa el respaldo o no cargó)", "Revisa la fila anterior y recarga la página.");
     }
 
-    // 8) Voz del entrevistador (v41)
+    // 8) Voz realista del entrevistador (v42): genera una frase corta con Gemini (gasta 1 de la cuota diaria)
+    if (salud) {
+      const ve = salud.voz_entrevistador;
+      if (!ve) {
+        agregar("Voz realista (Gemini)", "aviso", "El servidor no tiene esta función", "Sube el app.py de la v42 y haz Redeploy.");
+      } else if (!ve.gemini_tts) {
+        agregar("Voz realista (Gemini)", "aviso", "No hay GEMINI_API_KEY en el servidor", "Se usa la voz del navegador. Para la voz realista, agrega GEMINI_API_KEY (sin restricción de IP) en Vercel y haz Redeploy.");
+      } else {
+        try {
+          const r = await fetchConTiempo(`${URL_BACKEND}/salud?probar_voz=1`, {}, 25000);
+          const d = await r.json().catch(() => null);
+          const pr = d && d.voz_entrevistador && d.voz_entrevistador.prueba;
+          if (pr && pr.estado === "ok") {
+            agregar("Voz realista (Gemini)", "ok", `${pr.modelo} · voz ${pr.voz} · ${pr.segundos} s`, "");
+          } else if (pr) {
+            const ayudaVoz = pr.codigo === 429
+              ? "Se acabó la cuota gratuita de voz de hoy (≈100 por modelo al día). Mientras tanto se usa la voz del navegador."
+              : /404|410/.test(String(pr.detalle))
+                ? `Ningún modelo de voz configurado existe para tu clave. Abre ${location.origin}/api/salud?modelos=tts, copia un nombre de la lista y ponlo en MODELOS_GEMINI_TTS en Vercel.`
+                : "Mientras tanto se usa la voz del navegador. Si se repite, revisa la clave de Gemini o los Logs de Vercel.";
+            agregar("Voz realista (Gemini)", pr.codigo === 429 ? "aviso" : "mal", pr.detalle || ("error " + pr.codigo), ayudaVoz);
+          } else {
+            agregar("Voz realista (Gemini)", "aviso", `El servidor respondió con error HTTP ${r.status}`, r.status === 429 ? "Demasiadas pruebas seguidas: espera unos minutos." : "");
+          }
+        } catch (e) {
+          agregar("Voz realista (Gemini)", "aviso", e.name === "AbortError" ? "No respondió en 25 s" : "No se pudo probar: " + e.message, "Se usará la voz del navegador si Gemini no responde a tiempo.");
+        }
+      }
+    }
+
+    // 9) Voz del navegador (respaldo, v41)
     {
       if (!tieneSintesis) {
-        agregar("Voz del entrevistador", "aviso", "Este navegador no puede leer en voz alta", "Las preguntas se muestran solo escritas. Usa Chrome o Edge para escucharlas.");
+        agregar("Voz del navegador (respaldo)", "aviso", "Este navegador no puede leer en voz alta", "Las preguntas se muestran solo escritas. Usa Chrome o Edge para escucharlas.");
       } else {
         const v = vozElegida || elegirVozEntrevistador();
         const estado = vozEntrevActiva ? "activada" : "desactivada por ti";
-        if (v) agregar("Voz del entrevistador", "ok", `${v.name} (${v.lang}) · ${estado}`, vozBloqueadaPorNavegador ? "El navegador bloqueó la última lectura: usa «Repetir pregunta»." : "");
-        else agregar("Voz del entrevistador", "aviso", `No hay una voz en español en este navegador · ${estado}`, "Se usará la voz por defecto del sistema. En Edge hay voces en español de buena calidad.");
+        if (v) agregar("Voz del navegador (respaldo)", "ok", `${v.name} (${v.lang}) · ${estado}`, vozBloqueadaPorNavegador ? "El navegador bloqueó la última lectura: usa «Repetir pregunta»." : "");
+        else agregar("Voz del navegador (respaldo)", "aviso", `No hay una voz en español en este navegador · ${estado}`, "Se usará la voz por defecto del sistema. En Edge hay voces en español de buena calidad.");
       }
     }
     return resultados;
