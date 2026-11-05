@@ -146,6 +146,21 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v45 — El entrevistador se comporta como un periodista real
+- **Problema:** el entrevistador solo "disparaba preguntas": no respondía si le preguntabas algo («¿quién eres?»), no notaba los silencios y dejaba pasar frases ofensivas o amenazas. En parte era culpa de la v43, que le prohibía presentarse.
+- **Ahora tiene identidad y contexto:** es *Andrés Molina, de Panorama Regional* (nombre y medio **ficticios**; se cambian con `PERIODISTA_NOMBRE` y `PERIODISTA_MEDIO` en Vercel), en una entrevista **en vivo**, dos días después del derrame, con vecinos sin agua y molestos.
+- **Reacciona antes de preguntar**, en una frase corta, a lo que acabas de decir:
+  - Si le preguntas algo a él, contesta breve y vuelve a su pregunta.
+  - Si te quedas callado o dices algo sin sentido, lo hace notar y repite o reformula la pregunta pendiente.
+  - Si evades, insiste en lo concreto (cifras, plazos, responsables); si das un dato nuevo, profundiza.
+  - Si dices algo ofensivo o que desprecia a los afectados, lo señala como grave y pregunta si es la posición oficial de la empresa.
+  - Si lo insultas o amenazas, mantiene la calma, deja claro que no se deja intimidar y vuelve a lo importante.
+  - Recuerda lo que no le respondiste y vuelve sobre eso; varía cómo pregunta (no empieza todo con «¿Puede…?»).
+- **Sabe en qué pregunta va:** en la 1ª se presenta en una frase y en la 5ª hace la pregunta final más importante. Las respuestas vacías le llegan como «(silencio)».
+- Formato pensado para ser leído en voz alta: de 1 a 3 frases cortas, una sola pregunta al final, sin acotaciones ni etiquetas.
+- Solo cambia el comportamiento del entrevistador (el *prompt*); la voz, los jueces y la evaluación no cambian.
+- Hay que subir **app.py y public/index.html** juntos.
+
 ### v44 — El entrevistador dice SOLO la pregunta
 - **Arreglo:** en la v43 la indicación de tono («Di con tono serio y firme…») iba dentro del texto que Gemini lee, y el modelo la leía en voz alta antes de la pregunta. Ahora **el texto que Gemini lee es exactamente la pregunta**, palabra por palabra, y nada más.
 - El tono (serio → incisivo → presionando) va como **instrucción de sistema**, aparte del texto: no se lee.

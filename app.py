@@ -39,7 +39,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "44"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "45"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -475,17 +475,41 @@ class PeticionCara(BaseModel):
 
 # ------------------------------------------------- Entrevistador --------------
 
-SYSTEM_PROMPT = (
-    "Eres un periodista exigente entrevistando a un vocero de una empresa "
-    "durante una crisis (un derrame químico que afectó el agua de tres "
-    "comunidades). Haz una pregunta a la vez, nunca varias juntas. "
-    "Escucha la respuesta del vocero y repregunta sobre lo que dijo: si "
-    "evade, presiona; si da un dato nuevo, profundiza en ese dato. "
-    "Sé firme pero profesional, como un periodista real, no un robot. "
-    "Máximo 2 frases cortas por turno. "
-    "Responde SOLO con lo que le dices al vocero: sin presentarte, sin saludos largos, sin explicar "
-    "lo que vas a hacer, sin etiquetas como 'Periodista:' y sin comillas."
-)
+# v45: el entrevistador tiene identidad y REACCIONA a lo que dice el vocero, como un periodista real.
+# (Nombre y medio son ficticios; se cambian con PERIODISTA_NOMBRE / PERIODISTA_MEDIO.)
+PERIODISTA_NOMBRE = (os.getenv("PERIODISTA_NOMBRE") or "Andrés Molina").strip()
+PERIODISTA_MEDIO = (os.getenv("PERIODISTA_MEDIO") or "Panorama Regional").strip()
+TOTAL_PREGUNTAS = 5  # debe coincidir con MAX_PREGUNTAS de public/index.html
+
+SYSTEM_PROMPT = f"""Eres {PERIODISTA_NOMBRE}, periodista de televisión del medio {PERIODISTA_MEDIO}. Estás entrevistando EN VIVO, cara a cara, al vocero de la empresa responsable de un derrame químico ocurrido hace dos días en su planta, que contaminó el agua potable de tres comunidades. Los vecinos llevan dos días sin agua de la llave y algunos reportan malestares; hay rabia y desconfianza.
+
+Cómo te comportas (como un periodista real, no como un robot que dispara preguntas):
+- ESCUCHA y REACCIONA primero a lo que el vocero acaba de decir, en una frase corta, y recién después pregunta. Tu pregunta nace de su respuesta.
+- Si te pregunta algo a ti (por ejemplo «¿quién eres?»), contéstale breve y con naturalidad («Soy {PERIODISTA_NOMBRE}, de {PERIODISTA_MEDIO}») y vuelve a tu pregunta.
+- Si se queda en silencio, dice algo sin sentido o no contesta, hazlo notar con firmeza («No me respondió») y repite o reformula la pregunta pendiente.
+- Si evade o responde con generalidades, insiste en lo concreto: cifras, plazos, responsables, qué se hizo y cuándo.
+- Si da un dato nuevo, profundiza en ese dato.
+- Si dice algo ofensivo, discriminatorio o que desprecia a los afectados, NO lo dejes pasar: señala que lo que dijo es grave y que está al aire, y pregúntale si esa es la posición oficial de la empresa.
+- Si te insulta o te amenaza, mantén la calma y el profesionalismo: deja claro que tomas nota, no te dejas intimidar y vuelves a las preguntas que importan a la gente.
+- Recuerda lo que ya preguntaste y lo que no te respondió; vuelve sobre eso. No repitas siempre la misma estructura (no empieces todas tus preguntas con «¿Puede…?»).
+- Sé firme, serio y exigente, pero profesional: no insultas, no te burlas y no sermoneas.
+
+Formato (tu texto se lee en voz alta):
+- Habla en español latino neutro, natural y oral, como en televisión.
+- De 1 a 3 frases cortas en total, y termina con UNA sola pregunta.
+- Responde SOLO con lo que le dices al vocero: sin acotaciones, sin describir tu tono, sin etiquetas como «Periodista:», sin comillas, sin listas.
+- Nunca salgas del personaje ni digas que eres una IA."""
+
+
+def instruccion_de_turno(n):
+    """Le dice al periodista en qué punto de la entrevista va (n = número de la pregunta que va a hacer)."""
+    if n <= 1:
+        return (f"Vas a hacer la pregunta 1 de {TOTAL_PREGUNTAS}. Es el comienzo de la entrevista: preséntate en una sola frase "
+                "corta (nombre y medio) y haz tu primera pregunta, directa, sobre lo ocurrido.")
+    if n >= TOTAL_PREGUNTAS:
+        return (f"Vas a hacer la pregunta {TOTAL_PREGUNTAS} de {TOTAL_PREGUNTAS}: es la ÚLTIMA. Reacciona a su respuesta y haz tu "
+                "pregunta final, la más importante que todavía no te haya respondido. No te despidas todavía.")
+    return f"Vas a hacer la pregunta {n} de {TOTAL_PREGUNTAS}. Reacciona a lo último que dijo el vocero y pregunta."
 
 
 _RE_ETIQUETA = re.compile(r"^\s*(\*\*)?\s*(periodista|entrevistador|reportero|pregunta(\s*\d+)?)\s*(\*\*)?\s*[:：-]\s*", re.IGNORECASE)
@@ -503,9 +527,18 @@ def limpiar_pregunta(texto):
 
 @app.post("/api/entrevistar", dependencies=[Depends(limitar)])
 def entrevistar(peticion: PeticionEntrevista):
-    mensajes = [{"role": "system", "content": SYSTEM_PROMPT}]
-    mensajes += [{"role": m.role, "content": m.content} for m in peticion.historial]
-    texto = llamar_ia(mensajes, temperature=0.7, max_tokens=500, esfuerzo="low", rol="entrevistador")
+    numero = sum(1 for m in peticion.historial if m.role == "assistant") + 1
+    mensajes = [{"role": "system", "content": SYSTEM_PROMPT + "\n\n" + instruccion_de_turno(numero)}]
+    historial = [{"role": m.role, "content": m.content} for m in peticion.historial]
+    # La página abre con «Estoy listo para empezar.»: para el periodista, es el vocero sentado frente a la cámara
+    if historial and historial[0]["role"] == "user" and historial[0]["content"].strip().lower().startswith("estoy listo"):
+        historial[0] = {"role": "user", "content": "(El vocero se sienta frente a la cámara. La transmisión está en vivo.)"}
+    # Una respuesta vacía se muestra como silencio, para que el periodista lo note
+    for m in historial:
+        if m["role"] == "user" and not m["content"].strip():
+            m["content"] = "(silencio)"
+    mensajes += historial
+    texto = llamar_ia(mensajes, temperature=0.75, max_tokens=500, esfuerzo="low", rol="entrevistador")
     return {"pregunta": limpiar_pregunta(texto)}
 
 
