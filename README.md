@@ -146,6 +146,24 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v48 — Calibración completa (≈ 90 s), validada, por canal y reutilizable
+Todo el informe compara a la persona contra **su propia línea base**; esta versión hace que esa línea base sea confiable.
+- **Puerta de entrada en vivo** (antes de calibrar), con óvalo guía para la cara y línea de hombros sobre la cámara: luz (muy oscuro, contraluz, quemada), distancia (muy cerca o lejos), cara centrada o cortada, hombros visibles, ruido de fondo y micrófono (sin voz, bajo o saturado). Si hay un problema grave, avisa antes de empezar y deja «Calibrar igual» sabiendo que esa parte saldrá con calidad baja.
+- **Pasos guiados**, uno por pantalla, con cuenta regresiva y «✓ ¡Listo!» cuando se ve el gesto (los gestos cortos terminan antes si ya se captaron):
+  rostro neutro 10 s (y parpadeo natural contado en esos 10 s; si no se ve, un paso extra) → mirada al centro, arriba, abajo y a ambos lados → sonrisa leve y amplia → boca abierta → cejas arriba y ceño → giros de cabeza → silencio (ruido) → **leer un texto 16 s** (tono, volumen, **velocidad de habla** con el reconocimiento del navegador, y expresividad y movimiento de cabeza **al hablar**) → voz fuerte y baja (márgenes propios) → risa (opcional, sin presionar).
+- **Validación:** cada paso comprueba que el gesto se hizo (sonrisa sobre un mínimo, mirada desplazada, parpadeos, voz audible, fuerte > normal > bajo…). Si no, se repite **una vez** con otra indicación; si vuelve a fallar se marca y se sigue. Se descartan el primer y el último segundo de cada paso y se usa la **mediana**.
+- **Calidad por canal** al terminar: cara, ojos y voz (alta / media / baja); manos y postura «no evaluable». Resumen paso a paso con **«Repetir» solo ese paso**.
+- **Reutilizable:** se guarda en este navegador (usuario, fecha, cámara, micrófono, lentes y luz). Si es el mismo usuario y dispositivo y tiene menos de 12 h, ofrece «Usar mi calibración» (avisa si la luz o los lentes cambiaron). Al marcar o desmarcar lentes después de calibrar, pide repetir rostro neutro y mirada.
+- **Omitir** ahora avisa primero que sin calibrar la cara y la voz se marcarán como poco fiables.
+- **Durante la entrevista** se vigila si la luz o la distancia a la cámara cambian mucho respecto de la calibración: se avisa en pantalla y se envía el % de tiempo con condiciones distintas.
+- **Cómo se usa al evaluar:**
+  - Umbrales propios: mirada fuera de cámara (según tu rango de mirada), parpadeo (tu umbral y tus parpadeos por minuto en reposo), ganancia de sonrisa, cejas y **ceño** (nuevo).
+  - El juez de imagen recibe `linea_base` y `comparacion_con_linea_base` (parpadeo, expresividad y movimiento de cabeza «× tu normal» y cada expresión «± puntos» respecto de cómo te ves al hablar). Una persona expresiva no sale «nerviosa» por moverse como siempre, ni una poco expresiva sale «fría».
+  - El juez de voz recibe tus márgenes de volumen (bajo/fuerte) y tu velocidad normal, y la velocidad de la entrevista.
+  - **Fiabilidad por código** (alta/media/baja) para cara y voz. Si es **baja**, las notas de ese canal **no pueden bajar de 3** en el informe final, el área se marca «medición poco fiable: no te resta puntos» y no se manda a «áreas a trabajar».
+- **No se calibra (y por qué):** manos y postura (la app no tiene un modelo de cuerpo: solo mide la cara; el encuadre de hombros se revisa por la posición de la cara) y la risa *por el sonido* (no hay un detector de risa en el audio; se registra cómo se ve tu sonrisa al reír y el volumen).
+- Hay que subir **app.py y public/index.html** juntos.
+
 ### v47 — Periodista con personalidad real, rol anclado, dossier, memoria y arco
 - **Personalidad:** Andrés Molina (Panorama Regional, 44 años, 18 de oficio), directo, escéptico, educado pero incómodo. **Español de Chile** de televisión (trato de usted). Reacciones breves y variadas («Mmm.», «A ver.», «Perdone, pero…», «Eso no me quedó claro.»), a veces corta su idea para repreguntar. Cita las palabras o cifras del vocero y varía el largo y la estructura.
 - **Prohibido sonar a asistente:** además de la orden en el *prompt*, el servidor **quita** arranques como «Entiendo», «Claro», «Perfecto», «Gracias por su respuesta» o «De acuerdo».

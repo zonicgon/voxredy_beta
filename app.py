@@ -39,7 +39,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "47"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "48"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -445,6 +445,12 @@ class MetricasVoz(BaseModel):
     # De la calibración (cómo suena ESTA persona normalmente); pueden no venir
     tono_referencia_hz: Optional[float] = None
     volumen_referencia: Optional[float] = None
+    # v48: márgenes propios, velocidad de habla y calidad de la calibración de voz
+    volumen_bajo_referencia: Optional[float] = None
+    volumen_alto_referencia: Optional[float] = None
+    velocidad_referencia_ppm: Optional[float] = None
+    velocidad_habla_ppm: Optional[float] = None
+    calidad_calibracion_voz: Optional[str] = None
 
 
 class PeticionVoz(BaseModel):
@@ -473,6 +479,19 @@ class CalibracionCara(BaseModel):
     calibrada: bool = False
     usa_lentes: bool = False
     ojos_fiables: bool = True  # False si en la calibración no se vio un parpadeo claro (lentes, reflejos, luz)
+    # v48: calidad de la calibración y línea base propia de la persona
+    calidad_cara: Optional[str] = None
+    calidad_ojos: Optional[str] = None
+    reutilizada: bool = False
+    umbral_mirada: Optional[float] = None
+    parpadeos_base_min: Optional[float] = None
+    expresividad_base: Optional[float] = None
+    variabilidad_cabeza_base: Optional[float] = None
+    movimiento_reposo: Optional[float] = None
+    mirada_base_al_hablar_pct: Optional[float] = None
+    emociones_base: Optional[dict[str, float]] = None
+    sonrisa_risa: Optional[float] = None
+    condiciones_distintas_pct: float = 0
 
 
 class PeticionCara(BaseModel):
@@ -1420,6 +1439,17 @@ Te entrego:
   medición es orientativa"), usa notas moderadas salvo que algo sea muy evidente
   y no inventes tendencias que no se puedan ver en una muestra tan corta.
 
+- volumen_bajo_referencia y volumen_alto_referencia (si vienen): su volumen
+  hablando bajito y hablando fuerte en la calibración. Úsalos como SUS márgenes:
+  un volumen promedio cerca del bajo suena apagado para ella; cerca del alto, forzado.
+- velocidad_habla_ppm (palabras por minuto en la entrevista) y
+  velocidad_referencia_ppm (su velocidad normal leyendo en la calibración): si
+  vienen ambos, compáralos (más de 1.3 veces su normal suena apurado; menos de 0.7,
+  lento o dubitativo). Sin referencia, lo habitual en una entrevista es 120 a 170.
+- calidad_calibracion_voz y fiabilidad (alta, media, baja o na): si la fiabilidad
+  es "baja", NO penalices: notas moderadas (3 o más salvo evidencia muy clara) y dilo.
+  Si no hubo calibración ("na"), dilo en una frase y evita notas extremas.
+
 - tono_referencia_hz y volumen_referencia (si vienen): cómo suena ESTA persona
   normalmente, medido antes en una calibración leyendo una frase. Compara contra
   eso: un tono o un volumen muy distinto de su referencia puede indicar tensión o
@@ -1449,6 +1479,7 @@ Responde ÚNICAMENTE con este JSON, sin texto adicional ni bloques markdown:
 @app.post("/api/evaluar_voz", dependencies=[Depends(limitar)])
 def evaluar_voz(peticion: PeticionVoz):
     metricas = peticion.metricas.model_dump(exclude_none=True)
+    metricas["fiabilidad"] = fiabilidad_voz(peticion.metricas)
     bruto = llamar_ia(
         [
             {"role": "system", "content": RUBRICA_VOZ},
@@ -1460,7 +1491,16 @@ def evaluar_voz(peticion: PeticionVoz):
     )
     informe = extraer_json(bruto)
     informe["metricas"] = metricas
+    informe["fiabilidad"] = metricas["fiabilidad"]
     return informe
+
+
+def fiabilidad_voz(mv):
+    """Por código (v48): la peor entre la calidad de la calibración de voz y lo que alcanzó a hablar."""
+    orden = {"baja": 0, "media": 1, "alta": 2}
+    cal = mv.calidad_calibracion_voz if mv.calidad_calibracion_voz in orden else "media"  # sin calibrar = media
+    muestra = mv.fiabilidad_muestra if mv.fiabilidad_muestra in orden else "media"
+    return min(cal, muestra, key=lambda x: orden[x])
 
 
 # ---------------------------------------------------- Evaluación: CARA --------
@@ -1525,8 +1565,10 @@ def resumir_cara(p: PeticionCara):
     pitch = [x["pitch"] for x in m]
     desalineacion = _media([(a * a + b * b) ** 0.5 for a, b in zip(yaw, pitch)])
     variabilidad = (_desv(yaw) ** 2 + _desv(pitch) ** 2) ** 0.5
-    mirada_fuera = _media([1.0 if x["mirada"] > UMBRAL_MIRADA_FUERA else 0.0 for x in m]) * 100
     cal = p.calibracion or CalibracionCara()
+    # v48: el umbral de "mirada fuera de cámara" sale del rango de mirada de ESTA persona (si se calibró)
+    umbral_mirada = cal.umbral_mirada if cal.umbral_mirada and 0.1 <= cal.umbral_mirada <= 0.6 else UMBRAL_MIRADA_FUERA
+    mirada_fuera = _media([1.0 if x["mirada"] > umbral_mirada else 0.0 for x in m]) * 100
 
     pct_rostro = (p.frames_con_rostro / p.frames_totales * 100) if p.frames_totales else 100.0
     parpadeos_min = round(p.parpadeos / (duracion / 60), 1) if duracion >= 10 else None
@@ -1545,7 +1587,56 @@ def resumir_cara(p: PeticionCara):
         "variabilidad_cabeza": round(variabilidad, 3),
         "mirada_fuera_de_camara_pct": round(mirada_fuera, 1) if cal.ojos_fiables else None,
         "parpadeos_por_minuto": parpadeos_min,
-        "calibracion": {"calibrada": cal.calibrada, "usa_lentes": cal.usa_lentes, "ojos_fiables": cal.ojos_fiables},
+        "calibracion": {"calibrada": cal.calibrada, "usa_lentes": cal.usa_lentes, "ojos_fiables": cal.ojos_fiables,
+                        "calidad_cara": cal.calidad_cara, "calidad_ojos": cal.calidad_ojos, "reutilizada": cal.reutilizada},
+        **comparar_con_linea_base(cal, expresividad, variabilidad, parpadeos_min, mirada_fuera, intensidad, pct_rostro),
+    }
+
+
+def _razon(hoy, base):
+    """Cuántas veces su línea base (1.0 = igual que siempre)."""
+    if hoy is None or not base or base <= 0:
+        return None
+    return round(hoy / base, 2)
+
+
+def fiabilidad_cara(cal, pct_rostro):
+    """Por código: alta / media / baja. Con 'baja' el informe final no resta puntos por la cara."""
+    if pct_rostro < 70 or cal.calidad_cara == "baja" or cal.condiciones_distintas_pct > 40:
+        return "baja"
+    if not cal.calibrada or cal.calidad_cara in (None, "media", "na") or cal.condiciones_distintas_pct > 20:
+        return "media"
+    return "alta"
+
+
+def comparar_con_linea_base(cal, expresividad, variabilidad, parpadeos_min, mirada_fuera, intensidad, pct_rostro):
+    """Línea base de la calibración y comparación de HOY contra ella (v48)."""
+    base = {
+        "parpadeos_por_minuto": cal.parpadeos_base_min,
+        "expresividad_0a100": cal.expresividad_base,
+        "variabilidad_cabeza": cal.variabilidad_cabeza_base,
+        "movimiento_cabeza_en_reposo": cal.movimiento_reposo,
+        "mirada_fuera_al_hablar_pct": cal.mirada_base_al_hablar_pct,
+        "umbral_mirada_propio": cal.umbral_mirada,
+        "intensidad_por_emocion_al_hablar_0a100": cal.emociones_base,
+    }
+    base = {k: v for k, v in base.items() if v is not None}
+    comparacion = {
+        "parpadeo_x_base": _razon(parpadeos_min, cal.parpadeos_base_min),
+        "expresividad_x_base": _razon(expresividad, cal.expresividad_base),
+        "variabilidad_cabeza_x_base": _razon(variabilidad, cal.variabilidad_cabeza_base),
+    }
+    if cal.emociones_base:
+        # Diferencia en puntos (0-100) de cada expresión respecto de cómo se ve normalmente al hablar
+        comparacion["emociones_vs_base_puntos"] = {
+            e: round(intensidad[e] - cal.emociones_base.get(e, 0), 1) for e in EMOCIONES_CARA if e in cal.emociones_base
+        }
+    comparacion = {k: v for k, v in comparacion.items() if v is not None}
+    return {
+        "linea_base": base or None,
+        "comparacion_con_linea_base": comparacion or None,
+        "condiciones_distintas_a_la_calibracion_pct": cal.condiciones_distintas_pct,
+        "fiabilidad": fiabilidad_cara(cal, pct_rostro),
     }
 
 
@@ -1579,7 +1670,23 @@ Te entrego:
   desvió y cuánto se movió la cabeza (menos de 0.05 = estable; 0.05 a 0.12 =
   movimiento moderado; más de 0.12 = giros o balanceos amplios)
 - mirada_fuera_de_camara_pct: % del tiempo con la mirada desviada del centro
-- parpadeos_por_minuto: lo normal es 12 a 25; más de 30 sugiere nerviosismo
+- parpadeos_por_minuto: lo normal es 12 a 25; más de 30 sugiere nerviosismo.
+  Si viene linea_base.parpadeos_por_minuto, compara contra ESA cifra y no contra el
+  rango general: comparacion_con_linea_base.parpadeo_x_base de 1.6 o más es
+  claramente más que su normal (dilo así: "tu línea base es X por minuto y hoy
+  parpadeaste el doble"); cerca de 1 es su normal aunque la cifra sea alta.
+- linea_base y comparacion_con_linea_base (si vienen): cómo es ESTA persona al
+  hablar, medido en la calibración. Juzga contra su propia línea base: una
+  persona expresiva no está "nerviosa" por moverse como siempre
+  (expresividad_x_base o variabilidad_cabeza_x_base cerca de 1 = su normal), y una
+  persona poco expresiva no está "fría" por lo mismo. Más de 1.6 o menos de 0.5
+  sí es un cambio claro. emociones_vs_base_puntos dice cuántos puntos más (o menos)
+  que su normal mostró cada expresión. Menciona la línea base cuando expliques una nota.
+- fiabilidad (alta, media o baja): calculada por código a partir de la calidad de
+  la calibración, la cara visible y si cambiaron la luz o la distancia
+  (condiciones_distintas_a_la_calibracion_pct). Si es "baja", NO penalices: usa
+  notas moderadas (3 o más salvo evidencia muy clara) y dilo en el resumen. Si no
+  hubo calibración (calibrada false), dilo en una frase y evita notas extremas.
 - calibracion: si calibrada es true, las expresiones ya están ajustadas al rango
   de gestos de esa persona. Si usa_lentes es true u ojos_fiables es false, los
   gestos de los ojos se leen peor: mirada_fuera_de_camara_pct y
@@ -1633,6 +1740,7 @@ def evaluar_cara(peticion: PeticionCara):
     )
     informe = extraer_json(bruto)
     informe["metricas"] = metricas
+    informe["fiabilidad"] = metricas["fiabilidad"]
     return informe
 
 
@@ -1686,6 +1794,7 @@ def limpiar_informe(inf, fuente):
         "resumen": _texto_corto(inf.get("resumen")),
         "recomendacion_principal": _texto_corto(inf.get("recomendacion_principal")),
         "tope_aplicado": _texto_corto(inf.get("tope_aplicado"), 300) or None,
+        "fiabilidad": inf.get("fiabilidad") if inf.get("fiabilidad") in ("alta", "media", "baja") else None,
     }
 
 
@@ -1704,7 +1813,8 @@ CURSOS_POR_AREA = {
 
 def calcular_areas_a_trabajar(areas):
     """Por código: áreas con nota baja, ordenadas de menor a mayor (siempre incluye al menos la más baja si hay notas)."""
-    con_nota = sorted([a for a in areas if a["puntaje"] is not None], key=lambda a: a["puntaje"])
+    # v48: un área medida solo con datos poco fiables no se manda "a trabajar"
+    con_nota = sorted([a for a in areas if a["puntaje"] is not None and a.get("fiabilidad") != "baja"], key=lambda a: a["puntaje"])
     bajas = [a for a in con_nota if a["puntaje"] < UMBRAL_A_TRABAJAR]
     if not bajas and con_nota and con_nota[0]["puntaje"] < 4.5:
         bajas = [con_nota[0]]  # incluso con buena nota, señala la más débil si no es excelente
@@ -1719,20 +1829,29 @@ def calcular_areas_a_trabajar(areas):
     return salida
 
 
+NOTA_MINIMA_POCO_FIABLE = 3.0  # v48: una medición poco fiable no puede bajar la nota de este piso
+
+
 def calcular_areas_finales(fuentes):
+    """Si una fuente viene con fiabilidad "baja" (mala calibración o condiciones), sus notas no pueden
+    bajar de NOTA_MINIMA_POCO_FIABLE: el canal poco fiable se marca y NO penaliza."""
     areas = []
     for nombre, partes in AREAS_FINALES:
-        valores, usadas = [], []
+        valores, usadas, poco_fiables = [], [], []
         for fuente, nombres_juez in partes:
             inf = fuentes.get(fuente)
             vs = [a["puntaje"] for a in (inf or {}).get("areas", []) if a["nombre"] in nombres_juez]
             if vs:
+                if (inf or {}).get("fiabilidad") == "baja":
+                    vs = [max(v, NOTA_MINIMA_POCO_FIABLE) for v in vs]
+                    poco_fiables.append(fuente)
                 valores += vs
                 usadas.append(fuente)
         areas.append({
             "nombre": nombre,
             "puntaje": round(_media(valores), 1) if valores else None,
             "fuentes": usadas,
+            "fiabilidad": ("baja" if usadas and len(poco_fiables) == len(usadas) else "parcial" if poco_fiables else "normal"),
         })
     return areas
 
@@ -1760,6 +1879,7 @@ Reglas:
   cómo se ve o suena, sin afirmar qué siente la persona.
 - Si solo hay una o dos fuentes, dilo en el resumen y no rellenes lo que falta.
 - Si un informe advierte que la muestra fue muy corta o poco fiable, menciónalo y no le des demasiado peso al elegir la recomendación prioritaria.
+- Si un área tiene fiabilidad "baja" o "parcial" (mala calibración o condiciones cambiantes), dilo en su comentario ("medición orientativa") y no la elijas como recomendación principal.
 
 Responde ÚNICAMENTE con este JSON, sin texto adicional ni bloques markdown:
 {

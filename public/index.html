@@ -66,6 +66,37 @@
   .calib-instruccion small { display: block; color: #C9D6E3; font-size: 13px; margin-bottom: 4px; }
   .calib-pista { height: 8px; background: #E5E7EB; border-radius: 999px; overflow: hidden; margin-top: 12px; }
   .calib-relleno { height: 100%; width: 0; background: var(--orange); transition: width 0.2s linear; }
+  /* v48: calibración por pasos */
+  .calib-ins-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .calib-cuenta { font-size: 28px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .calib-listo { display: none; margin-top: 8px; font-size: 14px; font-weight: 700; color: #B7F5C6; }
+  .calib-listo.visible { display: block; }
+  .calib-chequeo, .calib-reusar, .calib-resumen { border: 1px solid var(--light); border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; }
+  .calib-chequeo-titulo { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+  #calib-chequeo-lista, .calib-grupos { list-style: none; margin: 0; padding: 0; }
+  #calib-chequeo-lista li, .calib-grupos li { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; padding: 4px 0; line-height: 1.4; }
+  .calib-ico { flex: 0 0 20px; text-align: center; font-weight: 700; }
+  .calib-ico.ok { color: #1E8E3E; } .calib-ico.aviso { color: #B26A00; } .calib-ico.mal { color: #C0392B; } .calib-ico.na { color: var(--muted); }
+  .calib-grupos li .calib-txt { flex: 1; }
+  .calib-grupos li button { padding: 4px 10px; font-size: 12px; margin: 0; background: transparent; color: var(--ink, #17354F); border: 1px solid var(--light); box-shadow: none; }
+  .calib-grupos li button.importante { background: var(--orange); color: white; border-color: var(--orange); }
+  body[data-theme="dark"] .calib-grupos li button:not(.importante) { color: inherit; }
+  .calib-canales { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .calib-canal { border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600; border: 1px solid var(--light); }
+  .calib-canal.alta { background: #E6F4EA; color: #1E6B34; border-color: #B7DFC2; }
+  .calib-canal.media { background: #FFF4E0; color: #8A5300; border-color: #F2D29B; }
+  .calib-canal.baja { background: #FDECEA; color: #A0281C; border-color: #F3BDB6; }
+  .calib-canal.na { color: var(--muted); }
+  #guia-encuadre { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+  #guia-encuadre ellipse, #guia-encuadre path { fill: none; stroke: rgba(255,255,255,0.85); stroke-width: 2.5; stroke-dasharray: 8 6; vector-effect: non-scaling-stroke; }
+  #guia-encuadre.bien ellipse, #guia-encuadre.bien path { stroke: #34C759; stroke-dasharray: none; }
+  body.calibrando-guia #guia-encuadre { display: block; }
+  body[data-theme="dark"] .calib-instruccion { color: #0F1B26; }
+  body[data-theme="dark"] .calib-instruccion small { color: #22384D; }
+  body[data-theme="dark"] .calib-listo { color: #0E5A2A; }
+  body[data-theme="dark"] .calib-canal.alta { background: #133222; color: #9FE2B5; border-color: #24563A; }
+  body[data-theme="dark"] .calib-canal.media { background: #3A2A0C; color: #F5C978; border-color: #5E4515; }
+  body[data-theme="dark"] .calib-canal.baja { background: #3B1612; color: #F4A79D; border-color: #612820; }
 
   /* ---------- Ventana de bienvenida (beta) ---------- */
   #modal-beta, #modal-diagnostico {
@@ -667,7 +698,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v47</span> · Beta</p>
+      <p><span class="version" id="version-app">v48</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -797,6 +828,11 @@
       <div id="contenedor-video">
         <video id="video-vista" autoplay muted playsinline></video>
         <canvas id="canvas-caras"></canvas>
+        <!-- v48: guía de encuadre (óvalo para la cara y línea de hombros), solo durante la calibración -->
+        <svg id="guia-encuadre" viewBox="0 0 100 75" preserveAspectRatio="none" aria-hidden="true">
+          <ellipse cx="50" cy="31" rx="15" ry="20" />
+          <path d="M14 75 Q18 56 36 53 M64 53 Q82 56 86 75" />
+        </svg>
       </div>
       <p class="estado" id="estado-facial">Cargando modelo de expresión facial...</p>
       <div id="medidor-audio-contenedor">
@@ -833,16 +869,42 @@
       </div>
 
       <div id="seccion-calibracion">
-        <h1>Calibración rápida</h1>
-        <p class="subtitulo">Unos 30 segundos para que la IA aprenda cómo es <b>tu</b> cara y <b>tu</b> voz y mida con más precisión. No tienes que actuar emociones: son movimientos simples.</p>
+        <h1>Calibración (≈ 1 min y medio)</h1>
+        <p class="subtitulo">La evaluación compara cómo te ves y suenas durante la entrevista con cómo eres <b>tú</b> normalmente. Por eso esta parte importa: son gestos simples, uno por pantalla, y no tienes que actuar emociones.</p>
         <label class="calib-lentes"><input type="checkbox" id="check-lentes" /> Uso lentes (ajusta la lectura de los ojos)</label>
-        <div class="calib-instruccion" id="calib-instruccion">Mira a la cámara, con buena luz de frente. Presiona <b>Comenzar calibración</b> cuando estés listo.</div>
+
+        <!-- v48: ofrecer reutilizar una calibración reciente -->
+        <div class="calib-reusar" id="calib-reusar" style="display:none;">
+          <div id="calib-reusar-texto"></div>
+          <div class="fila-botones">
+            <button type="button" id="boton-reusar-calib">Usar mi calibración</button>
+            <button type="button" id="boton-no-reusar-calib" class="sec">Calibrar de nuevo</button>
+          </div>
+        </div>
+
+        <!-- v48: puerta de entrada (encuadre y entorno, en vivo) -->
+        <div class="calib-chequeo" id="calib-chequeo">
+          <div class="calib-chequeo-titulo">Antes de empezar, revisemos tu encuadre y tu entorno</div>
+          <ul id="calib-chequeo-lista"></ul>
+        </div>
+
+        <div class="calib-instruccion" id="calib-instruccion">
+          <div class="calib-ins-cab"><small id="calib-ins-paso"></small><span class="calib-cuenta" id="calib-cuenta"></span></div>
+          <div id="calib-ins-texto">Cuando la lista de arriba esté en verde (o casi), presiona «Comenzar calibración».</div>
+          <div class="calib-listo" id="calib-listo">✓ ¡Listo!</div>
+        </div>
         <div class="calib-pista"><div class="calib-relleno" id="calib-relleno"></div></div>
         <div class="fila-botones">
           <button id="boton-calibrar" type="button" disabled>Cargando modelo de cara...</button>
           <button id="boton-omitir-calibracion" type="button" style="background: var(--navy);">Omitir</button>
         </div>
         <p class="estado" id="calib-estado"></p>
+
+        <!-- v48: resumen con calidad por canal y repetir un paso -->
+        <div class="calib-resumen" id="calib-resumen" style="display:none;">
+          <div class="calib-canales" id="calib-canales"></div>
+          <ul class="calib-grupos" id="calib-grupos"></ul>
+        </div>
       </div>
 
       <div id="seccion-entrevista">
@@ -1864,7 +1926,7 @@
     const pisoRuido = ordenados[Math.floor(ordenados.length * 0.1)] || 0;
     // Voz = al menos 30 dB sobre el máximo (como antes), 3 veces el ruido de fondo, y un mínimo absoluto bajo
     // Con calibración: el umbral sale de TU ruido de fondo y TU volumen normal (más preciso que adivinarlo)
-    const umbral = calVoz
+    const umbral = calVoz && calVoz.volumen_base
       ? Math.max(calVoz.piso_ruido * 2.5, calVoz.volumen_base * 0.1, 0.003)
       : Math.max(maximo * Math.pow(10, -30 / 20), pisoRuido * 3, 0.003);
     const porVentana = {};
@@ -1936,7 +1998,12 @@
         habla_total_segundos: Math.round(hablado * 10) / 10,
         fiabilidad_muestra: fiabilidad,
         ...(calVoz && calVoz.tono_base > 0 ? { tono_referencia_hz: calVoz.tono_base } : {}),
-        ...(calVoz ? { volumen_referencia: calVoz.volumen_base } : {}),
+        ...(calVoz && calVoz.volumen_base ? { volumen_referencia: calVoz.volumen_base } : {}),
+        // v48: márgenes propios de volumen, velocidad normal y calidad de la calibración de voz
+        ...(calVoz && calVoz.volumen_bajo ? { volumen_bajo_referencia: calVoz.volumen_bajo } : {}),
+        ...(calVoz && calVoz.volumen_alto ? { volumen_alto_referencia: calVoz.volumen_alto } : {}),
+        ...(calVoz && calVoz.velocidad_ppm ? { velocidad_referencia_ppm: calVoz.velocidad_ppm } : {}),
+        calidad_calibracion_voz: calCalidad ? calCalidad.voz : "na",
       },
     };
   }
@@ -1952,6 +2019,15 @@
     campoRespuesta.style.display = "none";
     detenerVentanaVoz();
     resultadoVoz = resumirVoz();
+    // v48: velocidad de habla en la entrevista (solo si todas las respuestas fueron habladas)
+    if (resultadoVoz && resultadoVoz.metricas) {
+      const respuestas = historial.filter((m) => m.role === "user").slice(1);
+      const palabras = respuestas.reduce((s, m) => s + ((m.content || "").match(/[\p{L}\d]+/gu) || []).length, 0);
+      const mv = resultadoVoz.metricas;
+      if (respuestas.length && mv.respuestas_con_voz === respuestas.length && mv.duracion_segundos >= 8 && palabras >= 15) {
+        mv.velocidad_habla_ppm = Math.round((palabras / mv.duracion_segundos) * 60);
+      }
+    }
     datosCara = datosCaraSesion();
     preguntaActual.textContent = "Entrevista completa. Presiona el botón para ver tu evaluación.";
     botonEvaluar.style.display = "inline-block";
@@ -2109,6 +2185,7 @@
   let faceLandmarker = null;
   let mediaPipeFallo = false;
   let rostroVisible = false;   // lo usa el indicador de la barra superior
+  let cajaCara = null;         // v48: dónde está la cara en el cuadro (0 a 1) y cuándo se vio: {x0, y0, x1, y1, t}
   let calibActiva = null;      // {alimentar(crudo, pts)}: recibe los cuadros mientras se captura un paso de la calibración
   let baselineCara = null;
   let acumuladoBase = {};
@@ -2130,6 +2207,7 @@
   const calCara = {
     hecha: false, usaLentes: false, ojosFiables: true,
     gSonrisa: 1, gCejas: 1,          // cuánto amplificar tu sonrisa / tus cejas (según tu rango real)
+    gCeno: 1,                        // v48: cuánto amplificar tu ceño (browDown), según tu rango real
     cierreParpadeo: 0.5, aperturaParpadeo: 0.3, // umbrales de parpadeo propios
   };
   // Con lentes (o si los ojos no se leen bien) se les da menos peso a los gestos que dependen de los ojos
@@ -2148,7 +2226,7 @@
         (b.mouthRollLower || 0) * 0.4
       ),
       enojo: tope(
-        prom(b, "browDownLeft", "browDownRight") * 1.7 +
+        prom(b, "browDownLeft", "browDownRight") * 1.7 * (calCara.gCeno || 1) +
         prom(b, "noseSneerLeft", "noseSneerRight") * 1.0 +
         prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.8 * po +
         prom(b, "mouthPressLeft", "mouthPressRight") * 0.8
@@ -2268,6 +2346,7 @@
     parpadeosCara = 0;
     ojosCerrados = false;
     inicioCara = performance.now();
+    reiniciarCondiciones(); // v48: se vigila si cambian la luz o la distancia desde la calibración
     if (faceLandmarker) {
       errorGrabacionCara = null;
       grabandoCara = true;
@@ -2289,7 +2368,22 @@
       frames_totales: framesTotalesCara,
       frames_con_rostro: framesConRostroCara,
       duracion_segundos: (performance.now() - inicioCara) / 1000,
-      calibracion: { calibrada: calCara.hecha, usa_lentes: calCara.usaLentes, ojos_fiables: calCara.ojosFiables },
+      calibracion: {
+        calibrada: calCara.hecha, usa_lentes: calCara.usaLentes, ojos_fiables: calCara.ojosFiables,
+        // v48: calidad de la calibración y línea base propia (para comparar contra TI, no contra un ideal)
+        calidad_cara: calCalidad ? calCalidad.cara : null,
+        calidad_ojos: calCalidad ? calCalidad.ojos : null,
+        reutilizada: calReutilizada,
+        umbral_mirada: calExtra.umbral_mirada ?? null,
+        parpadeos_base_min: calExtra.parpadeos_base_min ?? null,
+        expresividad_base: calExtra.expresividad_base ?? null,
+        variabilidad_cabeza_base: calExtra.variabilidad_cabeza_base ?? null,
+        movimiento_reposo: calExtra.movimiento_reposo ?? null,
+        mirada_base_al_hablar_pct: calExtra.mirada_base_al_hablar_pct ?? null,
+        emociones_base: calExtra.emociones_base ?? null,
+        sonrisa_risa: calExtra.sonrisa_risa ?? null,
+        condiciones_distintas_pct: pctCondicionesDistintas(),
+      },
     };
   }
 
@@ -2448,6 +2542,15 @@
         fu.className = "fuentes";
         fu.textContent = "Fuentes: " + a.fuentes.map((x) => nombresFuente[x] || x).join(" + ");
         card.appendChild(fu);
+      }
+      // v48: medición poco fiable (mala calibración o condiciones): se avisa y no resta puntos
+      if (a.fiabilidad === "baja" || a.fiabilidad === "parcial") {
+        const fi = document.createElement("div");
+        fi.className = "fuentes";
+        fi.textContent = a.fiabilidad === "baja"
+          ? "⚠ Medición poco fiable (calibración o condiciones): nota orientativa, no te resta puntos."
+          : "⚠ Parte de esta nota viene de una medición poco fiable: esa parte no te resta puntos.";
+        card.appendChild(fi);
       }
       grid.appendChild(card);
     });
@@ -2927,6 +3030,7 @@
           ctx.strokeStyle = "#1E8E3E";
           ctx.lineWidth = 3;
           ctx.strokeRect(minX * W, minY * H, (maxX - minX) * W, (maxY - minY) * H);
+          cajaCara = { x0: minX, y0: minY, x1: maxX, y1: maxY, t: performance.now() };
 
           // 2) Leemos los 52 movimientos faciales
           const crudo = {};
@@ -2938,7 +3042,7 @@
           // 3) Calibración: si la pantalla de calibración está abierta, ella manda; si no,
           //    aprendemos tu cara neutra en los primeros cuadros
           if (calibracionPendiente) {
-            if (calibActiva) calibActiva.alimentar(crudo, pts);
+            if (calibActiva) calibActiva.alimentar(crudo, pts, cajaCara);
             else { estadoFacial.textContent = "Rostro detectado. Listo para calibrar."; estadoFacial.className = "estado ok"; }
           } else if (!baselineCara) {
             for (const k in crudo) acumuladoBase[k] = (acumuladoBase[k] || 0) + crudo[k];
@@ -2966,7 +3070,7 @@
                 : emo[k];
             }
 
-            if (grabandoCara) registrarMuestra(emocionesSuaves, delta, pts);
+            if (grabandoCara) { registrarMuestra(emocionesSuaves, delta, pts); monitorCondiciones(); }
 
             const orden = Object.entries(emocionesSuaves).sort((a, b) => b[1] - a[1]);
             const [nombreTop, valorTop] = orden[0];
@@ -2978,7 +3082,8 @@
             const dudosa = ganadora !== "neutral" && orden.length > 1 && valorTop - orden[1][1] < MARGEN_DUDOSA;
             const etiquetaExp = dudosa ? `dudosa (${nombreBonito(nombreTop)} o ${nombreBonito(orden[1][0])})` : nombreBonito(ganadora);
 
-            estadoFacial.textContent = `Rostro detectado — expresión: ${etiquetaExp} (${pct}%)  |  ${detalle}`;
+            estadoFacial.textContent = `Rostro detectado — expresión: ${etiquetaExp} (${pct}%)  |  ${detalle}` +
+              (grabandoCara && condCalib.aviso ? `  ⚠ ${condCalib.aviso}: esa parte se medirá con menos confianza` : "");
             estadoFacial.className = "estado ok";
           }
         } else {
@@ -3136,34 +3241,42 @@
   }
 
   // ================================================================
-  // Calibración guiada de CARA y VOZ (≈ 30 s, se puede omitir)
-  // Mide cómo es ESTA persona para interpretar mejor lo que se vea y se oiga:
-  //  · cara neutra (línea base), rango real de sonrisa y de cejas, y umbral propio de parpadeo
-  //    (con lentes o reflejos, los ojos se leen peor: se detecta y se les da menos peso)
-  //  · voz: ruido de fondo, volumen normal y tono normal
-  // No se pide actuar emociones, solo movimientos simples. Nada se guarda ni se sube.
+  // v48 — CALIBRACIÓN COMPLETA (≈ 90 s, se puede omitir)
+  // Todo el informe compara a la persona contra SU propia línea base, por eso:
+  //  1) Puerta de entrada en vivo: luz, contraluz, distancia, cara centrada/cortada, hombros,
+  //     ruido de fondo y micrófono bajo/saturado (con óvalo guía sobre la cámara).
+  //  2) Pasos guiados, uno por pantalla, con cuenta regresiva y "✓ listo" cuando se ve el gesto:
+  //     rostro neutro 10 s (y parpadeo natural), mirada en 5 direcciones, sonrisa leve y amplia,
+  //     boca abierta, cejas arriba y ceño, giros de cabeza, silencio, habla normal 16 s (tono,
+  //     volumen y velocidad), voz fuerte y baja, y risa (opcional).
+  //  3) Validación: cada paso comprueba que el gesto se hizo; si no, se repite UNA vez con otra
+  //     indicación. Se descartan los bordes de cada paso y se usa la MEDIANA.
+  //  4) Calidad por canal (cara, ojos, voz; manos/postura: no evaluable) → el servidor no penaliza
+  //     un canal con calidad baja.
+  //  5) Se guarda en este navegador para reutilizarla (mismo usuario y dispositivo, < 12 h) y se
+  //     puede repetir solo un paso. Nada de esto sale del navegador salvo los números de la línea base.
   // ================================================================
   const seccionCalibracion = document.getElementById("seccion-calibracion");
   const botonCalibrar = document.getElementById("boton-calibrar");
   const botonOmitirCal = document.getElementById("boton-omitir-calibracion");
-  const calInstruccion = document.getElementById("calib-instruccion");
   const calRelleno = document.getElementById("calib-relleno");
   const calEstado = document.getElementById("calib-estado");
   const checkLentes = document.getElementById("check-lentes");
+  const calInsPaso = document.getElementById("calib-ins-paso");
+  const calInsTexto = document.getElementById("calib-ins-texto");
+  const calCuenta = document.getElementById("calib-cuenta");
+  const calListo = document.getElementById("calib-listo");
+  const calChequeo = document.getElementById("calib-chequeo");
+  const calChequeoLista = document.getElementById("calib-chequeo-lista");
+  const calResumen = document.getElementById("calib-resumen");
+  const calCanales = document.getElementById("calib-canales");
+  const calGruposLista = document.getElementById("calib-grupos");
+  const calReusar = document.getElementById("calib-reusar");
+  const guiaEncuadre = document.getElementById("guia-encuadre");
 
-  const TEXTO_CAL_INICIAL = "Mira a la cámara, con buena luz de frente. Presiona «Comenzar calibración» cuando estés listo.";
-  const PASOS_CALIB = [
-    { id: "neutral",  tipo: "cara", seg: 3, texto: "Mira a la cámara con la cara relajada, sin sonreír." },
-    { id: "sonrisa",  tipo: "cara", seg: 3, texto: "Haz una sonrisa suave y mantenla." },
-    { id: "cejas",    tipo: "cara", seg: 3, texto: "Sube las cejas, como con un poco de sorpresa, y mantenlas." },
-    { id: "parpadeo", tipo: "cara", seg: 4, texto: "Parpadea lento y completo, 3 veces." },
-    { id: "silencio", tipo: "voz",  seg: 3, texto: "Quédate en silencio un momento (medimos el ruido de fondo)." },
-    { id: "frase",    tipo: "voz",  seg: 7, texto: "Lee en voz alta, con tu tono normal: «Buenos días. Les habla el vocero de la empresa y vamos a responder sus preguntas.»" },
-  ];
-
-  let idCalib = 0;          // sube al cancelar: el proceso en curso se detiene
-  let calCorriendo = false;
-  let calTerminada = false;
+  const TEXTO_CAL_INICIAL = "Cuando la lista de arriba esté en verde (o casi), presiona «Comenzar calibración».";
+  const CLAVE_CALIB = "voxready_calibracion_v1";
+  const CALIB_VIGENCIA_MS = 12 * 3600 * 1000;
 
   const acotar = (x, a, b) => Math.max(a, Math.min(b, x));
   const pctl = (a, q) => {
@@ -3171,16 +3284,670 @@
     const o = [...a].sort((x, y) => x - y);
     return o[Math.min(o.length - 1, Math.floor(o.length * q))];
   };
-
-  function pintarInstruccion(pequeno, texto) {
-    calInstruccion.textContent = "";
-    if (pequeno) {
-      const s = document.createElement("small");
-      s.textContent = pequeno;
-      calInstruccion.appendChild(s);
-    }
-    calInstruccion.appendChild(document.createTextNode(texto));
+  function medianaDe(a) {
+    if (!a.length) return 0;
+    const o = [...a].sort((x, y) => x - y), m = Math.floor(o.length / 2);
+    return o.length % 2 ? o[m] : (o[m - 1] + o[m]) / 2;
   }
+  const desvDe = (a) => {
+    if (a.length < 2) return 0;
+    const m = a.reduce((s, x) => s + x, 0) / a.length;
+    return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length);
+  };
+  const r4 = (x) => Math.round(x * 10000) / 10000;
+
+  // Medidas de un cuadro respecto de la cara neutra
+  const sonrisaDe = (d) => prom(d, "mouthSmileLeft", "mouthSmileRight");
+  const cejasArribaDe = (d) => Math.max(prom(d, "browOuterUpLeft", "browOuterUpRight"), d.browInnerUp || 0);
+  const cenoDe = (d) => prom(d, "browDownLeft", "browDownRight");
+  const miradaH = (d) => Math.max(prom(d, "eyeLookInLeft", "eyeLookOutRight"), prom(d, "eyeLookOutLeft", "eyeLookInRight"));
+  const miradaArriba = (d) => prom(d, "eyeLookUpLeft", "eyeLookUpRight");
+  const miradaAbajo = (d) => prom(d, "eyeLookDownLeft", "eyeLookDownRight");
+  const miradaDe = (d) => Math.max(miradaH(d), miradaArriba(d), miradaAbajo(d)); // igual que registrarMuestra
+
+  // ----- Estado de la calibración -----
+  let idCalib = 0;          // sube al cancelar: el proceso en curso se detiene
+  let calCorriendo = false;
+  let calTerminada = false;
+  let calRes = {};          // datos crudos por paso
+  let calEstadoPasos = {};  // por paso: {ok, nota}
+  let calExtra = {};        // línea base adicional para el informe
+  let calCalidad = null;    // {cara, ojos, voz, manos}
+  let refCondiciones = null; // luz y tamaño de la cara al calibrar (para notar cambios en la entrevista)
+  let calReutilizada = false;
+  let calOmitirAviso = false;
+  let calComenzarAviso = false;
+  let entornoAlCalibrar = null;
+
+  function valoresPorDefectoCalibracion() {
+    Object.assign(calCara, { hecha: false, ojosFiables: true, gSonrisa: 1, gCejas: 1, gCeno: 1, cierreParpadeo: 0.5, aperturaParpadeo: 0.3 });
+    calVoz = null;
+    calExtra = {};
+    calCalidad = null;
+    calRes = {};
+    calEstadoPasos = {};
+    refCondiciones = null;
+    calReutilizada = false;
+  }
+
+  // Pasos. vivo(delta, pose) = ¿se ve el gesto en este cuadro? (para el "✓ listo" y para validar)
+  const PASOS_CALIB = [
+    { id: "neutral", grupo: "neutral", canal: "cara", seg: 10, recorte: 1,
+      texto: "Mira a la cámara con la cara relajada, sin sonreír. Parpadea como siempre.",
+      alt: "Quédate quieto unos segundos mirando la cámara, con la cara relajada y buena luz de frente." },
+    { id: "parpadeo", corto: "parpadeo", grupo: "neutral", canal: "cara", seg: 4, soloSiFalta: true,
+      texto: "No alcancé a ver tus parpadeos. Parpadea lento y completo, 3 veces.",
+      alt: "Cierra los ojos por completo y ábrelos, lento, 3 veces." },
+    { id: "m_centro", grupo: "mirada", canal: "cara", seg: 2.5, texto: "Mira fijo al centro de la cámara." },
+    { id: "m_arriba", corto: "arriba", grupo: "mirada", canal: "cara", seg: 2, cortar: true, texto: "Mira hacia arriba, solo con los ojos.",
+      alt: "Mira hacia el techo solo con los ojos, sin mover la cabeza.", vivo: (d) => miradaArriba(d) > 0.15 },
+    { id: "m_abajo", corto: "abajo", grupo: "mirada", canal: "cara", seg: 2, cortar: true, texto: "Mira hacia abajo, solo con los ojos.",
+      alt: "Mira hacia tu teclado o tu mesa, solo con los ojos.", vivo: (d) => miradaAbajo(d) > 0.15 },
+    { id: "m_izq", corto: "a un lado", grupo: "mirada", canal: "cara", seg: 2, cortar: true, texto: "Mira hacia un lado, solo con los ojos.",
+      alt: "Mira hacia el borde de tu pantalla, solo con los ojos.", vivo: (d) => miradaH(d) > 0.18 },
+    { id: "m_der", corto: "al otro lado", grupo: "mirada", canal: "cara", seg: 2, cortar: true, texto: "Ahora hacia el otro lado.",
+      alt: "Mira hacia el otro borde de tu pantalla, solo con los ojos.", vivo: (d) => miradaH(d) > 0.18 },
+    { id: "s_leve", corto: "sonrisa leve", grupo: "sonrisa", canal: "cara", seg: 3, cortar: true, texto: "Haz una sonrisa leve, como al saludar a alguien.",
+      alt: "Sonríe un poquito, con la boca cerrada.", vivo: (d) => sonrisaDe(d) > 0.08 },
+    { id: "s_amplia", corto: "sonrisa amplia", grupo: "sonrisa", canal: "cara", seg: 3, cortar: true, texto: "Ahora una sonrisa amplia, mostrando los dientes.",
+      alt: "Sonríe grande, como en una foto, sin miedo a exagerar.", vivo: (d) => sonrisaDe(d) > 0.25 },
+    { id: "boca", grupo: "boca", canal: "cara", seg: 3, cortar: true, texto: "Abre la boca como diciendo «aaa».",
+      alt: "Abre bien la boca, como en el dentista.", vivo: (d) => (d.jawOpen || 0) > 0.2 },
+    { id: "cejas", corto: "cejas arriba", grupo: "cejas", canal: "cara", seg: 3, cortar: true, texto: "Sube las cejas, como con sorpresa.",
+      alt: "Levanta las cejas lo más que puedas.", vivo: (d) => cejasArribaDe(d) > 0.12 },
+    { id: "ceno", corto: "ceño", grupo: "cejas", canal: "cara", seg: 3, cortar: true, texto: "Frunce el ceño, como concentrado o molesto.",
+      alt: "Junta las cejas hacia abajo, como cuando algo no te convence.", vivo: (d) => cenoDe(d) > 0.1 },
+    { id: "c_izq", corto: "giro a un lado", grupo: "cabeza", canal: "cara", seg: 2, cortar: true, texto: "Gira la cabeza un poco hacia un lado.",
+      alt: "Gira la cabeza un poco más, como mirando a alguien a tu lado.", vivo: (d, p) => Math.abs(p.yaw) > 0.06 },
+    { id: "c_der", corto: "giro al otro lado", grupo: "cabeza", canal: "cara", seg: 2, cortar: true, texto: "Ahora hacia el otro lado.",
+      alt: "Gira la cabeza un poco más hacia el otro lado.", vivo: (d, p) => Math.abs(p.yaw) > 0.06 },
+    { id: "c_arriba", corto: "barbilla arriba", grupo: "cabeza", canal: "cara", seg: 2, cortar: true, texto: "Levanta un poco la barbilla.",
+      alt: "Mira un poco hacia arriba moviendo la cabeza.", vivo: (d, p) => Math.abs(p.pitch) > 0.035 },
+    { id: "c_abajo", corto: "barbilla abajo", grupo: "cabeza", canal: "cara", seg: 2, cortar: true, texto: "Baja un poco la barbilla.",
+      alt: "Mira un poco hacia abajo moviendo la cabeza.", vivo: (d, p) => Math.abs(p.pitch) > 0.035 },
+    { id: "silencio", grupo: "silencio", canal: "voz", seg: 3, texto: "Quédate en silencio un momento (medimos el ruido de fondo)." },
+    { id: "habla", grupo: "habla", canal: "voz", conCara: true, seg: 16, recorte: 1,
+      texto: "Lee en voz alta, con tu tono y tu velocidad normales: «Buenos días. Soy el vocero de la empresa. Sabemos que esta situación preocupa a muchas familias y vamos a responder todas sus preguntas con datos claros. Nuestro equipo trabaja desde temprano para que el agua vuelva a ser segura lo antes posible.»",
+      alt: "Lee el texto otra vez, un poco más cerca del micrófono: «Buenos días. Soy el vocero de la empresa. Sabemos que esta situación preocupa a muchas familias y vamos a responder todas sus preguntas con datos claros.»" },
+    { id: "fuerte", corto: "voz fuerte", grupo: "volumen", canal: "voz", seg: 4, texto: "Dilo FUERTE, como en un lugar con ruido: «Esto es una prueba de volumen».",
+      alt: "Más fuerte todavía, como llamando a alguien al otro lado de la sala: «Esto es una prueba de volumen»." },
+    { id: "bajo", corto: "voz baja", grupo: "volumen", canal: "voz", seg: 4, texto: "Ahora dilo bajito, casi en secreto: «Esto es una prueba de volumen».",
+      alt: "Más bajito, casi susurrando: «Esto es una prueba de volumen»." },
+    { id: "risa", grupo: "risa", canal: "voz", conCara: true, seg: 4, opcional: true,
+      texto: "Por último, di «¡qué buena!» y ríete un poco, como te salga. Si no te sale, no pasa nada." },
+  ];
+  const GRUPOS_CALIB = [
+    ["neutral", "Rostro neutro y parpadeo natural", "cara"],
+    ["mirada", "Mirada en 5 direcciones", "cara"],
+    ["sonrisa", "Sonrisa leve y amplia", "cara"],
+    ["boca", "Boca abierta", "cara"],
+    ["cejas", "Cejas arriba y ceño fruncido", "cara"],
+    ["cabeza", "Movimiento de cabeza", "cara"],
+    ["silencio", "Ruido de fondo", "voz"],
+    ["habla", "Habla normal (tono, volumen y velocidad)", "voz"],
+    ["volumen", "Voz fuerte y baja", "voz"],
+    ["risa", "Risa (opcional)", "voz"],
+  ];
+
+  // ---------------------------------------------------------------
+  // 1) Puerta de entrada: encuadre y entorno, en vivo
+  // ---------------------------------------------------------------
+  const lienzoLuz = document.createElement("canvas");
+  lienzoLuz.width = 32; lienzoLuz.height = 24;
+  const cajaVigente = () => (cajaCara && performance.now() - cajaCara.t < 700 ? cajaCara : null);
+
+  // Brillo (0-255): promedio, dentro de la cara y fuera de ella (para notar el contraluz)
+  function medirLuz() {
+    if (!videoVista.videoWidth || videoVista.readyState < 2) return null;
+    const c = lienzoLuz.getContext("2d", { willReadFrequently: true });
+    try { c.drawImage(videoVista, 0, 0, 32, 24); } catch (e) { return null; }
+    let d;
+    try { d = c.getImageData(0, 0, 32, 24).data; } catch (e) { return null; }
+    const caja = cajaVigente();
+    let tot = 0, cen = 0, nc = 0;
+    for (let y = 0; y < 24; y++) {
+      for (let x = 0; x < 32; x++) {
+        const i = (y * 32 + x) * 4;
+        const lum = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+        tot += lum;
+        const fx = (x + 0.5) / 32, fy = (y + 0.5) / 24;
+        const dentro = caja ? fx >= caja.x0 && fx <= caja.x1 && fy >= caja.y0 && fy <= caja.y1 : fx > 0.35 && fx < 0.65 && fy > 0.2 && fy < 0.7;
+        if (dentro) { cen += lum; nc++; }
+      }
+    }
+    const n = 32 * 24;
+    return { media: tot / n, cara: nc ? cen / nc : tot / n, fondo: n - nc ? (tot - cen) / (n - nc) : tot / n };
+  }
+
+  // Micrófono: nivel de fondo y picos de los últimos segundos
+  let analizadorEntorno = null, bufEntorno = null, ctxEntorno = null;
+  const historialNivel = []; // {t, rms, pico}
+  function prepararAnalizadorEntorno() {
+    if (analizadorEntorno || !flujoMedios) return;
+    const pistas = flujoMedios.getAudioTracks();
+    if (!pistas.length) return;
+    try {
+      ctxEntorno = new AudioContext();
+      analizadorEntorno = ctxEntorno.createAnalyser();
+      analizadorEntorno.fftSize = 2048;
+      ctxEntorno.createMediaStreamSource(new MediaStream(pistas)).connect(analizadorEntorno);
+      bufEntorno = new Float32Array(analizadorEntorno.fftSize);
+    } catch (e) { analizadorEntorno = null; }
+  }
+  function muestrearNivelEntorno() {
+    if (!analizadorEntorno) return;
+    if (ctxEntorno.state === "suspended") ctxEntorno.resume().catch(() => {});
+    analizadorEntorno.getFloatTimeDomainData(bufEntorno);
+    let s = 0, pico = 0;
+    for (let i = 0; i < bufEntorno.length; i++) { const v = bufEntorno[i]; s += v * v; const a = Math.abs(v); if (a > pico) pico = a; }
+    const ahora = performance.now();
+    historialNivel.push({ t: ahora, rms: Math.sqrt(s / bufEntorno.length), pico });
+    while (historialNivel.length && ahora - historialNivel[0].t > 8000) historialNivel.shift();
+  }
+
+  // Revisa todo y devuelve las filas {estado: ok|aviso|mal|na, texto}
+  function chequearEntorno() {
+    const filas = [];
+    const luz = medirLuz();
+    if (!luz) filas.push({ id: "luz", estado: "na", texto: "Esperando la imagen de la cámara…" });
+    else if (luz.media < 55) filas.push({ id: "luz", estado: "mal", texto: "Está muy oscuro: enciende una luz frente a ti." });
+    else if (luz.fondo > 120 && luz.cara < luz.fondo * 0.62) filas.push({ id: "luz", estado: "aviso", texto: "Contraluz: hay una luz o ventana detrás de ti. Ponte de frente a la luz." });
+    else if (luz.media > 235) filas.push({ id: "luz", estado: "aviso", texto: "Hay demasiada luz y la imagen se ve quemada." });
+    else filas.push({ id: "luz", estado: "ok", texto: "Luz adecuada." });
+
+    const caja = cajaVigente();
+    if (mediaPipeFallo) {
+      filas.push({ id: "cara", estado: "na", texto: "El motor de cara no cargó: solo se calibrará la voz." });
+    } else if (!faceLandmarker) {
+      filas.push({ id: "cara", estado: "na", texto: "Cargando el modelo de cara…" });
+    } else if (!caja) {
+      filas.push({ id: "cara", estado: "mal", texto: "No veo tu cara: mira la cámara de frente y con luz." });
+    } else {
+      const ancho = caja.x1 - caja.x0, cx = (caja.x0 + caja.x1) / 2, cy = (caja.y0 + caja.y1) / 2;
+      if (ancho > 0.5) filas.push({ id: "cara", estado: "aviso", texto: "Estás muy cerca: aléjate un poco." });
+      else if (caja.x0 < 0.02 || caja.x1 > 0.98 || caja.y0 < 0.02 || caja.y1 > 0.98) filas.push({ id: "cara", estado: "aviso", texto: "Tu cara se corta en el borde: centra la cámara." });
+      else if (ancho < 0.13) filas.push({ id: "cara", estado: "aviso", texto: "Estás lejos: acércate un poco a la cámara." });
+      else if (cx < 0.3 || cx > 0.7 || cy < 0.18 || cy > 0.62) filas.push({ id: "cara", estado: "aviso", texto: "Centra tu cara dentro del óvalo." });
+      else filas.push({ id: "cara", estado: "ok", texto: "Cara bien encuadrada y a buena distancia." });
+      const hombros = caja.y1 < 0.74 && caja.y1 - caja.y0 < 0.5;
+      filas.push(hombros
+        ? { id: "hombros", estado: "ok", texto: "Se ven tus hombros: encuadre de entrevista." }
+        : { id: "hombros", estado: "aviso", texto: "Aléjate un poco para que se vean tus hombros y tus manos." });
+    }
+
+    if (!analizadorEntorno) {
+      filas.push({ id: "ruido", estado: "na", texto: "Esperando el micrófono…" });
+    } else {
+      const niveles = historialNivel.map((x) => x.rms);
+      const fondo = pctl(niveles, 0.05); // los momentos más silenciosos (aunque la persona hable seguido)
+      if (niveles.length < 6) filas.push({ id: "ruido", estado: "na", texto: "Midiendo el ruido de fondo…" });
+      else if (fondo < 0.01) filas.push({ id: "ruido", estado: "ok", texto: "Ambiente silencioso." });
+      else if (fondo < 0.03) filas.push({ id: "ruido", estado: "aviso", texto: "Hay algo de ruido de fondo: si puedes, busca un lugar más tranquilo." });
+      else filas.push({ id: "ruido", estado: "mal", texto: "Hay mucho ruido de fondo: la voz se medirá peor." });
+      const recientes = historialNivel.filter((x) => performance.now() - x.t < 6000);
+      const picoVoz = recientes.reduce((m, x) => Math.max(m, x.pico), 0);
+      const rmsVoz = recientes.reduce((m, x) => Math.max(m, x.rms), 0);
+      if (picoVoz >= 0.985) filas.push({ id: "mic", estado: "aviso", texto: "Tu micrófono se satura: aléjate un poco o baja su volumen." });
+      else if (rmsVoz < Math.max(fondo * 2.5, 0.005)) filas.push({ id: "mic", estado: "aviso", texto: "Di algo en voz alta para probar el micrófono." });
+      else if (rmsVoz < 0.03) filas.push({ id: "mic", estado: "aviso", texto: "Te escucho bajo: acércate al micrófono o sube su volumen." });
+      else filas.push({ id: "mic", estado: "ok", texto: "Micrófono bien." });
+    }
+    return { filas, luz, caja: caja ? { ...caja } : null };
+  }
+
+  const ICONOS = { ok: "✓", aviso: "!", mal: "✕", na: "·" };
+  function pintarFilas(ul, filas) {
+    ul.textContent = "";
+    filas.forEach((f) => {
+      const li = document.createElement("li");
+      const ico = document.createElement("span");
+      ico.className = "calib-ico " + f.estado;
+      ico.textContent = ICONOS[f.estado] || "·";
+      const tx = document.createElement("span");
+      tx.className = "calib-txt";
+      tx.textContent = f.texto;
+      li.append(ico, tx);
+      if (f.boton) li.appendChild(f.boton);
+      ul.appendChild(li);
+    });
+  }
+
+  let ultimoEntorno = null;
+  let tickEntorno = 0;
+  setInterval(() => {
+    const visible = calibracionPendiente && seccionCalibracion.style.display !== "none";
+    document.body.classList.toggle("calibrando-guia", visible);
+    if (!visible) return;
+    prepararAnalizadorEntorno();
+    muestrearNivelEntorno();
+    if (++tickEntorno % 2) return; // la lista se actualiza cada 0,5 s
+    ultimoEntorno = chequearEntorno();
+    const encuadreOk = ultimoEntorno.filas.filter((f) => f.id === "luz" || f.id === "cara").every((f) => f.estado === "ok");
+    guiaEncuadre.classList.toggle("bien", encuadreOk);
+    if (!calCorriendo) pintarFilas(calChequeoLista, ultimoEntorno.filas);
+  }, 250);
+
+  // ---------------------------------------------------------------
+  // 2) Pasos: captura con cuenta regresiva, "listo" en vivo y corte anticipado
+  // ---------------------------------------------------------------
+  function pintarInstruccion(pequeno, texto) {
+    calInsPaso.textContent = pequeno || "";
+    calInsTexto.textContent = texto;
+    calCuenta.textContent = "";
+    calListo.classList.remove("visible");
+  }
+
+  function deltaDe(crudo) {
+    const d = {};
+    const base = baselineCara || {};
+    for (const k in crudo) d[k] = Math.max(0, crudo[k] - (base[k] || 0));
+    return d;
+  }
+  const poseRel = (pose) => ({ yaw: pose.yaw - baselinePose.yaw, pitch: pose.pitch - baselinePose.pitch });
+
+  function capturarPaso(p, cancelado) {
+    return new Promise((resolve) => {
+      const conCara = !!faceLandmarker && (p.canal === "cara" || p.conCara);
+      const conVoz = p.canal === "voz";
+      const datos = { frames: [], voz: [], palabras: 0, saturadas: 0, muestrasAudio: 0, luz: null, caja: null, vivoDesde: null };
+      const t0 = performance.now();
+      let vivoSeguido = 0, ultimoT = 0, listo = false;
+      window.calPasoActualId = p.id; // (lo usan las pruebas automáticas)
+
+      if (conCara) {
+        calibActiva = {
+          alimentar(crudo, pts, caja) {
+            const t = (performance.now() - t0) / 1000;
+            const pose = calcularPose(pts);
+            datos.frames.push({ t, c: { ...crudo }, pose, caja: caja ? { x0: caja.x0, y0: caja.y0, x1: caja.x1, y1: caja.y1 } : null });
+            if (p.vivo && baselineCara) {
+              const ok = p.vivo(deltaDe(crudo), poseRel(pose));
+              const dt = Math.min(0.2, t - ultimoT);
+              vivoSeguido = ok ? vivoSeguido + dt : 0;
+              if (ok && datos.vivoDesde === null) datos.vivoDesde = t;
+              if (vivoSeguido >= 0.7 && !listo) { listo = true; calListo.classList.add("visible"); }
+            }
+            ultimoT = t;
+          },
+        };
+      }
+
+      let ctx = null, an = null, buf = null;
+      if (conVoz && flujoMedios && flujoMedios.getAudioTracks().length) {
+        try {
+          ctx = new AudioContext();
+          if (ctx.state === "suspended") ctx.resume().catch(() => {});
+          an = ctx.createAnalyser();
+          an.fftSize = 2048;
+          ctx.createMediaStreamSource(new MediaStream(flujoMedios.getAudioTracks())).connect(an);
+          buf = new Float32Array(an.fftSize);
+        } catch (e) { an = null; }
+      }
+      // Velocidad de habla: se cuentan las palabras que reconoce el navegador mientras lees
+      let rec = null;
+      if (p.id === "habla" && ClaseReconocimiento) {
+        try {
+          rec = new ClaseReconocimiento();
+          rec.lang = "es-CL";
+          rec.continuous = true;
+          rec.interimResults = false;
+          rec.onresult = (ev) => {
+            for (let i = ev.resultIndex; i < ev.results.length; i++) {
+              if (ev.results[i].isFinal) datos.palabras += (ev.results[i][0].transcript.match(/[\p{L}\d]+/gu) || []).length;
+            }
+          };
+          rec.onerror = () => {};
+          rec.start();
+        } catch (e) { rec = null; }
+      }
+
+      let medidoLuz = false;
+      const reloj = setInterval(() => {
+        const t = (performance.now() - t0) / 1000;
+        calCuenta.textContent = String(Math.max(0, Math.ceil(p.seg - t)));
+        if (!medidoLuz && t > 0.8) { medidoLuz = true; datos.luz = medirLuz(); datos.caja = cajaVigente() ? { ...cajaVigente() } : null; }
+        if (an) {
+          an.getFloatTimeDomainData(buf);
+          let s = 0, sat = 0;
+          for (let i = 0; i < buf.length; i++) { s += buf[i] * buf[i]; if (Math.abs(buf[i]) >= 0.985) sat++; }
+          const rms = Math.sqrt(s / buf.length);
+          datos.voz.push({ t, rms, f0: rms > 0.004 ? estimarTono(buf, ctx.sampleRate) : 0 });
+          datos.saturadas += sat > 2 ? 1 : 0;
+          datos.muestrasAudio++;
+        }
+        const terminar = cancelado() || t >= p.seg || (p.cortar && listo && t >= 1.6);
+        if (!terminar) return;
+        clearInterval(reloj);
+        calibActiva = null;
+        if (ctx) { try { ctx.close(); } catch (e) { /* nada */ } }
+        if (rec) { try { rec.stop(); } catch (e) { /* nada */ } }
+        datos.duracion = t;
+        // Las palabras finales pueden llegar un instante después de detener el reconocimiento
+        setTimeout(() => resolve(datos), rec ? 700 : 0);
+      }, 50);
+    });
+  }
+
+  // Recorta los bordes del paso (la persona se acomoda al empezar y se relaja al terminar)
+  function recortarBordes(frames, p, dur) {
+    const r = p.recorte != null ? p.recorte : Math.min(0.35, dur * 0.15);
+    const x = frames.filter((f) => f.t >= r && f.t <= dur - (p.cortar ? 0 : r));
+    return x.length >= 3 ? x : frames;
+  }
+
+  // Parpadeos en una señal (0 a 1): umbral propio con histéresis
+  function contarParpadeosSenal(frames) {
+    const sig = frames.map((f) => prom(f.c, "eyeBlinkLeft", "eyeBlinkRight"));
+    if (sig.length < 10) return { n: 0, alto: 0, base: 0 };
+    const base = medianaDe(sig), alto = pctl(sig, 0.98);
+    if (alto - base < 0.2) return { n: 0, alto, base };
+    const sube = base + 0.55 * (alto - base), baja = base + 0.3 * (alto - base);
+    let n = 0, cerrado = false, ultimo = -1;
+    frames.forEach((f, i) => {
+      if (!cerrado && sig[i] > sube && f.t - ultimo > 0.15) { cerrado = true; n++; ultimo = f.t; }
+      else if (cerrado && sig[i] < baja) cerrado = false;
+    });
+    return { n, alto, base, sube, baja };
+  }
+
+  // Valor sostenido de un gesto: mediana desde que se empezó a ver
+  function valorSostenido(datos, p, medida) {
+    const fr = recortarBordes(datos.frames, p, datos.duracion || p.seg);
+    const desde = datos.vivoDesde != null ? fr.filter((f) => f.t >= datos.vivoDesde) : fr;
+    const usar = desde.length >= 3 ? desde : fr;
+    return medianaDe(usar.map((f) => medida(deltaDe(f.c), poseRel(f.pose))));
+  }
+
+  // ¿Se hizo bien el paso? {ok, nota}
+  function validarPaso(p, datos) {
+    if (!datos) return { ok: false, nota: "sin datos" };
+    if (p.canal === "cara" || (p.conCara && p.canal !== "voz")) {
+      if (!faceLandmarker) return { ok: false, nota: "sin motor de cara" };
+    }
+    switch (p.id) {
+      case "neutral": {
+        const fr = recortarBordes(datos.frames, p, datos.duracion);
+        if (fr.length < 20) return { ok: false, nota: "casi no se vio tu cara" };
+        const huecos = datos.frames.reduce((s, f, i, a) => s + (i && f.t - a[i - 1].t > 0.3 ? f.t - a[i - 1].t : 0), 0);
+        if (huecos > datos.duracion * 0.25) return { ok: false, nota: "se perdió tu cara varias veces" };
+        const mov = Math.hypot(desvDe(fr.map((f) => f.pose.yaw)), desvDe(fr.map((f) => f.pose.pitch)));
+        if (mov > 0.05) return { ok: false, nota: "te moviste bastante" };
+        return { ok: true, nota: "" };
+      }
+      case "parpadeo": {
+        const b = contarParpadeosSenal(datos.frames);
+        return b.n >= 1 ? { ok: true, nota: `${b.n} parpadeos` } : { ok: false, nota: "no se vieron parpadeos claros" };
+      }
+      case "m_centro":
+        return datos.frames.length >= 8 ? { ok: true, nota: "" } : { ok: false, nota: "casi no se vio tu cara" };
+      case "silencio": {
+        if (!datos.voz.length) return { ok: false, nota: "sin micrófono" };
+        const ruido = pctl(datos.voz.map((x) => x.rms), 0.9);
+        return ruido < 0.03 ? { ok: true, nota: "" } : { ok: true, nota: "mucho ruido de fondo", aviso: true };
+      }
+      case "habla": case "fuerte": case "bajo": case "risa": {
+        if (!datos.voz.length) return { ok: false, nota: "sin micrófono" };
+        const ruido = calVoz ? calVoz.piso_ruido : pctl((calRes.silencio || { voz: [] }).voz.map((x) => x.rms), 0.9);
+        const umbral = Math.max(ruido * 2.5, 0.004);
+        const conVoz = datos.voz.filter((x) => x.rms >= umbral);
+        const segVoz = conVoz.length * 0.05;
+        if (p.id === "risa") return segVoz >= 0.4 || datos.frames.length ? { ok: true, nota: "" } : { ok: false, nota: "no se escuchó", aviso: true };
+        if (p.id === "habla") {
+          if (segVoz < 4) return { ok: false, nota: "casi no te escuché" };
+          if (conVoz.filter((x) => x.f0 > 0).length < 15) return { ok: false, nota: "no se pudo medir bien tu tono" };
+          return { ok: true, nota: "" };
+        }
+        if (segVoz < 0.6) return { ok: false, nota: "no te escuché" };
+        const base = calVoz && calVoz.volumen_base ? calVoz.volumen_base : 0;
+        const vol = medianaDe(conVoz.map((x) => x.rms));
+        if (base && p.id === "fuerte" && vol < base * 1.2) return { ok: false, nota: "sonó parecido a tu volumen normal" };
+        if (base && p.id === "bajo" && vol > base * 0.9) return { ok: false, nota: "sonó parecido a tu volumen normal" };
+        return { ok: true, nota: "" };
+      }
+      default: {
+        if (!p.vivo) return { ok: true, nota: "" };
+        if (!baselineCara) return { ok: false, nota: "falta el rostro neutro" };
+        if (datos.frames.length < 5) return { ok: false, nota: "casi no se vio tu cara" };
+        if (datos.vivoDesde == null) return { ok: false, nota: "no se alcanzó a ver el gesto" };
+        return { ok: true, nota: "" };
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // 3) De los datos a la línea base (se puede recalcular solo con los pasos que haya)
+  // ---------------------------------------------------------------
+  function aplicarCalibracion() {
+    const R = calRes;
+    // --- Cara neutra (mediana, sin bordes) y movimiento en reposo
+    if (R.neutral && calEstadoPasos.neutral && calEstadoPasos.neutral.ok) {
+      const p = PASOS_CALIB[0];
+      const fr = recortarBordes(R.neutral.frames, p, R.neutral.duracion);
+      const base = {};
+      Object.keys(fr[0].c).forEach((k) => { base[k] = medianaDe(fr.map((f) => f.c[k] || 0)); });
+      baselineCara = base;
+      baselinePose = { yaw: medianaDe(fr.map((f) => f.pose.yaw)), pitch: medianaDe(fr.map((f) => f.pose.pitch)) };
+      emocionesSuaves = {};
+      calExtra.movimiento_reposo = r4(Math.hypot(desvDe(fr.map((f) => f.pose.yaw)), desvDe(fr.map((f) => f.pose.pitch))));
+      if (R.neutral.luz && R.neutral.caja) refCondiciones = { luz: R.neutral.luz.media, ancho: R.neutral.caja.x1 - R.neutral.caja.x0 };
+      calCara.hecha = true;
+      // Parpadeo natural (10 s) → umbral propio y parpadeos por minuto en reposo
+      const b = contarParpadeosSenal(R.neutral.frames);
+      calExtra.parpadeos_base_min = b.n >= 1 ? Math.round((b.n / (R.neutral.duracion / 60)) * 10) / 10 : null;
+      if (b.n >= 1 && b.alto >= 0.35) {
+        calCara.cierreParpadeo = acotar(b.sube, 0.2, 0.65);
+        calCara.aperturaParpadeo = acotar(b.baja, 0.1, calCara.cierreParpadeo - 0.05);
+      }
+      calExtra.parpadeo_visto = b.n >= 1 && b.alto >= 0.35;
+    }
+    if (R.parpadeo && !calExtra.parpadeo_visto) {
+      const b = contarParpadeosSenal(R.parpadeo.frames);
+      if (b.n >= 1 && b.alto >= 0.35) {
+        calCara.cierreParpadeo = acotar(b.sube, 0.2, 0.65);
+        calCara.aperturaParpadeo = acotar(b.baja, 0.1, calCara.cierreParpadeo - 0.05);
+        calExtra.parpadeo_visto = true;
+      }
+    }
+    const paso = (id) => PASOS_CALIB.find((x) => x.id === id);
+    const okPaso = (id) => R[id] && calEstadoPasos[id] && calEstadoPasos[id].ok;
+    // --- Ganancias de gestos (según TU rango real)
+    if (baselineCara) {
+      if (okPaso("s_amplia")) {
+        let s = valorSostenido(R.s_amplia, paso("s_amplia"), sonrisaDe);
+        if (R.risa && R.risa.frames.length) s = Math.max(s, pctl(R.risa.frames.map((f) => sonrisaDe(deltaDe(f.c))), 0.9));
+        calCara.gSonrisa = s > 0.05 ? acotar(0.55 / s, 0.8, 2.5) : 1;
+        calExtra.sonrisa_amplia = r4(s);
+      }
+      if (okPaso("s_leve")) calExtra.sonrisa_leve = r4(valorSostenido(R.s_leve, paso("s_leve"), sonrisaDe));
+      if (okPaso("cejas")) { const c = valorSostenido(R.cejas, paso("cejas"), cejasArribaDe); calCara.gCejas = c > 0.05 ? acotar(0.5 / c, 0.8, 2.5) : 1; }
+      if (okPaso("ceno")) { const c = valorSostenido(R.ceno, paso("ceno"), cenoDe); calCara.gCeno = c > 0.05 ? acotar(0.45 / c, 0.8, 2.5) : 1; }
+      if (okPaso("boca")) calExtra.boca_abierta = r4(valorSostenido(R.boca, paso("boca"), (d) => d.jawOpen || 0));
+      // --- Mirada: tu rango propio → umbral de "mirada fuera de cámara"
+      const dirs = ["m_arriba", "m_abajo", "m_izq", "m_der"].filter(okPaso);
+      if (dirs.length >= 2) {
+        const mags = dirs.map((id) => valorSostenido(R[id], paso(id), miradaDe));
+        const centro = R.m_centro ? medianaDe(recortarBordes(R.m_centro.frames, paso("m_centro"), R.m_centro.duracion).map((f) => miradaDe(deltaDe(f.c)))) : 0;
+        calExtra.umbral_mirada = r4(acotar(Math.max(medianaDe(mags) * 0.5, centro + 0.08), 0.15, 0.5));
+      }
+      calExtra.direcciones_mirada = dirs.length;
+      // --- Cabeza: cuánto la mueves al girar (rango) y cuánto al hablar (tu normal)
+      const giros = ["c_izq", "c_der", "c_arriba", "c_abajo"].filter(okPaso);
+      calExtra.giros_cabeza = giros.length;
+      // --- Habla con la cara: tu expresividad y tu movimiento de cabeza normales al hablar
+      if (R.habla && R.habla.frames.length >= 20) {
+        const fr = recortarBordes(R.habla.frames, paso("habla"), R.habla.duracion);
+        const emos = fr.map((f) => calcularEmociones(deltaDe(f.c)));
+        calExtra.expresividad_base = Math.round(medianaDe(emos.map((e) => Math.max(...Object.values(e)))) * 1000) / 10;
+        const base = {};
+        Object.keys(emos[0]).forEach((k) => { base[k] = Math.round(medianaDe(emos.map((e) => e[k])) * 1000) / 10; });
+        calExtra.emociones_base = base;
+        calExtra.variabilidad_cabeza_base = r4(Math.hypot(desvDe(fr.map((f) => f.pose.yaw)), desvDe(fr.map((f) => f.pose.pitch))));
+        calExtra.mirada_base_al_hablar_pct = Math.round((fr.filter((f) => miradaDe(deltaDe(f.c)) > (calExtra.umbral_mirada || 0.35)).length / fr.length) * 1000) / 10;
+      }
+      if (R.risa && R.risa.frames.length) calExtra.sonrisa_risa = r4(pctl(R.risa.frames.map((f) => sonrisaDe(deltaDe(f.c))), 0.9));
+    }
+    calCara.usaLentes = checkLentes.checked;
+
+    // --- Voz
+    if (R.silencio && R.silencio.voz.length) {
+      calVoz = calVoz || {};
+      calVoz.piso_ruido = r4(pctl(R.silencio.voz.map((x) => x.rms), 0.9));
+    }
+    const ruido = calVoz && calVoz.piso_ruido != null ? calVoz.piso_ruido : 0.002;
+    const umbral = Math.max(ruido * 2.5, 0.004);
+    const tramoVoz = (d) => d.voz.filter((x) => x.rms >= umbral);
+    if (R.habla && okPaso("habla")) {
+      const cv = tramoVoz(R.habla);
+      const f0 = cv.map((x) => x.f0).filter((f) => f > 0);
+      calVoz = calVoz || {};
+      calVoz.volumen_base = r4(medianaDe(cv.map((x) => x.rms)));
+      calVoz.tono_base = f0.length >= 8 ? Math.round(medianaDe(f0) * 10) / 10 : 0;
+      calVoz.saturacion_pct = Math.round((R.habla.saturadas / Math.max(1, R.habla.muestrasAudio)) * 1000) / 10;
+      calVoz.relacion_senal_ruido = Math.round((calVoz.volumen_base / Math.max(ruido, 0.0005)) * 10) / 10;
+      calVoz.segundos_con_voz = Math.round(cv.length * 0.05 * 10) / 10;
+      const ini = cv.length ? cv[0].t : 0, fin = cv.length ? cv[cv.length - 1].t : 0;
+      calVoz.velocidad_ppm = R.habla.palabras >= 8 && fin - ini >= 4 ? Math.round((R.habla.palabras / (fin - ini)) * 60) : null;
+    }
+    if (calVoz && R.fuerte && okPaso("fuerte")) calVoz.volumen_alto = r4(medianaDe(tramoVoz(R.fuerte).map((x) => x.rms)));
+    if (calVoz && R.bajo && okPaso("bajo")) calVoz.volumen_bajo = r4(medianaDe(tramoVoz(R.bajo).map((x) => x.rms)));
+    if (calVoz && !calVoz.volumen_base) calVoz = calVoz.piso_ruido != null ? { piso_ruido: calVoz.piso_ruido } : null;
+
+    calCalidad = calcularCalidad();
+    calCara.ojosFiables = calCalidad.ojos !== "baja" && calCalidad.ojos !== "na";
+  }
+
+  // Calidad por canal: alta / media / baja (na = no se pudo calibrar)
+  function calcularCalidad() {
+    const ok = (id) => calEstadoPasos[id] && calEstadoPasos[id].ok;
+    const q = { manos: "na" };
+    if (!faceLandmarker || !calEstadoPasos.neutral) {
+      q.cara = calCara.hecha ? (calCalidad && calCalidad.cara) || "media" : "na";
+      q.ojos = calCara.hecha ? (calCalidad && calCalidad.ojos) || "media" : "na";
+    } else {
+      const gestos = ["s_leve", "s_amplia", "boca", "cejas", "ceno"].filter((id) => calEstadoPasos[id]);
+      const pasaron = gestos.filter(ok).length + ((calExtra.giros_cabeza || 0) >= 3 ? 1 : 0);
+      const total = gestos.length + (["c_izq", "c_der", "c_arriba", "c_abajo"].some((id) => calEstadoPasos[id]) ? 1 : 0);
+      const ratio = total ? pasaron / total : 0;
+      const ent = entornoAlCalibrar ? entornoAlCalibrar.filas : [];
+      const estadoDe = (id) => (ent.find((f) => f.id === id) || { estado: "ok" }).estado;
+      const luzOk = estadoDe("luz") === "ok", encuadreOk = estadoDe("cara") === "ok";
+      if (ok("neutral") && luzOk && encuadreOk && ratio >= 0.99) q.cara = "alta"; // alta = salieron todos los gestos
+      else if (ok("neutral") && ratio >= 0.5 && estadoDe("luz") !== "mal") q.cara = "media";
+      else q.cara = "baja";
+      const dirs = calExtra.direcciones_mirada || 0;
+      if (calExtra.parpadeo_visto && dirs >= 3) q.ojos = checkLentes.checked ? "media" : "alta";
+      else if (calExtra.parpadeo_visto || dirs >= 2) q.ojos = "media";
+      else q.ojos = "baja";
+      if (q.cara === "baja" && q.ojos === "alta") q.ojos = "media";
+    }
+    if (!calVoz || !calVoz.volumen_base) q.voz = calEstadoPasos.habla ? "baja" : (calCalidad && calCalidad.voz) || "na";
+    else {
+      const v = calVoz;
+      if ((v.piso_ruido || 0) < 0.03 && (v.segundos_con_voz || 0) >= 4 && (v.saturacion_pct || 0) < 1 && (v.relacion_senal_ruido || 0) >= 5 && v.tono_base > 0) q.voz = "alta";
+      else if ((v.segundos_con_voz || 0) >= 2 && (v.relacion_senal_ruido || 0) >= 2.5) q.voz = "media";
+      else q.voz = "baja";
+    }
+    return q;
+  }
+
+  // ---------------------------------------------------------------
+  // 4) Resumen, repetir un paso, guardar y reutilizar
+  // ---------------------------------------------------------------
+  const NOMBRE_CALIDAD = { alta: "alta", media: "media", baja: "baja", na: "no calibrado" };
+  function pintarResumenCalib() {
+    calResumen.style.display = "block";
+    calCanales.textContent = "";
+    const q = calCalidad || { cara: "na", ojos: "na", voz: "na", manos: "na" };
+    [["Cara", q.cara], ["Ojos", q.ojos], ["Voz", q.voz], ["Manos y postura", "na"]].forEach(([n, v]) => {
+      const s = document.createElement("span");
+      s.className = "calib-canal " + v;
+      s.textContent = `${n}: ${n === "Manos y postura" ? "no evaluable" : NOMBRE_CALIDAD[v]}`;
+      calCanales.appendChild(s);
+    });
+    const filas = [];
+    GRUPOS_CALIB.forEach(([g, nombre, canal]) => {
+      if (canal === "cara" && !faceLandmarker && !calReutilizada) { filas.push({ estado: "na", texto: `${nombre}: el motor de cara no cargó` }); return; }
+      const pasos = PASOS_CALIB.filter((p) => p.grupo === g && calEstadoPasos[p.id]);
+      let estado, nota = "";
+      if (!pasos.length) { estado = calReutilizada ? "ok" : "na"; nota = calReutilizada ? "de tu calibración guardada" : "no se hizo"; }
+      else {
+        const malos = pasos.filter((p) => !calEstadoPasos[p.id].ok && !calEstadoPasos[p.id].saltado);
+        const avisos = pasos.filter((p) => calEstadoPasos[p.id].aviso);
+        estado = malos.length ? (pasos.find((p) => p.opcional) ? "aviso" : malos.length === pasos.length ? "mal" : "aviso") : avisos.length ? "aviso" : "ok";
+        // Qué faltó, sin repetir la misma nota (por ejemplo «no se vio: arriba, abajo»)
+        const porNota = {};
+        [...malos, ...avisos].forEach((p) => {
+          const n = calEstadoPasos[p.id].nota || "revisar";
+          (porNota[n] = porNota[n] || []).push(p.corto || "");
+        });
+        nota = Object.entries(porNota).map(([n, quienes]) => {
+          const q = quienes.filter(Boolean);
+          return n === "no se alcanzó a ver el gesto" && q.length ? "no se vio: " + q.join(", ") : n + (q.length && pasos.length > 1 ? ` (${q.join(", ")})` : "");
+        }).join("; ");
+      }
+      const boton = document.createElement("button");
+      boton.type = "button";
+      boton.className = estado === "ok" || estado === "na" ? "" : "importante";
+      boton.textContent = "Repetir";
+      boton.disabled = calCorriendo || (canal === "cara" && !faceLandmarker);
+      boton.addEventListener("click", () => ejecutarCalibracion([g]));
+      filas.push({ estado, texto: nombre + (nota ? ` — ${nota}` : ""), boton });
+    });
+    filas.push({ estado: "na", texto: "Manos y postura — no se calibra: la app todavía no mide manos ni postura (solo la cara)." });
+    pintarFilas(calGruposLista, filas);
+  }
+
+  const etiquetaDispositivo = () => {
+    const v = flujoMedios && flujoMedios.getVideoTracks()[0], a = flujoMedios && flujoMedios.getAudioTracks()[0];
+    return { camara: v ? v.label : "", mic: a ? a.label : "" };
+  };
+  const correoSesion = () => { try { return localStorage.getItem(CLAVE_SESION) || ""; } catch (e) { return ""; } };
+
+  function guardarCalibracion() {
+    try {
+      localStorage.setItem(CLAVE_CALIB, JSON.stringify({
+        version: 1, usuario: correoSesion(), fecha: Date.now(), ...etiquetaDispositivo(), lentes: checkLentes.checked,
+        refCondiciones, calCara, calVoz, calExtra, calCalidad, baselineCara, baselinePose, calEstadoPasos,
+      }));
+    } catch (e) { /* sin almacenamiento: no pasa nada, solo no se podrá reutilizar */ }
+  }
+  function leerCalibracionGuardada() {
+    let g = null;
+    try { g = JSON.parse(localStorage.getItem(CLAVE_CALIB) || "null"); } catch (e) { g = null; }
+    if (!g || g.version !== 1 || !g.calCara) return null;
+    const disp = etiquetaDispositivo();
+    if (g.usuario !== correoSesion() || Date.now() - g.fecha > CALIB_VIGENCIA_MS) return null;
+    if ((g.camara || "") !== disp.camara || (g.mic || "") !== disp.mic) return null;
+    return g;
+  }
+  function ofrecerReutilizar() {
+    const g = leerCalibracionGuardada();
+    if (!g || calCorriendo || calTerminada) { calReusar.style.display = "none"; return; }
+    const hora = new Date(g.fecha).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+    const q = g.calCalidad || {};
+    let texto = `Tienes una calibración de hoy a las ${hora} en este dispositivo (cara ${NOMBRE_CALIDAD[q.cara] || "—"}, ojos ${NOMBRE_CALIDAD[q.ojos] || "—"}, voz ${NOMBRE_CALIDAD[q.voz] || "—"}). ¿La usamos?`;
+    const luz = medirLuz();
+    if (luz && g.refCondiciones && g.refCondiciones.luz && (luz.media / g.refCondiciones.luz < 0.65 || luz.media / g.refCondiciones.luz > 1.55)) {
+      texto += " Ojo: la luz cambió bastante desde entonces; te recomendamos calibrar de nuevo.";
+    }
+    if (!!g.lentes !== checkLentes.checked) texto += " Ojo: cambió lo de los lentes; conviene repetir al menos «Rostro neutro» y «Mirada».";
+    document.getElementById("calib-reusar-texto").textContent = texto;
+    calReusar.style.display = "block";
+  }
+  document.getElementById("boton-reusar-calib").addEventListener("click", () => {
+    const g = leerCalibracionGuardada();
+    if (!g) { calReusar.style.display = "none"; return; }
+    valoresPorDefectoCalibracion();
+    Object.assign(calCara, g.calCara);
+    calVoz = g.calVoz; calExtra = g.calExtra || {}; calCalidad = g.calCalidad; refCondiciones = g.refCondiciones;
+    baselineCara = g.baselineCara; baselinePose = g.baselinePose || { yaw: 0, pitch: 0 }; emocionesSuaves = {};
+    checkLentes.checked = !!g.lentes;
+    calCara.usaLentes = !!g.lentes;
+    calReutilizada = true;
+    calReusar.style.display = "none";
+    terminarCalibracionUI("Usamos tu calibración guardada. Si cambió la luz, la cámara o el micrófono, repite el paso que corresponda.");
+  });
+  document.getElementById("boton-no-reusar-calib").addEventListener("click", () => { calReusar.style.display = "none"; });
 
   function habilitarCalibracion() {
     if (calCorriendo || calTerminada) return;
@@ -3190,16 +3957,21 @@
       calEstado.textContent = "El motor de cara no cargó: la calibración será solo de voz.";
       calEstado.className = "estado";
     }
+    setTimeout(ofrecerReutilizar, 600); // da tiempo a que la cámara entregue imagen (para comparar la luz)
   }
 
   function restaurarPantallaCalibracion() {
     calCorriendo = false;
     calTerminada = false;
     calibActiva = null;
+    calComenzarAviso = false;
+    calOmitirAviso = false;
     checkLentes.disabled = false;
     botonOmitirCal.textContent = "Omitir";
     calRelleno.style.transition = "none";
     calRelleno.style.width = "0";
+    calChequeo.style.display = "block";
+    calResumen.style.display = "none";
     pintarInstruccion("", TEXTO_CAL_INICIAL);
     if (faceLandmarker || mediaPipeFallo) habilitarCalibracion();
     else { botonCalibrar.disabled = true; botonCalibrar.textContent = "Cargando modelo de cara..."; }
@@ -3215,110 +3987,60 @@
     idCalib++;
     calibracionPendiente = false;
     calibActiva = null;
+    calReusar.style.display = "none";
     seccionCalibracion.style.display = "none";
     seccionEntrevista.style.display = "block";
+    document.body.classList.remove("calibrando-guia");
     setPaso(2);
   }
 
-  // Recibe los cuadros de la cara durante `ms` milisegundos
-  function capturarCara(ms) {
-    return new Promise((resolve) => {
-      const frames = [];
-      calibActiva = { alimentar(crudo, pts) { frames.push({ c: { ...crudo }, pose: calcularPose(pts) }); } };
-      setTimeout(() => { calibActiva = null; resolve(frames); }, ms);
-    });
+  function terminarCalibracionUI(mensaje) {
+    calTerminada = true;
+    calCorriendo = false;
+    calRelleno.style.transition = "none";
+    calRelleno.style.width = "100%";
+    calChequeo.style.display = "none";
+    pintarInstruccion("Calibración lista", "Revisa la calidad de cada parte. Puedes repetir solo lo que salió mal, o pasar a la entrevista.");
+    const q = calCalidad || {};
+    const bajos = ["cara", "ojos", "voz"].filter((k) => q[k] === "baja");
+    calEstado.textContent = mensaje || (bajos.length
+      ? `Calidad baja en: ${bajos.join(", ")}. Puedes repetir ese paso; si sigues así, esa parte se marcará como poco fiable en el informe y no te restará puntos.`
+      : "✓ Calibración lista.");
+    calEstado.className = bajos.length && !mensaje ? "estado" : "estado ok";
+    botonCalibrar.textContent = "Continuar a la entrevista";
+    botonCalibrar.disabled = false;
+    botonOmitirCal.textContent = "Repetir todo";
+    checkLentes.disabled = false;
+    pintarResumenCalib();
   }
 
-  // Lee el micrófono durante `ms` milisegundos y llama a alMuestra(rms, buffer, sampleRate) ~20 veces por segundo
-  async function capturarVoz(ms, alMuestra) {
-    const pistas = flujoMedios ? flujoMedios.getAudioTracks() : [];
-    if (!pistas.length) throw new Error("no hay pista de audio");
-    const ctx = new AudioContext();
-    try {
-      if (ctx.state === "suspended") await ctx.resume();
-      const an = ctx.createAnalyser();
-      an.fftSize = 2048;
-      ctx.createMediaStreamSource(new MediaStream(pistas)).connect(an);
-      const buf = new Float32Array(an.fftSize);
-      const t0 = performance.now();
-      while (performance.now() - t0 < ms) {
-        await esperar(50);
-        an.getFloatTimeDomainData(buf);
-        let s = 0;
-        for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
-        alMuestra(Math.sqrt(s / buf.length), buf, ctx.sampleRate);
-      }
-    } finally {
-      try { ctx.close(); } catch (e) { /* nada */ }
-    }
-  }
-
-  // Tu cara neutra = promedio de los cuadros del primer paso
-  function fijarBaseDesdeNeutral(frames) {
-    const base = {};
-    let yaw = 0, pitch = 0;
-    frames.forEach((f) => {
-      for (const k in f.c) base[k] = (base[k] || 0) + f.c[k];
-      yaw += f.pose.yaw; pitch += f.pose.pitch;
-    });
-    for (const k in base) base[k] /= frames.length;
-    baselineCara = base;
-    baselinePose = { yaw: yaw / frames.length, pitch: pitch / frames.length };
-    emocionesSuaves = {};
-  }
-
-  // Convierte lo medido en ajustes; devuelve un resumen para mostrar
-  function aplicarCalibracion(res) {
-    const partes = [];
-    if (res.neutral && baselineCara) {
-      const base = baselineCara;
-      const sonrisa = (res.sonrisa || []).map((f) => Math.max(0, prom(f.c, "mouthSmileLeft", "mouthSmileRight") - prom(base, "mouthSmileLeft", "mouthSmileRight")));
-      const cejas = (res.cejas || []).map((f) => Math.max(0,
-        Math.max(prom(f.c, "browOuterUpLeft", "browOuterUpRight") - prom(base, "browOuterUpLeft", "browOuterUpRight"),
-                 (f.c.browInnerUp || 0) - (base.browInnerUp || 0))));
-      const parpadeo = (res.parpadeo || []).map((f) => prom(f.c, "eyeBlinkLeft", "eyeBlinkRight"));
-      const pS = sonrisa.length >= 10 ? pctl(sonrisa, 0.85) : 0;
-      const pC = cejas.length >= 10 ? pctl(cejas, 0.85) : 0;
-      const pB = parpadeo.length >= 10 ? pctl(parpadeo, 0.98) : 0;
-
-      calCara.gSonrisa = pS > 0.05 ? acotar(0.55 / pS, 0.8, 2.5) : 1;
-      calCara.gCejas = pC > 0.05 ? acotar(0.5 / pC, 0.8, 2.5) : 1;
-      if (pB >= 0.35) {
-        calCara.ojosFiables = true;
-        calCara.cierreParpadeo = acotar(pB * 0.5, 0.25, 0.6);
-        calCara.aperturaParpadeo = calCara.cierreParpadeo * 0.6;
-      } else {
-        calCara.ojosFiables = false; // no se vio un parpadeo claro (lentes, reflejos, ángulo o luz)
-      }
-      calCara.usaLentes = checkLentes.checked;
-      calCara.hecha = true;
-      partes.push(calCara.ojosFiables
-        ? "cara ajustada a tus gestos"
-        : "cara ajustada (tus ojos se leen poco: parpadeo y mirada pesarán menos en la evaluación)");
-    }
-
-    if (res.frase && res.frase.rms.length >= 15) {
-      const r4 = (x) => Math.round(x * 10000) / 10000;
-      calVoz = {
-        piso_ruido: r4(pctl(res.silencio || [], 0.9)),
-        volumen_base: r4(pctl(res.frase.rms, 0.5)),
-        tono_base: res.frase.f0.length >= 8 ? Math.round(pctl(res.frase.f0, 0.5) * 10) / 10 : 0,
-      };
-      partes.push(calVoz.tono_base > 0 ? `voz ajustada (tu tono normal ≈ ${Math.round(calVoz.tono_base)} Hz)` : "voz ajustada (volumen y ruido de fondo)");
-    } else {
-      calVoz = null;
-      partes.push("no te escuché lo suficiente para calibrar la voz (revisa el micrófono; puedes repetir)");
-    }
-    return partes;
-  }
-
-  async function ejecutarCalibracion() {
+  // ---------------------------------------------------------------
+  // Ejecución: todos los pasos, o solo los grupos indicados
+  // ---------------------------------------------------------------
+  async function ejecutarCalibracion(grupos) {
     if (calCorriendo) return;
+    const parcial = Array.isArray(grupos) && grupos.length;
+    if (!parcial) {
+      // Puerta de entrada: si algo está mal, se avisa antes de gastar 90 s (y se puede calibrar igual)
+      const malos = (ultimoEntorno ? ultimoEntorno.filas : []).filter((f) => f.estado === "mal");
+      if (malos.length && !calComenzarAviso) {
+        calComenzarAviso = true;
+        calEstado.textContent = "Antes de empezar: " + malos.map((f) => f.texto).join(" ") + " Si calibras así, esa parte saldrá con calidad baja.";
+        calEstado.className = "estado error";
+        botonCalibrar.textContent = "Calibrar igual";
+        return;
+      }
+      valoresPorDefectoCalibracion();
+      baselineCara = null; baselinePose = { yaw: 0, pitch: 0 };
+    }
     calCorriendo = true;
     calTerminada = false;
     const mio = ++idCalib;
     const cancelado = () => mio !== idCalib;
-
+    entornoAlCalibrar = ultimoEntorno;
+    calReusar.style.display = "none";
+    calChequeo.style.display = "none";
+    calResumen.style.display = "none";
     botonCalibrar.disabled = true;
     botonOmitirCal.textContent = "Cancelar";
     checkLentes.disabled = true;
@@ -3326,72 +4048,70 @@
     calEstado.className = "estado";
 
     const hayCara = !!faceLandmarker;
-    const pasos = PASOS_CALIB.filter((p) => p.tipo === "voz" || hayCara);
-    const n = pasos.length;
-    const res = {};
+    let lista = PASOS_CALIB.filter((p) => (p.canal === "voz" || hayCara) && (!parcial || grupos.includes(p.grupo)));
+    // Para repetir un gesto de la cara hace falta el rostro neutro: si no existe, se hace primero
+    if (parcial && hayCara && !baselineCara && lista.some((p) => p.canal === "cara") && !grupos.includes("neutral")) {
+      lista = PASOS_CALIB.filter((p) => p.grupo === "neutral").concat(lista);
+    }
+    if (parcial && lista.some((p) => ["habla", "fuerte", "bajo", "risa"].includes(p.id)) && !calVoz && !grupos.includes("silencio")) {
+      lista = PASOS_CALIB.filter((p) => p.id === "silencio").concat(lista);
+    }
+    const total = lista.filter((p) => !p.soloSiFalta).length;
+    let hechos = 0;
     try {
-      for (let i = 0; i < n; i++) {
-        const p = pasos[i];
-        pintarInstruccion(`Paso ${i + 1} de ${n} · prepárate`, p.texto);
-        calRelleno.style.transition = "none";
-        calRelleno.style.width = (i / n) * 100 + "%";
-        await esperar(1300);
-        if (cancelado()) return;
-
-        pintarInstruccion(`Paso ${i + 1} de ${n} · ¡ahora!`, p.texto);
-        calRelleno.style.transition = `width ${p.seg * 1000}ms linear`;
-        calRelleno.style.width = ((i + 1) / n) * 100 + "%";
-
-        if (p.tipo === "cara") {
-          res[p.id] = await capturarCara(p.seg * 1000);
-          if (cancelado()) return;
-          if (p.id === "neutral") {
-            if (res.neutral.length < 15) throw new Error("No te veo bien. Sube la luz de frente, mira a la cámara y repite.");
-            fijarBaseDesdeNeutral(res.neutral);
-          }
-        } else {
-          try {
-            if (p.id === "silencio") {
-              const rms = [];
-              await capturarVoz(p.seg * 1000, (r) => rms.push(r));
-              res.silencio = rms;
-            } else {
-              const minVoz = Math.max(pctl(res.silencio || [], 0.9) * 3, 0.004);
-              const ref = { rms: [], f0: [] };
-              await capturarVoz(p.seg * 1000, (r, buf, sr) => {
-                if (r < minVoz) return;
-                ref.rms.push(r);
-                const f = estimarTono(buf, sr);
-                if (f > 0) ref.f0.push(f);
-              });
-              res.frase = ref;
-            }
-          } catch (e) {
-            console.warn("Calibración de voz no disponible:", e);
-          }
-          if (cancelado()) return;
+      for (const p of lista) {
+        if (p.soloSiFalta) {
+          const b = calRes.neutral ? contarParpadeosSenal(calRes.neutral.frames) : { n: 0 };
+          if (b.n >= 1 && b.alto >= 0.35) continue; // ya se vio parpadear en el rostro neutro
         }
+        if (p.canal === "cara" && p.id !== "neutral" && p.id !== "parpadeo" && !baselineCara) {
+          // Sin rostro neutro no se pueden medir los gestos: se saltan y la cara queda en calidad baja
+          calEstadoPasos[p.id] = { ok: false, nota: "no se pudo: faltó el rostro neutro" };
+          hechos++;
+          continue;
+        }
+        const etiqueta = p.soloSiFalta ? "Paso extra" : `Paso ${hechos + 1} de ${total}`;
+        let intento = 0, resultado = null;
+        while (intento < 2) {
+          const texto = intento ? `Probemos otra vez: ${p.alt || p.texto}` : p.texto;
+          pintarInstruccion(`${etiqueta} · prepárate`, texto);
+          calRelleno.style.transition = "none";
+          calRelleno.style.width = (hechos / Math.max(1, total)) * 100 + "%";
+          await esperar(p.seg <= 2.5 ? 900 : 1300);
+          if (cancelado()) return;
+          pintarInstruccion(`${etiqueta} · ¡ahora!`, texto);
+          calRelleno.style.transition = `width ${p.seg * 1000}ms linear`;
+          calRelleno.style.width = ((hechos + 1) / Math.max(1, total)) * 100 + "%";
+          const datos = await capturarPaso(p, cancelado);
+          if (cancelado()) return;
+          calRes[p.id] = datos;
+          if (p.id === "neutral" || p.id === "silencio" || p.id === "habla") {
+            calEstadoPasos[p.id] = validarPaso(p, datos);
+            aplicarCalibracion(); // la línea base de la cara / el ruido / el volumen sirven para validar lo que sigue
+          }
+          resultado = validarPaso(p, datos);
+          if (resultado.ok || p.opcional) break;
+          intento++;
+        }
+        calEstadoPasos[p.id] = resultado.ok || !p.opcional ? resultado : { ok: true, nota: resultado.nota, aviso: true };
+        if (!p.soloSiFalta) hechos++;
       }
-
-      const partes = aplicarCalibracion(res);
-      calTerminada = true;
-      calRelleno.style.transition = "none";
-      calRelleno.style.width = "100%";
-      pintarInstruccion("", "¡Listo! Ya sabemos cómo eres. Cuando quieras, pasa a la entrevista.");
-      calEstado.textContent = "✓ Calibración lista: " + partes.join("; ") + ".";
-      calEstado.className = "estado ok";
-      botonCalibrar.textContent = "Continuar a la entrevista";
-      botonCalibrar.disabled = false;
-      botonOmitirCal.textContent = "Repetir calibración";
+      window.calPasoActualId = "";
+      aplicarCalibracion();
+      guardarCalibracion();
+      terminarCalibracionUI();
     } catch (error) {
+      console.error("Calibración:", error);
       calibActiva = null;
+      calCorriendo = false;
       pintarInstruccion("", TEXTO_CAL_INICIAL);
-      calEstado.textContent = error.message;
+      calEstado.textContent = "La calibración se interrumpió: " + error.message;
       calEstado.className = "estado error";
       botonCalibrar.textContent = "Reintentar calibración";
       botonCalibrar.disabled = false;
       botonOmitirCal.textContent = "Omitir";
       checkLentes.disabled = false;
+      calChequeo.style.display = "block";
     } finally {
       if (!cancelado()) calCorriendo = false;
     }
@@ -3402,11 +4122,51 @@
     else ejecutarCalibracion();
   });
   botonOmitirCal.addEventListener("click", () => {
-    if (calCorriendo) { cancelarCalibracion(); return; }  // "Cancelar"
-    if (calTerminada) { calTerminada = false; ejecutarCalibracion(); return; } // "Repetir calibración"
-    calCara.usaLentes = checkLentes.checked;               // "Omitir": al menos se respeta lo de los lentes
+    if (calCorriendo) { cancelarCalibracion(); return; }                         // "Cancelar"
+    if (calTerminada) { calTerminada = false; ejecutarCalibracion(); return; }   // "Repetir todo"
+    if (!calOmitirAviso) {                                                        // "Omitir": primero se avisa
+      calOmitirAviso = true;
+      calEstado.textContent = "Sin calibrar, la evaluación de tu cara y tu voz será menos precisa: esas partes se marcarán como poco fiables y no te restarán puntos.";
+      calEstado.className = "estado";
+      botonOmitirCal.textContent = "Omitir igual";
+      return;
+    }
+    calCara.usaLentes = checkLentes.checked;
     irAEntrevista();
   });
+  // Si cambia lo de los lentes después de calibrar, los ojos ya no valen: se pide repetir esa parte
+  checkLentes.addEventListener("change", () => {
+    calCara.usaLentes = checkLentes.checked;
+    if (!calTerminada) { ofrecerReutilizar(); return; }
+    calCalidad = calcularCalidad();
+    calEstado.textContent = "Cambiaste lo de los lentes: repite «Rostro neutro y parpadeo natural» y «Mirada en 5 direcciones» para que los ojos se midan bien.";
+    calEstado.className = "estado";
+    pintarResumenCalib();
+  });
+
+  // ---------------------------------------------------------------
+  // 5) Durante la entrevista: ¿cambiaron mucho la luz o la distancia desde la calibración?
+  // ---------------------------------------------------------------
+  const condCalib = { total: 0, distintos: 0, seguidos: 0, ultimo: 0, refSesion: null, aviso: "" };
+  function reiniciarCondiciones() { Object.assign(condCalib, { total: 0, distintos: 0, seguidos: 0, ultimo: 0, refSesion: null, aviso: "" }); }
+  function monitorCondiciones() {
+    const ahora = performance.now();
+    if (ahora - condCalib.ultimo < 1000) return;
+    condCalib.ultimo = ahora;
+    const luz = medirLuz(), caja = cajaVigente();
+    if (!luz || !caja) return;
+    const ancho = caja.x1 - caja.x0;
+    const ref = refCondiciones || condCalib.refSesion;
+    if (!ref) { condCalib.refSesion = { luz: luz.media, ancho }; return; } // sin calibración: se compara con el inicio
+    const rLuz = luz.media / Math.max(1, ref.luz), rAncho = ancho / Math.max(0.01, ref.ancho);
+    const distinto = rLuz < 0.6 || rLuz > 1.6 || rAncho < 0.7 || rAncho > 1.45;
+    condCalib.total++;
+    if (distinto) { condCalib.distintos++; condCalib.seguidos++; } else condCalib.seguidos = 0;
+    condCalib.aviso = condCalib.seguidos >= 5
+      ? (rLuz < 0.6 || rLuz > 1.6 ? "la luz cambió desde la calibración" : "cambió tu distancia a la cámara desde la calibración")
+      : "";
+  }
+  const pctCondicionesDistintas = () => (condCalib.total >= 5 ? Math.round((condCalib.distintos / condCalib.total) * 1000) / 10 : 0);
 
   // ================================================================
   // Indicador discreto de las IAs (barra superior)
@@ -3526,7 +4286,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "47";
+  const VERSION_APP = "48";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
