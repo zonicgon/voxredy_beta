@@ -146,6 +146,23 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v49 — Nota más justa, cámara más precisa y calibración con voz
+- **Nota más justa** (todo por código, auditable):
+  - **Tope por evasión:** si el 60 % o más de las respuestas esquiva sin dar ningún dato («no sé», «no tengo idea», «no me interesa», «de qué hablas»…), Transparencia ≤ 1 y Claridad ≤ 1,5 (con 40 %, Transparencia ≤ 2). Una respuesta con un dato concreto («no sé la cifra exacta, pero son 8.000 litros») no cuenta como evasiva.
+  - **Tope por declaraciones que comprometen** a la empresa o desprecian a los afectados (sobornos, corrupción, «nadie tiene la culpa», culpar a los vecinos, «no es para tanto»…): Manejo de la presión y Responsabilidad ≤ 1. Se muestra la cita.
+  - **Pesos en la nota global:** Coherencia 40 %, Empatía 25 %, Tono de voz 17,5 %, Expresión 17,5 %. **Empatía:** 60 % contenido, 25 % cara, 15 % voz.
+  - **Freno:** si la Coherencia es menor a 2, la global no puede quedar más de 0,5 sobre ella («verse o sonar bien no compensa un mensaje que falla»).
+  - Ejemplo real (entrevista con «no sé» ×3 y «soborno soborno solo sobornos»): antes **2,6** → ahora **1,7** (Coherencia 1,2, Empatía 1,9).
+  - Variables en `app.py`: `PESOS_GLOBAL`, `PESOS_FUENTE_EN_AREA`, `FRENO_COHERENCIA`, `FRENO_MARGEN`, `PATRON_EVASIVA`, `PATRON_COMPROMETEDORA`. **Falta validarlos con un experto.**
+- **Cámara más precisa** (una persona tranquila salía «enojo 31 % · tensión 12 %»):
+  - La referencia de cada músculo ya no es solo la cara mirando la cámara: es la **mayor entre la cara neutra y la cara leyendo la pantalla** (paso de lectura de la calibración), porque en la entrevista miras la pantalla y al bajar la vista cambian párpados y cejas. La postura de referencia de la cabeza también es la de lectura.
+  - **Margen de ruido propio** por músculo (2,5 × su variación en reposo): el «temblor» normal de la medición no cuenta como gesto. Sin calibración, margen fijo.
+  - Ganancias acotadas a 1,8 (antes 2,5: amplificaban el ruido en personas de gestos suaves).
+  - **Enojo** necesita ceño o nariz arrugada; ojos entrecerrados (lentes, luz de pantalla) y labios apretados solo refuerzan. Igual en **tensión**.
+  - Prueba simulada (tranquilo, con lentes, mirando la pantalla): v48 «enojo 33 % · tensión 13 %» → v49 **neutral**; un ceño o una sonrisa reales se siguen detectando.
+- **Calibración con voz:** cada instrucción se lee en voz alta (voz del navegador, sin gastar cuota de Gemini), pitido grave al empezar cada paso y agudo cuando se captó el gesto; en los pasos de voz espera a que termine de hablar para no grabarlo. Casilla para apagarlo (se recuerda). Con voz la calibración dura ≈ 2 minutos.
+- Hay que subir **app.py y public/index.html** juntos.
+
 ### v48 — Calibración completa (≈ 90 s), validada, por canal y reutilizable
 Todo el informe compara a la persona contra **su propia línea base**; esta versión hace que esa línea base sea confiable.
 - **Puerta de entrada en vivo** (antes de calibrar), con óvalo guía para la cara y línea de hombros sobre la cámara: luz (muy oscuro, contraluz, quemada), distancia (muy cerca o lejos), cara centrada o cortada, hombros visibles, ruido de fondo y micrófono (sin voz, bajo o saturado). Si hay un problema grave, avisa antes de empezar y deja «Calibrar igual» sabiendo que esa parte saldrá con calidad baja.

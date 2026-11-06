@@ -39,7 +39,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "48"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "49"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -1185,6 +1185,14 @@ REGLAS DE RIGOR:
 4. Responsabilidad y tono: ¿asume responsabilidad cuando corresponde, sin
    sonar defensivo ni evasivo?
 
+Reglas duras (además de tu criterio):
+- Responder "no sé", "no tengo idea" o "no me interesa" sin dar ningún dato es
+  EVASIÓN, no "calma": no premies esa actitud en Manejo de la presión.
+- Una frase que compromete a la empresa (hablar de sobornos o corrupción, culpar a
+  los afectados, decir que "nadie tiene la culpa", minimizar o despreciar el daño)
+  es de lo peor que puede decir un vocero: Manejo de la presión y Responsabilidad
+  deben quedar en 0 o 1, y dilo con la cita.
+
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después,
 sin bloques de código markdown, con esta forma exacta:
 
@@ -1229,6 +1237,40 @@ PATRON_GROSERIA = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+
+
+# v49: respuestas que esquivan sin dar ningún dato ("no sé", "no tengo idea", "no me interesa"...)
+PATRON_EVASIVA = re.compile(
+    r"\bno\s+(lo\s+)?s[ée]\b|no\s+tengo\s+(ni\s+)?(la\s+)?(m[ií]nima|menor|m[aá]s\s+m[ií]nima)?\s*idea|"
+    r"de\s+qu[ée]\s+(me\s+)?(est[aá]s?|est[aá]n?)?\s*habl|no\s+(me|nos)\s+interesa|sin\s+comentarios?|"
+    r"no\s+(te|le|les)\s+(incumbe|importa)|qu[ée]\s+(te|le)\s+importa|no\s+(voy|vamos)\s+a\s+(responder|contestar|hablar)|"
+    r"no\s+(puedo|podemos)\s+(decir|comentar|responder|contestar)|no\s+(es|era)\s+(mi|nuestro)\s+(problema|tema|asunto)|"
+    r"preg[uú]ntale\s+a\s+otro|no\s+corresponde|no\s+tengo\s+(esa\s+)?informaci[oó]n|no\s+s[ée]\s+nada",
+    re.IGNORECASE,
+)
+# Dato concreto: una cifra, una hora o una medida (si lo hay, la respuesta no es una evasiva pura)
+PATRON_DATO_CONCRETO = re.compile(
+    r"\d|\b(un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|doce|quince|veinte|treinta|cien|mil)\s+"
+    r"(horas?|d[ií]as?|litros?|familias|personas|camiones|aljibes|equipos|m[ée]dicos|semanas?)\b",
+    re.IGNORECASE,
+)
+# v49: declaraciones que comprometen gravemente a la empresa o desprecian a los afectados
+PATRON_COMPROMETEDORA = re.compile(
+    r"\b(sobornos?|soborn\w+|coimas?|coime\w*|corrupci[oó]n|pagamos\s+(a|para)\s+(que|las?\s+autoridad))|"
+    r"(le|les)\s+hizo\s+un\s+favor|se\s+lo\s+merec|nadie\s+(te|les|nos|le)?\s*(da|tiene|echa)\s+la\s+culpa|"
+    r"no\s+es\s+(nuestra|mi)\s+culpa|la\s+culpa\s+es\s+de\s+(los\s+vecinos|ellos|la\s+gente|la\s+comunidad|las\s+familias)|"
+    r"(esa\s+gente|la\s+minor[ií]a|esas?\s+comunidad\w*)\s+no\s+importa|no\s+es\s+para\s+tanto|est[aá]n\s+exagerando|"
+    r"no\s+pas[oó]\s+nada|que\s+se\s+aguanten|que\s+compren\s+agua",
+    re.IGNORECASE,
+)
+
+
+def _es_evasiva(texto):
+    return bool(PATRON_EVASIVA.search(texto or "")) and not PATRON_DATO_CONCRETO.search(texto or "")
+
+
+def _es_comprometedora(texto):
+    return bool(PATRON_COMPROMETEDORA.search(texto or ""))
 
 
 def _es_sin_sentido(texto):
@@ -1277,6 +1319,7 @@ def estadisticas_respuestas(conversacion):
         return {
             "respuestas": 0, "pct_sin_sentido": 100.0, "pct_cortas": 100.0, "palabras_promedio": 0.0,
             "pct_muletillas": 0.0, "muletillas_detectadas": [], "groseras": 0, "tiene_groserias": False,
+            "pct_evasivas": 0.0, "comprometedoras": [],
         }
     palabras = [len(r.split()) for r in respuestas]
     total_palabras = sum(palabras) or 1
@@ -1291,6 +1334,8 @@ def estadisticas_respuestas(conversacion):
     top_muletillas = sorted(conteo_total.items(), key=lambda kv: -kv[1])[:5]
 
     groseras = sum(1 for r in respuestas if _contiene_groseria(r))
+    evasivas = sum(1 for r in respuestas if _es_evasiva(r))
+    comprometedoras = [r.strip()[:160] for r in respuestas if _es_comprometedora(r)]
 
     return {
         "respuestas": n,
@@ -1301,6 +1346,8 @@ def estadisticas_respuestas(conversacion):
         "muletillas_detectadas": [f"{m} ({c})" for m, c in top_muletillas],
         "groseras": groseras,
         "tiene_groserias": groseras > 0,
+        "pct_evasivas": round(evasivas / n * 100, 1),
+        "comprometedoras": comprometedoras,
     }
 
 
@@ -1375,6 +1422,52 @@ def aplicar_tope_respeto(informe, est):
     return [mensaje]
 
 
+def _limitar_areas(informe, limites):
+    """limites = {nombre_area: tope}. Devuelve True si cambió alguna nota."""
+    cambios = False
+    for a in informe["areas"]:
+        tope = limites.get(a.get("nombre"))
+        if tope is None:
+            continue
+        try:
+            p = float(a.get("puntaje"))
+        except (TypeError, ValueError):
+            continue
+        if p > tope:
+            a["puntaje"] = tope
+            cambios = True
+    return cambios
+
+
+def aplicar_topes_evasion_y_dano(informe, est):
+    """v49: lo que un vocero NUNCA debe hacer en una crisis se limita por código, no según la "opinión" de la IA:
+    - esquivar sin dar datos en la mayoría de las respuestas → Transparencia y Claridad bajas;
+    - decir algo que compromete a la empresa (soborno, culpar a otros, minimizar o despreciar a los afectados)
+      → Manejo de la presión y Responsabilidad bajas."""
+    if not isinstance(informe, dict) or not isinstance(informe.get("areas"), list):
+        return []
+    mensajes = []
+    ev = est.get("pct_evasivas", 0)
+    if ev >= 60:
+        if _limitar_areas(informe, {"Transparencia vs. evasión": 1.0, "Claridad del mensaje": 1.5}):
+            mensajes.append(f"Transparencia se limitó a 1/5 y Claridad a 1,5/5 porque el {ev:g} % de tus respuestas esquivó la pregunta sin dar ningún dato.")
+    elif ev >= 40:
+        if _limitar_areas(informe, {"Transparencia vs. evasión": 2.0}):
+            mensajes.append(f"Transparencia se limitó a 2/5 porque el {ev:g} % de tus respuestas esquivó la pregunta sin dar datos.")
+    if est.get("comprometedoras"):
+        if _limitar_areas(informe, {"Manejo de la presión": 1.0, "Responsabilidad y tono": 1.0}):
+            cita = est["comprometedoras"][0]
+            mensajes.append(f"Manejo de la presión y Responsabilidad se limitaron a 1/5 por una declaración que compromete a la empresa o minimiza a los afectados («{cita}»).")
+    if not mensajes:
+        return []
+    mensaje = " ".join(mensajes)
+    informe["tope_aplicado"] = (informe["tope_aplicado"] + " " + mensaje) if informe.get("tope_aplicado") else mensaje
+    valores = [float(a["puntaje"]) for a in informe["areas"] if isinstance(a.get("puntaje"), (int, float))]
+    if valores:
+        informe["puntaje_global"] = round(sum(valores) / len(valores), 1)
+    return mensajes
+
+
 @app.post("/api/evaluar", dependencies=[Depends(limitar)])
 def evaluar(peticion: PeticionConversacion):
     lineas = []
@@ -1396,6 +1489,12 @@ def evaluar(peticion: PeticionConversacion):
             f"\n- Lenguaje grosero o irrespetuoso detectado en {est['groseras']} de {est['respuestas']} respuestas."
             if est["tiene_groserias"] else ""
         )
+        + f"\n- Respuestas que esquivan sin dar ningún dato: {est['pct_evasivas']}%"
+        + (
+            f"\n- Declaraciones que comprometen a la empresa o minimizan a los afectados: "
+            + " | ".join(f"«{c}»" for c in est["comprometedoras"][:3])
+            if est["comprometedoras"] else ""
+        )
     )
 
     bruto = llamar_ia(
@@ -1410,6 +1509,7 @@ def evaluar(peticion: PeticionConversacion):
     informe = extraer_json(bruto)
     aplicar_topes_contenido(informe, est)
     aplicar_tope_respeto(informe, est)
+    aplicar_topes_evasion_y_dano(informe, est)
     informe["estadisticas_respuestas"] = est
     return informe
 
@@ -1760,6 +1860,14 @@ AREAS_FINALES = [
         ("voz", ["Modulación del tono"]),
     ]),
 ]
+# v49: en una crisis, lo que se DICE pesa más que cómo se ve o suena.
+# Peso de cada fuente dentro de un área (si falta una fuente, se reparte entre las que hay)
+PESOS_FUENTE_EN_AREA = {"Empatía": {"contenido": 0.60, "cara": 0.25, "voz": 0.15}}
+# Peso de cada área en la nota global
+PESOS_GLOBAL = {"Coherencia": 0.40, "Empatía": 0.25, "Tono de voz": 0.175, "Expresión": 0.175}
+# Freno: si el mensaje falla (Coherencia < 2), la global no puede quedar más de 0,5 sobre la Coherencia
+FRENO_COHERENCIA = 2.0
+FRENO_MARGEN = 0.5
 CLAVES_PUNTAJE = {"contenido": "puntaje_global", "voz": "puntaje_global_voz", "cara": "puntaje_global_cara"}
 
 
@@ -1832,12 +1940,28 @@ def calcular_areas_a_trabajar(areas):
 NOTA_MINIMA_POCO_FIABLE = 3.0  # v48: una medición poco fiable no puede bajar la nota de este piso
 
 
+def calcular_puntaje_global(areas):
+    """Promedio PONDERADO de las áreas (v49) y freno si el mensaje falla. Devuelve (nota, texto_del_freno)."""
+    con_nota = [a for a in areas if a["puntaje"] is not None]
+    if not con_nota:
+        return None, None
+    total = sum(PESOS_GLOBAL.get(a["nombre"], 0.25) for a in con_nota)
+    nota = sum(a["puntaje"] * PESOS_GLOBAL.get(a["nombre"], 0.25) for a in con_nota) / total
+    coh = next((a["puntaje"] for a in con_nota if a["nombre"] == "Coherencia"), None)
+    freno = None
+    if coh is not None and coh < FRENO_COHERENCIA and nota > coh + FRENO_MARGEN:
+        nota = coh + FRENO_MARGEN
+        freno = (f"La nota global se limitó a {nota:.1f}/5 porque lo que dijiste (Coherencia {coh:g}/5) no sostiene la entrevista: "
+                 "en una crisis, verse o sonar bien no compensa un mensaje que falla.")
+    return round(nota, 1), freno
+
+
 def calcular_areas_finales(fuentes):
     """Si una fuente viene con fiabilidad "baja" (mala calibración o condiciones), sus notas no pueden
     bajar de NOTA_MINIMA_POCO_FIABLE: el canal poco fiable se marca y NO penaliza."""
     areas = []
     for nombre, partes in AREAS_FINALES:
-        valores, usadas, poco_fiables = [], [], []
+        por_fuente, usadas, poco_fiables = {}, [], []
         for fuente, nombres_juez in partes:
             inf = fuentes.get(fuente)
             vs = [a["puntaje"] for a in (inf or {}).get("areas", []) if a["nombre"] in nombres_juez]
@@ -1845,11 +1969,15 @@ def calcular_areas_finales(fuentes):
                 if (inf or {}).get("fiabilidad") == "baja":
                     vs = [max(v, NOTA_MINIMA_POCO_FIABLE) for v in vs]
                     poco_fiables.append(fuente)
-                valores += vs
+                por_fuente[fuente] = _media(vs)
                 usadas.append(fuente)
+        pesos = PESOS_FUENTE_EN_AREA.get(nombre, {})
+        if por_fuente:
+            total = sum(pesos.get(f, 1.0) for f in por_fuente)
+            valor = sum(v * pesos.get(f, 1.0) for f, v in por_fuente.items()) / total
         areas.append({
             "nombre": nombre,
-            "puntaje": round(_media(valores), 1) if valores else None,
+            "puntaje": round(valor, 1) if por_fuente else None,
             "fuentes": usadas,
             "fiabilidad": ("baja" if usadas and len(poco_fiables) == len(usadas) else "parcial" if poco_fiables else "normal"),
         })
@@ -1862,6 +1990,8 @@ automáticos sobre una misma práctica de entrevista de un vocero: contenido (lo
 que dijo), voz (cómo sonó) e imagen (cómo se vio). Tu trabajo es FUSIONARLOS en
 un solo informe coach, dirigido al vocero (háblale de "tú").
 
+La nota global pondera más la Coherencia (40 %) que la Empatía (25 %), el Tono de
+voz y la Expresión (17,5 % cada una), y se frena si el mensaje falla.
 Ya se calcularon las notas finales (areas_finales). NO las cambies, no las
 recalcules y no inventes otras. Las 4 áreas finales son: Expresión, Tono de voz,
 Coherencia y Empatía. Si un área tiene puntaje null es que esa fuente no tuvo
@@ -1922,8 +2052,7 @@ def informe_final(peticion: PeticionFinal):
         raise HTTPException(status_code=400, detail="No hay ninguna evaluación válida para combinar.")
 
     areas = calcular_areas_finales(fuentes)
-    con_nota = [a["puntaje"] for a in areas if a["puntaje"] is not None]
-    puntaje_global = round(_media(con_nota), 1) if con_nota else None
+    puntaje_global, freno = calcular_puntaje_global(areas)
     areas_a_trabajar = calcular_areas_a_trabajar(areas)
 
     entrada = {
@@ -1960,6 +2089,8 @@ def informe_final(peticion: PeticionFinal):
         a["ejercicio"] = ejercicios.get(a["nombre"], "")
 
     topes = [v["tope_aplicado"] for v in fuentes.values() if v and v.get("tope_aplicado")]
+    if freno:
+        topes.append(freno)
 
     return {
         "areas_a_trabajar": areas_a_trabajar,

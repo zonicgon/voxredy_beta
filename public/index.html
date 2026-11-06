@@ -698,7 +698,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v48</span> · Beta</p>
+      <p><span class="version" id="version-app">v49</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -872,6 +872,7 @@
         <h1>Calibración (≈ 1 min y medio)</h1>
         <p class="subtitulo">La evaluación compara cómo te ves y suenas durante la entrevista con cómo eres <b>tú</b> normalmente. Por eso esta parte importa: son gestos simples, uno por pantalla, y no tienes que actuar emociones.</p>
         <label class="calib-lentes"><input type="checkbox" id="check-lentes" /> Uso lentes (ajusta la lectura de los ojos)</label>
+        <label class="calib-lentes"><input type="checkbox" id="check-voz-calib" checked /> Leer las instrucciones en voz alta (así puedes mirar la cámara)</label>
 
         <!-- v48: ofrecer reutilizar una calibración reciente -->
         <div class="calib-reusar" id="calib-reusar" style="display:none;">
@@ -2225,12 +2226,13 @@
         prom(b, "mouthPressLeft", "mouthPressRight") * 0.4 +
         (b.mouthRollLower || 0) * 0.4
       ),
-      enojo: tope(
-        prom(b, "browDownLeft", "browDownRight") * 1.7 * (calCara.gCeno || 1) +
-        prom(b, "noseSneerLeft", "noseSneerRight") * 1.0 +
-        prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.8 * po +
-        prom(b, "mouthPressLeft", "mouthPressRight") * 0.8
-      ),
+      // v49: el enojo necesita ceño o nariz arrugada; los ojos entrecerrados (lentes, luz de la pantalla) y los
+      // labios apretados solo REFUERZAN si eso está presente (antes sumaban solos y un rostro tranquilo salía "enojado")
+      enojo: (() => {
+        const centro = prom(b, "browDownLeft", "browDownRight") * 1.7 * (calCara.gCeno || 1) + prom(b, "noseSneerLeft", "noseSneerRight") * 1.0;
+        const apoyo = prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.8 * po + prom(b, "mouthPressLeft", "mouthPressRight") * 0.8;
+        return tope(centro + apoyo * Math.min(1, centro * 4));
+      })(),
       sorpresa: tope(
         prom(b, "eyeWideLeft", "eyeWideRight") * 1.5 * po +
         prom(b, "browOuterUpLeft", "browOuterUpRight") * 1.2 * gc +
@@ -2254,13 +2256,11 @@
         Math.abs((b.mouthUpperUpLeft || 0) - (b.mouthUpperUpRight || 0)) * 1.3
       ),
       // Tensión: labios apretados o enrollados, mentón/mandíbula adelantados, ojos entrecerrados
-      tension: tope(
-        prom(b, "mouthPressLeft", "mouthPressRight") * 1.5 +
-        ((b.mouthRollLower || 0) + (b.mouthRollUpper || 0)) * 0.7 +
-        (b.jawForward || 0) * 0.9 +
-        (b.mouthShrugLower || 0) * 0.5 +
-        prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.4 * po
-      ),
+      tension: (() => {
+        const boca = prom(b, "mouthPressLeft", "mouthPressRight") * 1.5 + ((b.mouthRollLower || 0) + (b.mouthRollUpper || 0)) * 0.7 +
+          (b.jawForward || 0) * 0.9 + (b.mouthShrugLower || 0) * 0.5;
+        return tope(boca + prom(b, "eyeSquintLeft", "eyeSquintRight") * 0.4 * po * Math.min(1, boca * 4));
+      })(),
       // Sonrisa falsa: sonríe con la boca pero sin mejillas ni ojos (una sonrisa real los mueve)
       sonrisa_falsa: tope(
         prom(b, "mouthSmileLeft", "mouthSmileRight") * 1.8 * gs *
@@ -3054,7 +3054,7 @@
             estadoFacial.className = "estado";
             if (framesBase >= FRAMES_CALIBRACION) {
               baselineCara = {};
-              for (const k in acumuladoBase) baselineCara[k] = acumuladoBase[k] / framesBase;
+              for (const k in acumuladoBase) baselineCara[k] = acumuladoBase[k] / framesBase + 0.03; // v49: margen de ruido
               baselinePose = { yaw: acumPose.yaw / framesBase, pitch: acumPose.pitch / framesBase };
             }
           } else {
@@ -3332,7 +3332,7 @@
 
   // Pasos. vivo(delta, pose) = ¿se ve el gesto en este cuadro? (para el "✓ listo" y para validar)
   const PASOS_CALIB = [
-    { id: "neutral", grupo: "neutral", canal: "cara", seg: 10, recorte: 1,
+    { id: "neutral", voz: "Mira a la cámara con la cara relajada. Parpadea como siempre.", grupo: "neutral", canal: "cara", seg: 10, recorte: 1,
       texto: "Mira a la cámara con la cara relajada, sin sonreír. Parpadea como siempre.",
       alt: "Quédate quieto unos segundos mirando la cámara, con la cara relajada y buena luz de frente." },
     { id: "parpadeo", corto: "parpadeo", grupo: "neutral", canal: "cara", seg: 4, soloSiFalta: true,
@@ -3365,15 +3365,15 @@
       alt: "Mira un poco hacia arriba moviendo la cabeza.", vivo: (d, p) => Math.abs(p.pitch) > 0.035 },
     { id: "c_abajo", corto: "barbilla abajo", grupo: "cabeza", canal: "cara", seg: 2, cortar: true, texto: "Baja un poco la barbilla.",
       alt: "Mira un poco hacia abajo moviendo la cabeza.", vivo: (d, p) => Math.abs(p.pitch) > 0.035 },
-    { id: "silencio", grupo: "silencio", canal: "voz", seg: 3, texto: "Quédate en silencio un momento (medimos el ruido de fondo)." },
-    { id: "habla", grupo: "habla", canal: "voz", conCara: true, seg: 16, recorte: 1,
+    { id: "silencio", voz: "Ahora, silencio un momento.", grupo: "silencio", canal: "voz", seg: 3, texto: "Quédate en silencio un momento (medimos el ruido de fondo)." },
+    { id: "habla", voz: "Lee en voz alta el texto de la pantalla, con tu tono y tu velocidad normales.", grupo: "habla", canal: "voz", conCara: true, seg: 16, recorte: 1,
       texto: "Lee en voz alta, con tu tono y tu velocidad normales: «Buenos días. Soy el vocero de la empresa. Sabemos que esta situación preocupa a muchas familias y vamos a responder todas sus preguntas con datos claros. Nuestro equipo trabaja desde temprano para que el agua vuelva a ser segura lo antes posible.»",
       alt: "Lee el texto otra vez, un poco más cerca del micrófono: «Buenos días. Soy el vocero de la empresa. Sabemos que esta situación preocupa a muchas familias y vamos a responder todas sus preguntas con datos claros.»" },
-    { id: "fuerte", corto: "voz fuerte", grupo: "volumen", canal: "voz", seg: 4, texto: "Dilo FUERTE, como en un lugar con ruido: «Esto es una prueba de volumen».",
+    { id: "fuerte", voz: "Ahora dilo fuerte: esto es una prueba de volumen.", corto: "voz fuerte", grupo: "volumen", canal: "voz", seg: 4, texto: "Dilo FUERTE, como en un lugar con ruido: «Esto es una prueba de volumen».",
       alt: "Más fuerte todavía, como llamando a alguien al otro lado de la sala: «Esto es una prueba de volumen»." },
-    { id: "bajo", corto: "voz baja", grupo: "volumen", canal: "voz", seg: 4, texto: "Ahora dilo bajito, casi en secreto: «Esto es una prueba de volumen».",
+    { id: "bajo", voz: "Ahora bajito, casi en secreto: esto es una prueba de volumen.", corto: "voz baja", grupo: "volumen", canal: "voz", seg: 4, texto: "Ahora dilo bajito, casi en secreto: «Esto es una prueba de volumen».",
       alt: "Más bajito, casi susurrando: «Esto es una prueba de volumen»." },
-    { id: "risa", grupo: "risa", canal: "voz", conCara: true, seg: 4, opcional: true,
+    { id: "risa", voz: "Por último, di: ¡qué buena!, y ríete un poco, como te salga.", grupo: "risa", canal: "voz", conCara: true, seg: 4, opcional: true,
       texto: "Por último, di «¡qué buena!» y ríete un poco, como te salga. Si no te sale, no pasa nada." },
   ];
   const GRUPOS_CALIB = [
@@ -3528,6 +3528,56 @@
   }, 250);
 
   // ---------------------------------------------------------------
+  // v49: instrucciones habladas (voz del navegador: instantánea y sin gastar la cuota de Gemini) y pitidos
+  // ---------------------------------------------------------------
+  const checkVozCalib = document.getElementById("check-voz-calib");
+  const CLAVE_VOZ_CALIB = "voxready_voz_calibracion";
+  try { checkVozCalib.checked = localStorage.getItem(CLAVE_VOZ_CALIB) !== "0"; } catch (e) { /* nada */ }
+  checkVozCalib.addEventListener("change", () => {
+    try { localStorage.setItem(CLAVE_VOZ_CALIB, checkVozCalib.checked ? "1" : "0"); } catch (e) { /* nada */ }
+    if (!checkVozCalib.checked && tieneSintesis) { try { speechSynthesis.cancel(); } catch (e) { /* nada */ } }
+  });
+  if (!tieneSintesis) checkVozCalib.parentElement.style.display = "none";
+
+  // Dice el texto y se resuelve al terminar (o si el navegador no habla en ~1,5 s: nunca se queda pegado)
+  function decirInstruccion(texto) {
+    return new Promise((resolve) => {
+      if (!tieneSintesis || !checkVozCalib.checked || !texto) { resolve(false); return; }
+      let listo = false, empezo = false;
+      const fin = (v) => { if (listo) return; listo = true; clearTimeout(g1); clearTimeout(g2); resolve(v); };
+      try {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(texto.replace(/[«»]/g, ""));
+        const v = vozElegida || elegirVozEntrevistador();
+        if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "es-CL";
+        u.rate = 1.05;
+        u.onstart = () => { empezo = true; };
+        u.onend = () => fin(true);
+        u.onerror = () => fin(false);
+        setTimeout(() => { try { speechSynthesis.speak(u); } catch (e) { fin(false); } }, 60);
+      } catch (e) { resolve(false); return; }
+      const g1 = setTimeout(() => { if (!empezo) fin(false); }, 1500);
+      const g2 = setTimeout(() => { try { speechSynthesis.cancel(); } catch (e) { /* nada */ } fin(false); }, 3000 + texto.length * 90);
+    });
+  }
+  function callarInstruccion() { if (tieneSintesis) { try { speechSynthesis.cancel(); } catch (e) { /* nada */ } } }
+
+  // Pitido corto: grave = empieza el paso; agudo = ya se captó el gesto
+  function pitido(frec, ms) {
+    const ctx = typeof asegurarCtxVozEntrev === "function" ? asegurarCtxVozEntrev() : null;
+    if (!ctx) return;
+    try {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = frec;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + ms / 1000);
+      o.connect(g).connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + ms / 1000 + 0.02);
+    } catch (e) { /* sin audio: no pasa nada */ }
+  }
+
+  // ---------------------------------------------------------------
   // 2) Pasos: captura con cuenta regresiva, "listo" en vivo y corte anticipado
   // ---------------------------------------------------------------
   function pintarInstruccion(pequeno, texto) {
@@ -3565,7 +3615,7 @@
               const dt = Math.min(0.2, t - ultimoT);
               vivoSeguido = ok ? vivoSeguido + dt : 0;
               if (ok && datos.vivoDesde === null) datos.vivoDesde = t;
-              if (vivoSeguido >= 0.7 && !listo) { listo = true; calListo.classList.add("visible"); }
+              if (vivoSeguido >= 0.7 && !listo) { listo = true; calListo.classList.add("visible"); pitido(1320, 90); }
             }
             ultimoT = t;
           },
@@ -3723,10 +3773,27 @@
     if (R.neutral && calEstadoPasos.neutral && calEstadoPasos.neutral.ok) {
       const p = PASOS_CALIB[0];
       const fr = recortarBordes(R.neutral.frames, p, R.neutral.duracion);
-      const base = {};
-      Object.keys(fr[0].c).forEach((k) => { base[k] = medianaDe(fr.map((f) => f.c[k] || 0)); });
+      // v49: la referencia de cada músculo es la MAYOR entre tu cara neutra mirando la cámara y tu cara
+      // leyendo la pantalla (en la entrevista miras la pantalla: al bajar la vista cambian párpados y cejas),
+      // más un margen de ruido propio (lo que tu cara "tiembla" en reposo no cuenta como gesto).
+      const hab = R.habla && R.habla.frames.length >= 20 ? recortarBordes(R.habla.frames, PASOS_CALIB.find((x) => x.id === "habla"), R.habla.duracion) : null;
+      const mad = (vals) => { const m = medianaDe(vals); return medianaDe(vals.map((v) => Math.abs(v - m))); };
+      const base = {}, ruido = {};
+      Object.keys(fr[0].c).forEach((k) => {
+        const vn = fr.map((f) => f.c[k] || 0);
+        let ref = medianaDe(vn), rz = 2.5 * mad(vn);
+        if (hab) {
+          const vh = hab.map((f) => f.c[k] || 0);
+          ref = Math.max(ref, medianaDe(vh));
+          if (!/^(mouth|jaw|cheekPuff)/.test(k)) rz = Math.max(rz, 2.5 * mad(vh)); // al hablar la boca se mueve: su ruido no cuenta
+        }
+        ruido[k] = acotar(rz, 0.015, 0.15);
+        base[k] = ref + ruido[k];
+      });
       baselineCara = base;
-      baselinePose = { yaw: medianaDe(fr.map((f) => f.pose.yaw)), pitch: medianaDe(fr.map((f) => f.pose.pitch)) };
+      calExtra.referencia_lectura = !!hab;
+      const poseRef = hab || fr; // la postura de referencia es la de leer la pantalla (como en la entrevista)
+      baselinePose = { yaw: medianaDe(poseRef.map((f) => f.pose.yaw)), pitch: medianaDe(poseRef.map((f) => f.pose.pitch)) };
       emocionesSuaves = {};
       calExtra.movimiento_reposo = r4(Math.hypot(desvDe(fr.map((f) => f.pose.yaw)), desvDe(fr.map((f) => f.pose.pitch))));
       if (R.neutral.luz && R.neutral.caja) refCondiciones = { luz: R.neutral.luz.media, ancho: R.neutral.caja.x1 - R.neutral.caja.x0 };
@@ -3739,6 +3806,12 @@
         calCara.aperturaParpadeo = acotar(b.baja, 0.1, calCara.cierreParpadeo - 0.05);
       }
       calExtra.parpadeo_visto = b.n >= 1 && b.alto >= 0.35;
+    }
+    if (!R.neutral && R.habla && baselineCara && calEstadoPasos.habla && calEstadoPasos.habla.ok && R.habla.frames.length >= 20) {
+      const hab = recortarBordes(R.habla.frames, PASOS_CALIB.find((x) => x.id === "habla"), R.habla.duracion);
+      Object.keys(baselineCara).forEach((k) => { baselineCara[k] = Math.max(baselineCara[k], medianaDe(hab.map((f) => f.c[k] || 0)) + 0.015); });
+      baselinePose = { yaw: medianaDe(hab.map((f) => f.pose.yaw)), pitch: medianaDe(hab.map((f) => f.pose.pitch)) };
+      calExtra.referencia_lectura = true;
     }
     if (R.parpadeo && !calExtra.parpadeo_visto) {
       const b = contarParpadeosSenal(R.parpadeo.frames);
@@ -3755,12 +3828,12 @@
       if (okPaso("s_amplia")) {
         let s = valorSostenido(R.s_amplia, paso("s_amplia"), sonrisaDe);
         if (R.risa && R.risa.frames.length) s = Math.max(s, pctl(R.risa.frames.map((f) => sonrisaDe(deltaDe(f.c))), 0.9));
-        calCara.gSonrisa = s > 0.05 ? acotar(0.55 / s, 0.8, 2.5) : 1;
+        calCara.gSonrisa = s > 0.05 ? acotar(0.55 / s, 0.8, 1.8) : 1;
         calExtra.sonrisa_amplia = r4(s);
       }
       if (okPaso("s_leve")) calExtra.sonrisa_leve = r4(valorSostenido(R.s_leve, paso("s_leve"), sonrisaDe));
-      if (okPaso("cejas")) { const c = valorSostenido(R.cejas, paso("cejas"), cejasArribaDe); calCara.gCejas = c > 0.05 ? acotar(0.5 / c, 0.8, 2.5) : 1; }
-      if (okPaso("ceno")) { const c = valorSostenido(R.ceno, paso("ceno"), cenoDe); calCara.gCeno = c > 0.05 ? acotar(0.45 / c, 0.8, 2.5) : 1; }
+      if (okPaso("cejas")) { const c = valorSostenido(R.cejas, paso("cejas"), cejasArribaDe); calCara.gCejas = c > 0.05 ? acotar(0.5 / c, 0.8, 1.8) : 1; }
+      if (okPaso("ceno")) { const c = valorSostenido(R.ceno, paso("ceno"), cenoDe); calCara.gCeno = c > 0.05 ? acotar(0.45 / c, 0.8, 1.8) : 1; }
       if (okPaso("boca")) calExtra.boca_abierta = r4(valorSostenido(R.boca, paso("boca"), (d) => d.jawOpen || 0));
       // --- Mirada: tu rango propio → umbral de "mirada fuera de cámara"
       const dirs = ["m_arriba", "m_abajo", "m_izq", "m_der"].filter(okPaso);
@@ -3979,12 +4052,14 @@
 
   function cancelarCalibracion() {
     idCalib++;
+    callarInstruccion();
     calEstado.textContent = "";
     restaurarPantallaCalibracion();
   }
 
   function irAEntrevista() {
     idCalib++;
+    callarInstruccion();
     calibracionPendiente = false;
     calibActiva = null;
     calReusar.style.display = "none";
@@ -4077,7 +4152,15 @@
           pintarInstruccion(`${etiqueta} · prepárate`, texto);
           calRelleno.style.transition = "none";
           calRelleno.style.width = (hechos / Math.max(1, total)) * 100 + "%";
-          await esperar(p.seg <= 2.5 ? 900 : 1300);
+          // v49: se dice la instrucción en voz alta y se espera a que termine (en los pasos de voz, para que no se grabe)
+          const tPrep = performance.now();
+          await decirInstruccion(intento ? "Probemos otra vez. " + (p.alt || p.voz || p.texto) : (p.voz || p.texto));
+          if (cancelado()) return;
+          const resto = (p.seg <= 2.5 ? 900 : 1300) - (performance.now() - tPrep);
+          if (resto > 0) await esperar(resto);
+          if (cancelado()) return;
+          pitido(880, 120);
+          if (p.canal === "voz") await esperar(250); // que el pitido no quede dentro de la grabación
           if (cancelado()) return;
           pintarInstruccion(`${etiqueta} · ¡ahora!`, texto);
           calRelleno.style.transition = `width ${p.seg * 1000}ms linear`;
@@ -4100,6 +4183,7 @@
       aplicarCalibracion();
       guardarCalibracion();
       terminarCalibracionUI();
+      decirInstruccion("Calibración lista. Revisa en la pantalla cómo salió cada parte.");
     } catch (error) {
       console.error("Calibración:", error);
       calibActiva = null;
@@ -4286,7 +4370,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "48";
+  const VERSION_APP = "49";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
