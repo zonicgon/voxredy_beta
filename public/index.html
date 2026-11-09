@@ -66,6 +66,27 @@
   .calib-instruccion small { display: block; color: #C9D6E3; font-size: 13px; margin-bottom: 4px; }
   .calib-pista { height: 8px; background: #E5E7EB; border-radius: 999px; overflow: hidden; margin-top: 12px; }
   .calib-relleno { height: 100%; width: 0; background: var(--orange); transition: width 0.2s linear; }
+  /* v53: pantalla "Estamos preparando tu informe" (maqueta u5) */
+  #pantalla-analizando { display: none; text-align: center; padding: 40px; }
+  body.analizando #pantalla-analizando { display: block; }
+  body.analizando #panel-resultados > :not(#pantalla-analizando) { display: none !important; }
+  .analizando-icono {
+    height: 60px; width: 60px; border-radius: 50%; margin: 0 auto 18px; display: flex; align-items: center; justify-content: center;
+    background: repeating-linear-gradient(135deg, #eef1f4, #eef1f4 7px, #e3e7eb 7px, #e3e7eb 14px);
+    border: 1px dashed #c4ccd4; color: var(--muted); font-size: 12px;
+  }
+  @media (prefers-reduced-motion: no-preference) { .analizando-icono span { display: inline-block; animation: girarReloj 2.4s linear infinite; } }
+  @keyframes girarReloj { to { transform: rotate(360deg); } }
+  .analizando-titulo { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .analizando-sub { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
+  .analizando-lista { max-width: 380px; margin: 0 auto; text-align: left; }
+  .analizando-fila { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+  .analizando-fila:last-child { margin-bottom: 0; }
+  .analizando-estado { color: var(--muted); }
+  .analizando-estado.ok { color: #3b6d11; } .analizando-estado.mal { color: #C0392B; }
+  body[data-theme="dark"] .analizando-icono { background: repeating-linear-gradient(135deg, #26303a, #26303a 7px, #2d3843 7px, #2d3843 14px); border-color: #4a5663; }
+  body[data-theme="dark"] .analizando-estado.ok { color: #7FC66B; }
+
   /* v48: calibración por pasos */
   .calib-ins-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   .calib-cuenta { font-size: 28px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -287,11 +308,18 @@
     pointer-events: none;
   }
   #estado-facial { margin-top: 10px; font-size: 13px; color: var(--muted); }
-  #medidor-audio-contenedor {
-    width: 100%; height: 14px; background: var(--light);
-    border-radius: 7px; margin-top: 10px; overflow: hidden; display: none;
-  }
-  #medidor-audio-barra { height: 100%; width: 0%; background: var(--orange); transition: width 0.05s linear; }
+  /* v53: medidores de Micrófono e Iluminación (maqueta u3) */
+  .medidores { display: none; margin-top: 12px; }
+  body.con-camara .medidores { display: block; }
+  .medidor-cab { display: flex; justify-content: space-between; font-size: 12px; margin: 12px 0 6px; }
+  .medidor-cab:first-child { margin-top: 0; }
+  .medidor-estado { font-weight: 600; color: var(--muted); }
+  .medidor-estado.ok { color: #3b6d11; } .medidor-estado.aviso { color: #b07d00; } .medidor-estado.mal { color: #C0392B; }
+  .medidor { height: 9px; border-radius: 5px; background: var(--light); overflow: hidden; }
+  #medidor-audio-contenedor { display: block !important; width: 100%; }
+  #medidor-audio-barra, #medidor-luz-barra { height: 100%; width: 0%; border-radius: 5px; background: #3b6d11; transition: width 0.15s linear, background 0.3s; }
+  body[data-theme="dark"] .medidor-estado.ok { color: #7FC66B; } body[data-theme="dark"] .medidor-estado.aviso { color: #E6B54A; }
+  body[data-theme="dark"] .medidor { background: var(--barfill, #2A3542); }
 
   /* ---------- Entrevista ---------- */
   #seccion-entrevista { display: none; }
@@ -715,7 +743,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v52</span> · Beta</p>
+      <p><span class="version" id="version-app">v53</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -748,7 +776,7 @@
           <div class="legend" style="margin:-2px 0 12px;">Al practicar pasas al consentimiento y la comprobación técnica, y luego a la sesión.</div>
           <div class="scard">
             <h4>Derrame químico en tres comunidades</h4>
-            <p class="ctx">Eres el vocero de una empresa tras un derrame que afectó el agua de tres comunidades. Un periodista exigente te entrevista: 5 preguntas.</p>
+            <p class="ctx">Eres el vocero de una empresa tras un derrame que afectó el agua de tres comunidades. Un periodista exigente te entrevista: 8 preguntas.</p>
             <div class="meta"><span class="tagm">≈ 8 min</span><span class="tagm">Difícil</span><span class="tagm">Crisis ambiental</span></div>
             <div><button type="button" class="btn pri" data-ir="practica">Practicar</button></div>
           </div>
@@ -769,7 +797,7 @@
         <div class="card">
           <div class="ph" style="height:80px;margin-bottom:10px;">⚗️ Derrame químico</div>
           <h4 style="margin:0 0 4px;font-size:14px;">Derrame químico en tres comunidades</h4>
-          <p class="legend" style="margin:0 0 10px;">Crisis ambiental · 5 preguntas.</p>
+          <p class="legend" style="margin:0 0 10px;">Crisis ambiental · 8 preguntas.</p>
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span class="pill">Dirección</span>
             <button type="button" class="btn pri" data-ir="practica">Empezar</button>
@@ -852,8 +880,12 @@
         </svg>
       </div>
       <p class="estado" id="estado-facial">Cargando modelo de expresión facial...</p>
-      <div id="medidor-audio-contenedor">
-        <div id="medidor-audio-barra"></div>
+      <!-- v53: medidores como en la maqueta (Micrófono e Iluminación) -->
+      <div class="medidores" id="medidores">
+        <div class="medidor-cab"><span>Micrófono</span><span class="medidor-estado" id="estado-mic">—</span></div>
+        <div id="medidor-audio-contenedor" class="medidor"><div id="medidor-audio-barra"></div></div>
+        <div class="medidor-cab"><span>Iluminación</span><span class="medidor-estado" id="estado-luz">—</span></div>
+        <div id="medidor-luz-contenedor" class="medidor"><div id="medidor-luz-barra"></div></div>
       </div>
       <div class="fila-botones">
         <button id="boton-recalibrar" type="button" style="display:none; background: var(--navy); padding: 8px 14px; font-size: 13px;">Recalibrar cara neutra</button>
@@ -959,6 +991,18 @@
   <!-- Resultados: ancho completo, aparece al terminar -->
   <div id="resultados-vacio" class="card" style="display:none;">Todavía no hay una evaluación. Completa una entrevista en «Sesión de práctica» o abre una guardada en «Mis entrevistas».</div>
   <section id="panel-resultados">
+    <!-- v53: pantalla de transición mientras corren los análisis (maqueta u5) -->
+    <div class="card" id="pantalla-analizando">
+      <div class="analizando-icono"><span>◷</span></div>
+      <div class="analizando-titulo">Estamos preparando tu informe</div>
+      <div class="analizando-sub">Suele tardar unos segundos.</div>
+      <div class="analizando-lista">
+        <div class="analizando-fila" data-fase="contenido"><span>Transcribiendo y evaluando contenido</span><span class="analizando-estado">·</span></div>
+        <div class="analizando-fila" data-fase="voz"><span>Analizando tono de voz</span><span class="analizando-estado">·</span></div>
+        <div class="analizando-fila" data-fase="cara"><span>Analizando expresión y gesto</span><span class="analizando-estado">·</span></div>
+        <div class="analizando-fila" data-fase="final"><span>Integrando empatía (fusión)</span><span class="analizando-estado">·</span></div>
+      </div>
+    </div>
     <div class="cabecera-resultados">
       <h2 id="titulo-eval">Tu evaluación</h2>
       <div class="fila-botones" style="margin:0;">
@@ -1251,7 +1295,8 @@
   // que usábamos en Python. Se la mandamos completa al backend en cada turno.
   let historial = [];
   let numPregunta = 0;
-  const MAX_PREGUNTAS = 5; // debe coincidir con lo que usábamos en entrevista.py
+  const MAX_PREGUNTAS = 8; // v53: 8 preguntas (como la maqueta). Debe coincidir con TOTAL_PREGUNTAS de app.py
+  let ultimoSonidoMic = 0;
 
   // Estado de la sesión (para el botón de reinicio y el indicador de IAs)
   let idSesion = 0;               // sube con cada reinicio: las respuestas "viejas" que llegan tarde se descartan
@@ -1311,6 +1356,7 @@
         const promedio = datos.reduce((suma, valor) => suma + valor, 0) / datos.length;
         const porcentaje = Math.min(100, (promedio / 128) * 100);
         medidorBarra.style.width = porcentaje + "%";
+        if (porcentaje > 6) ultimoSonidoMic = performance.now(); // v53: para el estado «Detectado»
         requestAnimationFrame(actualizarMedidor);
       }
       actualizarMedidor();
@@ -3034,10 +3080,29 @@
       aviso.textContent = "Sin evaluar: " + avisos.join(" ");
       contenedorInformes.appendChild(aviso);
     }
-    await Promise.allSettled(tareas.map((t, i) => ejecutarTarea(t, secciones[i])));
-    if (sid !== idSesion) return;
+    // v53: pantalla "Estamos preparando tu informe" con el estado de cada análisis (· en espera, … en curso, ✓ listo)
+    const faseEstado = (fase, simbolo, clase) => {
+      const el = document.querySelector(`#pantalla-analizando [data-fase="${fase}"] .analizando-estado`);
+      if (el) { el.textContent = simbolo; el.className = "analizando-estado" + (clase ? " " + clase : ""); }
+    };
+    ["contenido", "voz", "cara", "final"].forEach((f) => faseEstado(f, "·", ""));
+    if (!tareas.some((t) => t.fuente === "voz")) faseEstado("voz", "sin datos", "");
+    if (!tareas.some((t) => t.fuente === "cara")) faseEstado("cara", "sin datos", "");
+    document.body.classList.add("analizando");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    await Promise.allSettled(tareas.map((t, i) => {
+      faseEstado(t.fuente, "…", "");
+      return ejecutarTarea(t, secciones[i]).finally(() => {
+        if (sid === idSesion) faseEstado(t.fuente, informesCrudos[t.fuente] ? "✓" : "✕", informesCrudos[t.fuente] ? "ok" : "mal");
+      });
+    }));
+    if (sid !== idSesion) { document.body.classList.remove("analizando"); return; }
+    faseEstado("final", "…", "");
     await generarInformeFinal();
-    if (sid !== idSesion) return;
+    if (sid !== idSesion) { document.body.classList.remove("analizando"); return; }
+    faseEstado("final", informeFinalDatos ? "✓" : "✕", informeFinalDatos ? "ok" : "mal");
+    await esperar(600); // que se alcance a ver el último ✓
+    document.body.classList.remove("analizando");
     iaEvaluando = false;
     document.getElementById("boton-pdf").style.display = "inline-block";
     document.getElementById("boton-descargar").style.display = "inline-block";
@@ -4515,6 +4580,29 @@
       ? (rLuz < 0.6 || rLuz > 1.6 ? "la luz cambió desde la calibración" : "cambió tu distancia a la cámara desde la calibración")
       : "";
   }
+  // v53: barra de ILUMINACIÓN bajo la cámara (como la maqueta) y estado del micrófono, en vivo
+  const barraLuz = document.getElementById("medidor-luz-barra"), estadoLuz = document.getElementById("estado-luz"), estadoMic = document.getElementById("estado-mic");
+  function pintarMedidor(el, texto, clase) { el.textContent = texto; el.className = "medidor-estado " + clase; }
+  setInterval(() => {
+    if (!document.body.classList.contains("con-camara")) return;
+    const luz = medirLuz();
+    if (luz) {
+      const nivel = Math.max(0, Math.min(100, (luz.media / 190) * 100));
+      let texto = "Buena", clase = "ok";
+      if (luz.media < 55) { texto = "Muy oscura"; clase = "mal"; }
+      else if (luz.fondo > 120 && luz.cara < luz.fondo * 0.62) { texto = "Contraluz"; clase = "aviso"; }
+      else if (luz.media < 90) { texto = "Mejorable"; clase = "aviso"; }
+      else if (luz.media > 235) { texto = "Demasiada luz"; clase = "aviso"; }
+      barraLuz.style.width = nivel + "%";
+      barraLuz.style.background = clase === "ok" ? "#3b6d11" : clase === "aviso" ? "#ba7517" : "#C0392B";
+      pintarMedidor(estadoLuz, texto, clase);
+    }
+    const tieneMic = flujoMedios && flujoMedios.getAudioTracks().some((t) => t.readyState === "live");
+    if (!tieneMic) pintarMedidor(estadoMic, "Sin micrófono", "mal");
+    else if (performance.now() - ultimoSonidoMic < 4000) pintarMedidor(estadoMic, "Detectado", "ok");
+    else pintarMedidor(estadoMic, "Habla para probarlo", "aviso");
+  }, 500);
+
   const pctCondicionesDistintas = () => (condCalib.total >= 5 ? Math.round((condCalib.distintos / condCalib.total) * 1000) / 10 : 0);
 
   // ================================================================
@@ -4618,7 +4706,7 @@
     document.getElementById("titulo-eval").textContent = "Tu evaluación";
     document.getElementById("estado-guardado").textContent = "";
 
-    document.body.classList.remove("con-resultados");
+    document.body.classList.remove("con-resultados", "analizando");
     ["resumen-general", "titulo-detalle", "boton-pdf", "boton-descargar"].forEach((id) => { document.getElementById(id).style.display = "none"; });
     document.getElementById("resumen-general").textContent = "";
     contenedorInformes.textContent = "";
@@ -4632,7 +4720,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "52";
+  const VERSION_APP = "53";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;

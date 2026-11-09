@@ -146,6 +146,14 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v53 — Siguiendo la maqueta: iluminación, 8 preguntas y pantalla «preparando tu informe»
+- **Barra de Iluminación** bajo la cámara, como en la maqueta (u3), junto a la de **Micrófono**. Iluminación en vivo: «Buena» (verde), «Mejorable», «Contraluz» o «Demasiada luz» (ámbar) y «Muy oscura» (rojo). Micrófono: «Detectado», «Habla para probarlo» o «Sin micrófono».
+- **8 preguntas** (antes 5), como dice la maqueta. Arco de la entrevista en 8 etapas: apertura → qué sustancia y cuánta → cuándo ocurrió y cuándo avisaron → repregunta a lo esquivado → ¿se pudo evitar? (filtración) → ángulo humano → qué hacen ahora, plazos y compensación → cierre incómodo; después, la despedida del periodista. La voz sube la presión desde la 6ª. `MAX_PREGUNTAS` (página) y `TOTAL_PREGUNTAS` (`app.py`) deben coincidir.
+  - La evaluación no cambia: los topes por código usan porcentajes de respuestas y las métricas de voz y cara no dependen del número de preguntas.
+  - Ojo con las cuotas gratuitas: cada entrevista usa ahora ~9 voces de Gemini (8 preguntas + cierre; ≈ 30 entrevistas al día con los 3 modelos) y ~18 llamadas a Groq (entrevistador + analista).
+- **Pantalla «Estamos preparando tu informe»** (maqueta u5), igual al diseño: ícono, «Suele tardar unos segundos.» y las 4 etapas con su estado (· en espera, … en curso, ✓ listo, ✕ error, «sin datos» si no hubo voz o cara): Transcribiendo y evaluando contenido · Analizando tono de voz · Analizando expresión y gesto · Integrando empatía (fusión). Al terminar, aparece el informe tipo coach.
+- Hay que subir **app.py y public/index.html** juntos.
+
 ### v52 — El entrevistador cierra la entrevista + acceso rápido
 - **Cierre del entrevistador:** después de la 5ª respuesta, en vez de cortarse, el periodista **cierra en vivo**: reacciona en una frase a la última respuesta, deja una conclusión para la audiencia (lo que quedó claro o sin responder) y se despide con su nombre y su medio. Se lee en voz alta (con el tono que corresponda) y queda en la transcripción; recién después aparece «Ver mi evaluación completa».
   - En el servidor: `POST /api/entrevistar` con `"cierre": true`. Si dijo algo grave y no lo retiró, el cierre lo **cita textual** y deja constancia. El cierre **nunca pregunta** (si el modelo pregunta, se pide de nuevo y, si no, se quitan las preguntas) y siempre termina con la firma («Para Panorama Regional, Andrés Molina»). Si el servidor no responde, se usa un cierre fijo.

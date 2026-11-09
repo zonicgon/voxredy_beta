@@ -40,7 +40,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "52"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "53"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -509,11 +509,11 @@ class PeticionCara(BaseModel):
 
 # ------------------------------------------------- Entrevistador --------------
 
-# v47: periodista con personalidad, rol anclado, dossier propio, libreta de memoria y arco de 5 preguntas.
+# v47: periodista con personalidad, rol anclado, dossier propio, libreta de memoria y arco de preguntas (8 desde la v53).
 # (Nombre, medio y todo el dossier son FICTICIOS; nombre y medio se cambian con PERIODISTA_NOMBRE / PERIODISTA_MEDIO.)
 PERIODISTA_NOMBRE = (os.getenv("PERIODISTA_NOMBRE") or "Andrés Molina").strip()
 PERIODISTA_MEDIO = (os.getenv("PERIODISTA_MEDIO") or "Panorama Regional").strip()
-TOTAL_PREGUNTAS = 5  # debe coincidir con MAX_PREGUNTAS de public/index.html
+TOTAL_PREGUNTAS = 8  # v53: 8 preguntas (como la maqueta). Debe coincidir con MAX_PREGUNTAS de public/index.html
 
 DOSSIER = """- El derrame fue en la madrugada de hace dos días, cerca de las 4:40, en el estanque número 3 de la planta.
 - Comunidades afectadas: Villa Los Aromos, Las Canteras y El Esfuerzo. Unas 2.300 familias sin agua de la llave; llega un solo camión aljibe al día y no alcanza.
@@ -566,12 +566,16 @@ FORMATO (tu texto se lee en voz alta):
 - Solo lo que le dices al vocero: sin markdown, listas, emojis, comillas envolventes, etiquetas como «Periodista:» ni acotaciones como *suspira* o (pausa).
 - Nunca sales del personaje ni dices que eres una IA."""
 
+# v53: arco de 8 preguntas (la presión sube de a poco; lo más duro queda para el final)
 ARCO_ENTREVISTA = {
     1: "APERTURA FIRME: preséntate en media frase (nombre y medio) y abre con una pregunta directa sobre qué pasó en la planta.",
-    2: "HECHOS: exige un dato concreto (qué sustancia, cuántos litros, a qué hora). Cita lo que dijo y, si sirve, usa UN dato del dossier.",
-    3: "REPREGUNTA: vuelve sobre lo que esquivó o lo más débil de lo que dijo; si se contradijo, confróntalo con sus propias palabras. Buen momento para la filtración.",
-    4: "ÁNGULO HUMANO: las familias afectadas (puedes usar el caso de la señora Rosa Fuentes) y qué hace la empresa por ellas, en concreto.",
-    5: "CIERRE INCÓMODO: es la ÚLTIMA pregunta. Haz la más difícil (responsabilidad, por qué tardaron o qué ocultaron) con lo más fuerte del dossier o su peor contradicción. No te despidas.",
+    2: "HECHOS: qué sustancia fue y cuánta se derramó. Cita lo que dijo; exige el dato concreto.",
+    3: "HECHOS: cuándo ocurrió y cuándo avisaron a la autoridad (usa el dato del aviso casi nueve horas después si sirve).",
+    4: "REPREGUNTA: vuelve sobre lo que esquivó o lo más débil de lo que dijo; si se contradijo, confróntalo con sus propias palabras.",
+    5: "RESPONSABILIDAD: ¿se pudo evitar? Buen momento para la filtración del correo de mantención. Quién decidió postergar la reparación.",
+    6: "ÁNGULO HUMANO: las familias afectadas (puedes usar el caso de la señora Rosa Fuentes) y qué les dice la empresa.",
+    7: "QUÉ HACEN AHORA: medidas concretas, cuándo vuelve el agua segura, si habrá compensación y quién la paga. Exige plazos.",
+    8: "CIERRE INCÓMODO: es la ÚLTIMA pregunta. Haz la más difícil (responsabilidad, por qué tardaron o qué ocultaron) con lo más fuerte del dossier o su peor contradicción. No te despidas todavía.",
 }
 
 
@@ -1014,6 +1018,9 @@ CASOS_PRUEBA_PERIODISTA = {
         "Desde hoy a las 14:00 hay seis camiones aljibe, uno por cada sector, y un médico de la empresa en el consultorio de Villa Los Aromos. La empresa paga todos los gastos médicos y vamos a publicar cada análisis del agua en nuestra web, el mismo día.",
         "La responsabilidad es nuestra. Asumo que avisamos tarde y eso no se va a repetir.",
         "A la señora Rosa y a todas las familias: lo sentimos, vamos a cubrir cada gasto y les daremos un informe diario.",
+        "El agua vuelve a ser segura cuando tres análisis seguidos salgan bajo la norma; estimamos 72 horas y lo publicaremos.",
+        "Habrá compensación para cada familia y la paga la empresa, no el Estado.",
+        "Sí: el correo existía y postergamos la reparación. Fue un error grave y la gerencia responde por eso.",
     ],
     "contradicción de cifras": [
         "El agua vuelve en 24 horas, eso está garantizado.",
@@ -1199,7 +1206,7 @@ def direccion_de_voz(texto, numero, tono_regla=None):
     Gemini SOLO lee en voz alta la pregunta, nunca esta indicación."""
     if tono_regla in TONO_VOZ:
         tono = TONO_VOZ[tono_regla]
-    elif numero >= 4 or PALABRAS_PRESION.search(texto):
+    elif numero >= 6 or PALABRAS_PRESION.search(texto):  # v53: con 8 preguntas, la presión sube desde la 6ª
         tono = "presionando: firme, serio y algo impaciente, marcando las palabras clave"
     elif numero >= 2:
         tono = "incisivo, serio y algo escéptico"
