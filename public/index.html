@@ -698,7 +698,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v49</span> · Beta</p>
+      <p><span class="version" id="version-app">v51</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -859,8 +859,8 @@
             respuestas y métricas numéricas de mi voz y mi expresión. Al terminar, mi
             nombre, la transcripción y mi evaluación se guardan 30 días solo en este
             navegador (puedo verlas o borrarlas en «Mis entrevistas»). Si uso el botón
-            de hablar, el reconocimiento de voz de Chrome/Edge envía mi audio al
-            servicio de voz del navegador para transcribirlo.
+            de hablar, el audio de esa respuesta se envía al servidor para convertirlo
+            en texto (Whisper, en Groq) y no se guarda en ningún lado.
           </label>
         </div>
 
@@ -1515,6 +1515,10 @@
     });
   }
 
+  // v51: estado del periodista (frases graves sin retractar, evasivas seguidas…) y tono de la última pregunta
+  let estadoPeriodista = null;
+  let tonoPregunta = "";
+
   // ---------------- v42: voz REALISTA con Gemini (el servidor genera el audio) ----------------
   // Orden: 1) voz de Gemini (con emociones), 2) si falla o no hay cuota, la voz del navegador.
   const ClaseAudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1564,7 +1568,7 @@
         r = await fetch(`${URL_BACKEND}/voz_entrevistador`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ texto, numero }),
+          body: JSON.stringify({ texto, numero, tono: tonoPregunta || undefined }), // v51: grave, incrédulo, firme…
           signal: ctl.signal,
         });
       } catch (e) {
@@ -1772,7 +1776,7 @@
       const respuesta = await fetch(`${URL_BACKEND}/entrevistar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ historial }),
+        body: JSON.stringify({ historial, estado: estadoPeriodista }), // v51: el servidor no guarda nada: el estado viaja con la conversación
       });
       let datos = {};
       try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON (por ejemplo, una página de error) */ }
@@ -1787,6 +1791,8 @@
         preguntaActual.textContent = `(${numPregunta}/${MAX_PREGUNTAS}) ${datos.pregunta}`;
         agregarAlHistorialVisual("assistant", datos.pregunta);
         // v41: el entrevistador lee la pregunta; al terminar se habilita responder y se empieza a medir tu voz
+        if (datos.estado && typeof datos.estado === "object") estadoPeriodista = datos.estado; // v51
+        tonoPregunta = datos.tono || "";
         presentarPregunta(datos.pregunta, sid);
         return true;
       }
@@ -2059,6 +2065,7 @@
     botonHablar.style.display = "inline-block";
     botonResponder.style.display = "inline-block"; // por si prefiere escribir en vez de hablar
     historial = [{ role: "user", content: "Estoy listo para empezar." }];
+    estadoPeriodista = null; tonoPregunta = ""; // v51
     numPregunta = 0;
     entrevistaActiva = true;
 
@@ -2074,18 +2081,20 @@
   });
 
   botonResponder.addEventListener("click", async () => {
+    if (entrevistadorHablando || transcribiendo) return; // v41 / v50
+    // v50: si estaba grabando, primero se transcribe lo grabado y después se envía
+    if (escuchando && modoTranscripcion === "servidor") await detenerYTranscribir();
     const texto = campoRespuesta.value.trim();
     if (!texto) return;
-    if (entrevistadorHablando) return; // v41: no se responde mientras el entrevistador habla
     // v41: si el micrófono seguía escuchando, se apaga ANTES de la siguiente pregunta,
     // para que no transcriba la voz del entrevistador dentro de tu próxima respuesta
     if (escuchando) {
       descartarTranscripcion = true;
       try { reconocimiento.stop(); } catch (e) { /* nada */ }
       escuchando = false;
-      botonHablar.textContent = "🎤 Hablar";
-      botonHablar.style.background = "var(--navy)";
+      pintarBotonHablar();
     }
+    avisar("");
     detenerVentanaVoz();
 
     historial.push({ role: "user", content: texto });
@@ -2101,72 +2110,217 @@
     }
   });
 
-  // --- Reconocimiento de voz del navegador (Chrome/Edge) ---
-  // A diferencia de la versión en Python, aquí NO se manda audio a ningún
-  // servidor: el propio navegador convierte tu voz a texto y nos entrega
-  // el resultado ya escrito, directo en el cuadro de respuesta.
+  // ================================================================
+  // v50 — VOZ A TEXTO EN EL SERVIDOR (Whisper Large V3 Turbo en Groq; respaldo: Gemini)
+  // 🎤 Hablar graba tu respuesta (solo el audio, en este navegador) y al detener la manda a /api/transcribir,
+  // que devuelve el texto en ~1 s. El audio no se guarda en ningún lado. Funciona en cualquier navegador moderno.
+  // Si el servidor no tiene clave para transcribir, se usa el reconocimiento del navegador (Chrome/Edge) como antes.
+  // ================================================================
   const ClaseReconocimiento = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const puedeGrabar = typeof window.MediaRecorder === "function";
+  let modoTranscripcion = puedeGrabar ? "servidor" : (ClaseReconocimiento ? "navegador" : "ninguno");
   let reconocimiento = null;
-  let escuchando = false;
-  let descartarTranscripcion = false; // v41: true tras enviar la respuesta; lo que llegue tarde no se pega en la siguiente
+  let escuchando = false;            // grabando (o escuchando, en modo navegador)
+  let transcribiendo = false;
+  let descartarTranscripcion = false; // v41: lo que llegue tarde no se pega en la respuesta siguiente
+  let grabador = null, trozosAudio = [], relojGrab = null, inicioGrab = 0, idGrabacion = 0, ultimoAudio = null;
+  const MAX_SEG_RESPUESTA = 180;
+  const tipoAudio = () => ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"]
+    .find((t) => puedeGrabar && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  const contarPalabras = (t) => ((t || "").match(/[\p{L}\d]+/gu) || []).length;
 
-  if (ClaseReconocimiento) {
+  // Aviso pequeño bajo los botones (errores, "no se entendió", reintentar)
+  const avisoTranscripcion = document.createElement("p");
+  avisoTranscripcion.className = "estado";
+  avisoTranscripcion.id = "aviso-transcripcion";
+  avisoTranscripcion.style.display = "none";
+  botonHablar.parentElement.insertAdjacentElement("afterend", avisoTranscripcion);
+  function avisar(texto, conReintento) {
+    avisoTranscripcion.textContent = texto || "";
+    avisoTranscripcion.style.display = texto ? "block" : "none";
+    if (conReintento && ultimoAudio) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "Reintentar transcripción";
+      b.style.cssText = "margin-left:8px; padding:4px 10px; font-size:12px;";
+      b.addEventListener("click", () => transcribirAudio(ultimoAudio));
+      avisoTranscripcion.appendChild(b);
+    }
+  }
+
+  function pintarBotonHablar() {
+    if (transcribiendo) { botonHablar.textContent = "⏳ Transcribiendo…"; botonHablar.style.background = "var(--navy)"; return; }
+    if (escuchando) {
+      const seg = Math.floor((performance.now() - inicioGrab) / 1000);
+      botonHablar.textContent = modoTranscripcion === "servidor"
+        ? `⏹ Detener y transcribir (${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, "0")})`
+        : "⏹ Detener y usar este texto";
+      botonHablar.style.background = "var(--orange)";
+      return;
+    }
+    botonHablar.textContent = "🎤 Hablar";
+    botonHablar.style.background = "var(--navy)";
+  }
+  const restaurarResponder = () => { botonResponder.disabled = transcribiendo || entrevistadorHablando || !entrevistaActiva; };
+
+  function empezarGrabacion() {
+    const pistas = flujoMedios ? flujoMedios.getAudioTracks() : [];
+    if (!pistas.length) { avisar("No hay micrófono activo: revisa el permiso o escribe tu respuesta."); return false; }
+    try {
+      const tipo = tipoAudio();
+      grabador = new MediaRecorder(new MediaStream(pistas), tipo ? { mimeType: tipo, audioBitsPerSecond: 32000 } : {});
+    } catch (e) { avisar("Tu navegador no pudo grabar el audio: escribe tu respuesta."); return false; }
+    trozosAudio = [];
+    const mio = ++idGrabacion;
+    grabador.ondataavailable = (ev) => { if (ev.data && ev.data.size) trozosAudio.push(ev.data); };
+    grabador.onstop = () => {
+      clearInterval(relojGrab);
+      if (mio !== idGrabacion) return; // se canceló (reinicio): no se transcribe
+      const blob = new Blob(trozosAudio, { type: (grabador && grabador.mimeType) || "audio/webm" });
+      trozosAudio = [];
+      if (grabador && grabador._alTerminar) grabador._alTerminar(blob);
+    };
+    grabador.start(1000);
+    inicioGrab = performance.now();
+    escuchando = true;
+    avisar("");
+    relojGrab = setInterval(() => {
+      pintarBotonHablar();
+      if ((performance.now() - inicioGrab) / 1000 >= MAX_SEG_RESPUESTA) detenerYTranscribir();
+    }, 250);
+    pintarBotonHablar();
+    return true;
+  }
+
+  // Detiene la grabación y espera a que la transcripción termine
+  function detenerYTranscribir() {
+    return new Promise((resolve) => {
+      if (!grabador || grabador.state === "inactive") { escuchando = false; pintarBotonHablar(); resolve(); return; }
+      grabador._alTerminar = async (blob) => { await transcribirAudio(blob); resolve(); };
+      escuchando = false;
+      transcribiendo = true;
+      pintarBotonHablar();
+      restaurarResponder();
+      try { grabador.stop(); } catch (e) { transcribiendo = false; pintarBotonHablar(); restaurarResponder(); resolve(); }
+    });
+  }
+
+  function cancelarGrabacion() {
+    idGrabacion++;
+    clearInterval(relojGrab);
+    if (grabador && grabador.state !== "inactive") { try { grabador.stop(); } catch (e) { /* nada */ } }
+    if (reconocimiento && escuchando) { try { reconocimiento.stop(); } catch (e) { /* nada */ } }
+    escuchando = false;
+    transcribiendo = false;
+    pintarBotonHablar();
+  }
+
+  async function transcribirAudio(blob) {
+    ultimoAudio = blob;
+    const sid = idSesion, mio = idGrabacion;
+    transcribiendo = true;
+    pintarBotonHablar();
+    restaurarResponder();
+    avisar("");
+    try {
+      if (!blob || blob.size < 1500) { avisar("No alcancé a grabar tu voz. Vuelve a presionar 🎤 Hablar o escribe tu respuesta."); return; }
+      const r = await fetchConTiempo(`${URL_BACKEND}/transcribir`, {
+        method: "POST", headers: { "Content-Type": blob.type || "audio/webm" }, body: blob,
+      }, 30000);
+      const d = await r.json().catch(() => ({}));
+      if (sid !== idSesion || mio !== idGrabacion) return; // se reinició mientras tanto
+      if (!r.ok) {
+        if (r.status === 503 && ClaseReconocimiento) {
+          modoTranscripcion = "navegador";
+          avisar("El servidor no tiene transcripción configurada: desde ahora se usa el reconocimiento del navegador. Vuelve a presionar 🎤 Hablar.");
+        } else {
+          avisar((d.detail || `No se pudo transcribir (error ${r.status}).`) + " Puedes reintentar o escribir tu respuesta.", true);
+        }
+        return;
+      }
+      const texto = (d.texto || "").trim();
+      if (!texto) { avisar("No se entendió el audio. Habla un poco más cerca del micrófono y vuelve a intentarlo, o escribe tu respuesta.", true); return; }
+      campoRespuesta.value = (campoRespuesta.value.trim() ? campoRespuesta.value.trim() + " " : "") + texto;
+      ultimoAudio = null;
+    } catch (e) {
+      if (sid !== idSesion) return;
+      avisar((e.name === "AbortError" ? "La transcripción tardó demasiado." : "No hay conexión con el servidor.") + " Puedes reintentar o escribir tu respuesta.", true);
+    } finally {
+      if (mio === idGrabacion) {
+        transcribiendo = false;
+        pintarBotonHablar();
+        restaurarResponder();
+      }
+    }
+  }
+
+  // Solo para contar palabras (velocidad de habla en la calibración): devuelve el número de palabras o null
+  async function contarPalabrasDeAudio(blob) {
+    if (!blob || blob.size < 1500) return null;
+    try {
+      const r = await fetchConTiempo(`${URL_BACKEND}/transcribir`, { method: "POST", headers: { "Content-Type": blob.type || "audio/webm" }, body: blob }, 30000);
+      if (!r.ok) return null;
+      const d = await r.json();
+      return contarPalabras(d.texto);
+    } catch (e) { return null; }
+  }
+
+  // ¿El servidor puede transcribir? (si no, se usa el reconocimiento del navegador como antes)
+  setTimeout(async () => {
+    try {
+      const r = await fetchConTiempo(`${URL_BACKEND}/salud`, {}, 10000);
+      const d = await r.json();
+      const hay = d.transcripcion && d.transcripcion.proveedores && d.transcripcion.proveedores.length;
+      if (!hay || !puedeGrabar) modoTranscripcion = ClaseReconocimiento ? "navegador" : (puedeGrabar && hay ? "servidor" : "ninguno");
+    } catch (e) { /* sin servidor: se mantiene lo que había */ }
+  }, 0);
+
+  // Respaldo: reconocimiento del navegador (Chrome/Edge)
+  function prepararReconocimientoNavegador() {
+    if (reconocimiento || !ClaseReconocimiento) return;
     reconocimiento = new ClaseReconocimiento();
     reconocimiento.lang = "es-CL";
-    reconocimiento.continuous = true;   // sigue escuchando hasta que lo detengamos
-    reconocimiento.interimResults = true; // muestra texto parcial mientras hablas
-
+    reconocimiento.continuous = true;
+    reconocimiento.interimResults = true;
     reconocimiento.onresult = (evento) => {
-      if (descartarTranscripcion || entrevistadorHablando) return; // v41
+      if (descartarTranscripcion || entrevistadorHablando) return;
       let textoNuevo = "";
       for (let i = evento.resultIndex; i < evento.results.length; i++) {
-        if (evento.results[i].isFinal) {
-          textoNuevo += evento.results[i][0].transcript + " ";
-        }
+        if (evento.results[i].isFinal) textoNuevo += evento.results[i][0].transcript + " ";
       }
-      if (textoNuevo) {
-        campoRespuesta.value += textoNuevo;
-      }
+      if (textoNuevo) campoRespuesta.value += textoNuevo;
     };
-
-    reconocimiento.onerror = (evento) => {
-      console.error("Error de reconocimiento de voz:", evento.error);
-    };
-
-    // v41: si el navegador corta la escucha solo (silencio largo, red), el botón vuelve a «Hablar»
+    reconocimiento.onerror = (evento) => { console.error("Error de reconocimiento de voz:", evento.error); };
     reconocimiento.onend = () => {
       if (!escuchando) return;
       escuchando = false;
-      botonHablar.textContent = "🎤 Hablar";
-      botonHablar.style.background = "var(--navy)";
+      pintarBotonHablar();
       actualizarControlesVoz();
     };
   }
 
-  botonHablar.addEventListener("click", () => {
-    if (!ClaseReconocimiento) {
-      alert("Tu navegador no soporta reconocimiento de voz. Prueba con Chrome o Edge.");
+  botonHablar.addEventListener("click", async () => {
+    if (entrevistadorHablando || transcribiendo) return; // v41: no se escucha mientras habla el entrevistador
+    if (modoTranscripcion === "servidor") {
+      if (!escuchando) { campoRespuesta.value = ""; empezarGrabacion(); }
+      else await detenerYTranscribir();
       return;
     }
-
-    if (entrevistadorHablando) return; // v41: no se escucha mientras habla el entrevistador
-
+    if (modoTranscripcion === "ninguno" || !ClaseReconocimiento) {
+      avisar("Tu navegador no puede grabar ni reconocer la voz: escribe tu respuesta.");
+      return;
+    }
+    prepararReconocimientoNavegador();
     if (!escuchando) {
-      // Primer clic: empieza a escuchar (equivalente al primer Enter en Python)
       campoRespuesta.value = "";
       descartarTranscripcion = false;
-      try { reconocimiento.start(); }
-      catch (e) { console.warn("El reconocimiento de voz no pudo iniciar:", e); return; } // por ejemplo, si aún se estaba cerrando
+      try { reconocimiento.start(); } catch (e) { console.warn("El reconocimiento de voz no pudo iniciar:", e); return; }
       escuchando = true;
-      botonHablar.textContent = "⏹ Detener y usar este texto";
-      botonHablar.style.background = "var(--orange)";
+      inicioGrab = performance.now();
     } else {
-      // Segundo clic: deja de escuchar (equivalente al segundo Enter)
       reconocimiento.stop();
       escuchando = false;
-      botonHablar.textContent = "🎤 Hablar";
-      botonHablar.style.background = "var(--navy)";
     }
+    pintarBotonHablar();
   });
 
 
@@ -3634,8 +3788,21 @@
         } catch (e) { an = null; }
       }
       // Velocidad de habla: se cuentan las palabras que reconoce el navegador mientras lees
-      let rec = null;
-      if (p.id === "habla" && ClaseReconocimiento) {
+      let rec = null, grab = null;
+      const partesGrab = [];
+      if (p.id === "habla" && modoTranscripcion === "servidor" && flujoMedios && flujoMedios.getAudioTracks().length) {
+        // v50: se graba la lectura y se transcribe en el servidor para contar las palabras (velocidad de habla)
+        try {
+          const tipo = tipoAudio();
+          grab = new MediaRecorder(new MediaStream(flujoMedios.getAudioTracks()), tipo ? { mimeType: tipo, audioBitsPerSecond: 32000 } : {});
+          grab.ondataavailable = (ev) => { if (ev.data && ev.data.size) partesGrab.push(ev.data); };
+          grab.onstop = () => {
+            const blob = new Blob(partesGrab, { type: grab.mimeType || "audio/webm" });
+            datos.promesaPalabras = contarPalabrasDeAudio(blob).then((n) => { if (n != null) datos.palabras = n; return n; });
+          };
+          grab.start(1000);
+        } catch (e) { grab = null; }
+      } else if (p.id === "habla" && ClaseReconocimiento) {
         try {
           rec = new ClaseReconocimiento();
           rec.lang = "es-CL";
@@ -3671,9 +3838,10 @@
         calibActiva = null;
         if (ctx) { try { ctx.close(); } catch (e) { /* nada */ } }
         if (rec) { try { rec.stop(); } catch (e) { /* nada */ } }
+        if (grab && grab.state !== "inactive") { try { grab.stop(); } catch (e) { /* nada */ } }
         datos.duracion = t;
         // Las palabras finales pueden llegar un instante después de detener el reconocimiento
-        setTimeout(() => resolve(datos), rec ? 700 : 0);
+        setTimeout(() => resolve(datos), rec || grab ? 700 : 0);
       }, 50);
     });
   }
@@ -4180,6 +4348,12 @@
         if (!p.soloSiFalta) hechos++;
       }
       window.calPasoActualId = "";
+      // v50: espera (máx. 8 s) a que llegue el conteo de palabras de la lectura, para la velocidad de habla
+      if (calRes.habla && calRes.habla.promesaPalabras) {
+        pintarInstruccion("Calculando…", "Terminando de medir tu velocidad de habla…");
+        await Promise.race([calRes.habla.promesaPalabras, esperar(8000)]);
+        if (cancelado()) return;
+      }
       aplicarCalibracion();
       guardarCalibracion();
       terminarCalibracionUI();
@@ -4312,12 +4486,8 @@
     audioUltimaPregunta = { texto: "", buffer: null };
     botonHablar.disabled = false;
 
-    if (escuchando) {
-      try { reconocimiento.stop(); } catch (e) { /* nada */ }
-      escuchando = false;
-      botonHablar.textContent = "🎤 Hablar";
-      botonHablar.style.background = "var(--navy)";
-    }
+    cancelarGrabacion(); // v50: si estaba grabando o transcribiendo, se descarta
+    avisar("");
     detenerAnalisisVoz();
     errorVoz = null;
     grabandoCara = false;
@@ -4329,6 +4499,7 @@
 
     historial = [];
     numPregunta = 0;
+    estadoPeriodista = null; tonoPregunta = ""; // v51
     resultadoVoz = null;
     datosCara = null;
     informesCrudos = {};
@@ -4370,7 +4541,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "49";
+  const VERSION_APP = "51";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -4697,6 +4868,14 @@
       if (typeof faceLandmarker !== "undefined" && faceLandmarker) agregar("Análisis facial en esta sesión", "ok", "Motor de alta precisión activo", "");
       else if (!camaraActiva) agregar("Análisis facial en esta sesión", "aviso", "La cámara aún no se activó", "Completa el paso 1 (Comprobación) para activarla.");
       else agregar("Análisis facial en esta sesión", "aviso", "El motor de alta precisión no está activo (se usa el respaldo o no cargó)", "Revisa la fila anterior y recarga la página.");
+    }
+
+    // 7b) Transcripción de la voz (v50)
+    if (salud) {
+      const tr = salud.transcripcion;
+      if (!tr) agregar("Transcripción de voz", "aviso", "El servidor no tiene esta función", "Sube el app.py de la v50: mientras tanto se usa el reconocimiento del navegador (solo Chrome/Edge).");
+      else if (!tr.proveedores.length) agregar("Transcripción de voz", "aviso", "Sin GROQ_API_KEY ni GEMINI_API_KEY", "Se usa el reconocimiento del navegador (solo Chrome/Edge, envía el audio a Google o Microsoft).");
+      else agregar("Transcripción de voz", "ok", `En el servidor: ${tr.proveedores.join(" → ")} (${tr.modelos[0]})`, puedeGrabar ? "" : "Este navegador no puede grabar audio: se escribirá la respuesta.");
     }
 
     // 8) Voz realista del entrevistador (v42): genera una frase corta con Gemini (gasta 1 de la cuota diaria)

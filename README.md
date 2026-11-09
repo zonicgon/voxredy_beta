@@ -146,6 +146,30 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v51 — El periodista ya no "sigue como si nada" (investigación + analista + estado)
+- **Problema:** ante frases como «que se mueran los pobres», el periodista seguía con la siguiente pregunta como si nada.
+- **Investigación** (periodismo de rendición de cuentas y estudios de IA en simulaciones de rol) aplicada al *prompt*: ante algo grave, el entrevistador **repite textual** la frase para que quede registrada, **no cambia de tema** hasta que se aborde, da la oportunidad de **retractarse** pero no acepta que se reescriba lo dicho, habla en nombre del público y de los afectados, nombra la evasión con calma («mi pregunta era concretamente…», «queda registrado que no quiso responder»), seguimiento corto y específico, cortesía firme sin insultos ni sermones, y las preguntas que el público espera en una crisis (dañados, responsable, evitable, qué se hace, seguridad, plazo, compensación, mensaje a las familias).
+- **Arquitectura nueva** (un solo *prompt* no basta: el modelo reacciona plano):
+  1. **Analista:** antes de cada pregunta, un modelo rápido (`MODELOS_ANALISTA`, por defecto `openai/gpt-oss-20b` en Groq) clasifica la última respuesta (desprecio o daño, confesión grave, insulto, evasiva, contradicción, manipulación, cambio de rol, otro idioma, respuesta concreta o ejemplar), con gravedad 0–3 y la **cita textual**. **Patrones por código** detectan lo evidente («que se mueran», «se lo merecen», «no es para tanto», sobornos…) y mandan si la IA lo pasa por alto; sin IA, funciona solo con los patrones.
+  2. **Estado entre turnos:** las frases graves quedan **pendientes hasta que se retracte** (el servidor sigue sin memoria: el estado viaja con la conversación; si la página es antigua, se reconstruye con patrones). También cuenta evasivas seguidas e insultos.
+  3. **Reglas de reacción:** según el análisis y el estado, se agrega una instrucción prioritaria al turno (p. ej., «REACCIÓN OBLIGATORIA: repite textualmente… pregúntale si es la posición de la empresa o si se retracta»; en los turnos siguientes, «PENDIENTE SIN RESOLVER…»; si se retracta, toma nota y pregunta cómo repararán el daño).
+  4. **Revisión por código:** si la respuesta no retoma la frase grave, se pide de nuevo; si aun así no, se usa una reacción fija que la cita textual. Nunca sigue como si nada.
+- **Voz con emoción según el momento:** la regla elige un tono (grave y contenido, incrédulo, presionando, firme) y se lo pasa a la voz de Gemini.
+- El juez de contenido también limita Manejo de la presión y Responsabilidad por frases de desprecio a los afectados.
+- La prueba `tu-link/api/probar_entrevistador` incluye el caso «declaración grave» y marca si el periodista siguió como si nada.
+- Hay que subir **app.py y public/index.html** juntos.
+
+### v50 — Transcripción en el servidor con Whisper (Groq)
+- **🎤 Hablar** ahora **graba** la respuesta en el navegador y, al detener, la manda a `POST /api/transcribir`, que la convierte en texto con **Whisper Large V3 Turbo en Groq** (la misma `GROQ_API_KEY`; plan gratis ≈ 2.000 transcripciones y 8 h de audio al día; pagado US$ 0,04 por hora). El texto llega en ~1 s y queda **editable** antes de enviar. El audio no se guarda en ningún lado.
+- **Funciona en cualquier navegador moderno** (antes solo Chrome/Edge) y el audio ya no va al servicio de voz de Google o Microsoft.
+- **Respaldo:** si Groq falla se usa **Gemini** (misma `GEMINI_API_KEY`). Si el servidor no tiene ninguna de las dos claves, la página vuelve sola al reconocimiento del navegador (y lo avisa). Variables: `MODELOS_TRANSCRIPCION` (por defecto `whisper-large-v3-turbo,whisper-large-v3`) y `PROVEEDORES_TRANSCRIPCION` (por defecto `groq,gemini`).
+- **Muletillas:** Whisper tiende a borrarlas; se le da un contexto que pide transcribir literal («eh», «este», «o sea»…) y el vocabulario del escenario (tolueno, Villa Los Aromos…), para que la detección de muletillas siga funcionando. Se filtran las frases que Whisper inventa con silencio («Subtítulos realizados por…», «Gracias por ver…»).
+- Mientras transcribe: «⏳ Transcribiendo…» y Responder bloqueado. **Responder mientras grabas** transcribe y envía. Si falla: aviso con **Reintentar** (sin volver a hablar) o escribir. Límite de 3 minutos por respuesta. Reiniciar descarta lo que estaba en curso.
+- La **velocidad de habla de la calibración** también se mide con esta transcripción.
+- 🩺 Diagnóstico: fila «Transcripción de voz». Texto de consentimiento actualizado.
+- **Groq retiró `llama-3.3-70b-versatile` del plan gratis (16-ago-2026):** los modelos por defecto de Groq pasan a `openai/gpt-oss-120b,openai/gpt-oss-20b` (jueces y entrevistador). Un modelo retirado (400 «decommissioned») ahora salta al siguiente.
+- `requirements.txt` **no cambia**. Hay que subir **app.py y public/index.html** juntos.
+
 ### v49 — Nota más justa, cámara más precisa y calibración con voz
 - **Nota más justa** (todo por código, auditable):
   - **Tope por evasión:** si el 60 % o más de las respuestas esquiva sin dar ningún dato («no sé», «no tengo idea», «no me interesa», «de qué hablas»…), Transparencia ≤ 1 y Claridad ≤ 1,5 (con 40 %, Transparencia ≤ 2). Una respuesta con un dato concreto («no sé la cifra exacta, pero son 8.000 litros») no cuenta como evasiva.
