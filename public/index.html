@@ -71,11 +71,16 @@
   body.analizando #pantalla-analizando { display: block; }
   body.analizando #panel-resultados > :not(#pantalla-analizando) { display: none !important; }
   .analizando-icono {
+    position: relative;
     height: 60px; width: 60px; border-radius: 50%; margin: 0 auto 18px; display: flex; align-items: center; justify-content: center;
     background: repeating-linear-gradient(135deg, #eef1f4, #eef1f4 7px, #e3e7eb 7px, #e3e7eb 14px);
     border: 1px dashed #c4ccd4; color: var(--muted); font-size: 12px;
   }
-  @media (prefers-reduced-motion: no-preference) { .analizando-icono span { display: inline-block; animation: girarReloj 2.4s linear infinite; } }
+  .anillo-carga { position: absolute; inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px); transform: rotate(-90deg); pointer-events: none; }
+  .anillo-carga circle { fill: none; stroke-width: 3.5; }
+  .anillo-fondo { stroke: transparent; }
+  .anillo-progreso { stroke: var(--accent2, #DB6427); stroke-linecap: round; stroke-dasharray: 194.8; stroke-dashoffset: 194.8; transition: stroke-dashoffset 0.35s ease; }
+  @media (prefers-reduced-motion: no-preference) { .analizando-icono > span { display: inline-block; animation: girarReloj 2.4s linear infinite; } }
   @keyframes girarReloj { to { transform: rotate(360deg); } }
   .analizando-titulo { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
   .analizando-sub { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
@@ -568,6 +573,34 @@
   .row { display: flex; gap: 14px; } .col { flex: 1; min-width: 0; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  /* v54: temas configurables */
+  .filtros-temas { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .pills-filtro { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pills-filtro button { border: 1px solid var(--line2); border-radius: 999px; padding: 5px 13px; font-size: 12px; background: var(--panel); color: var(--ink); cursor: pointer; margin: 0; }
+  .pills-filtro button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  #buscar-tema { width: 220px; max-width: 100%; margin: 0; padding: 7px 10px; font-size: 13px; }
+  .tarjeta-tema { display: flex; flex-direction: column; }
+  .tarjeta-tema.elegido { outline: 2px solid var(--accent2); outline-offset: -2px; }
+  .tarjeta-tema .ph { height: 80px; margin-bottom: 10px; font-size: 13px; gap: 6px; }
+  .tarjeta-tema .ph .ico { font-size: 22px; }
+  .tarjeta-tema h4 { margin: 0 0 4px; font-size: 14px; }
+  .tarjeta-tema .legend { margin: 0 0 8px; flex: 1; }
+  .tarjeta-tema .meta { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tarjeta-tema .pie { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .briefing { border: 1px solid var(--line); border-radius: 8px; padding: 10px 13px; margin: 0 0 12px; background: var(--panel); }
+  .briefing summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13.5px; }
+  .brief-contexto { font-size: 13px; line-height: 1.45; margin: 10px 0 8px; }
+  .brief-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .brief-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .brief-col { border-radius: 7px; padding: 8px 10px; border: 1px solid var(--line); }
+  .brief-col ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.45; }
+  .brief-col.ok { border-left: 3px solid #2f9c83; }
+  .brief-col.no { border-left: 3px solid #d0533f; }
+  .disciplina { margin: 10px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .disciplina ul { list-style: none; padding: 0; margin: 6px 0 0; font-size: 12.5px; line-height: 1.4; }
+  .disciplina li { margin-bottom: 6px; }
+  .disciplina li .cita { display: block; color: var(--muted); font-style: italic; }
+  @media (max-width: 700px) { .brief-cols, .disciplina { grid-template-columns: 1fr; } }
   .ph { background: repeating-linear-gradient(135deg, var(--ph1), var(--ph1) 7px, var(--ph2) 7px, var(--ph2) 14px); border: 1px dashed var(--line2); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; text-align: center; }
   .pill { display: inline-block; border: 1px solid var(--line2); border-radius: 999px; padding: 3px 11px; font-size: 11px; color: var(--ink); background: var(--panel); }
   .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line2); background: var(--panel); border-radius: 6px; padding: 7px 14px; font-size: 12px; color: var(--ink); cursor: pointer; }
@@ -743,7 +776,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v53</span> · Beta</p>
+      <p><span class="version" id="version-app">v54</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -775,10 +808,10 @@
           <div class="label">Escenario para ti</div>
           <div class="legend" style="margin:-2px 0 12px;">Al practicar pasas al consentimiento y la comprobación técnica, y luego a la sesión.</div>
           <div class="scard">
-            <h4>Derrame químico en tres comunidades</h4>
-            <p class="ctx">Eres el vocero de una empresa tras un derrame que afectó el agua de tres comunidades. Un periodista exigente te entrevista: 8 preguntas.</p>
-            <div class="meta"><span class="tagm">≈ 8 min</span><span class="tagm">Difícil</span><span class="tagm">Crisis ambiental</span></div>
-            <div><button type="button" class="btn pri" data-ir="practica">Practicar</button></div>
+            <h4 id="inicio-tema-titulo">Derrame químico en tres comunidades</h4>
+            <p class="ctx" id="inicio-tema-resumen">Eres el vocero tras un derrame que afectó el agua de tres comunidades. Entrevista de 8 preguntas.</p>
+            <div class="meta" id="inicio-tema-meta"><span class="tagm">≈ 8 min</span><span class="tagm">Difícil</span><span class="tagm">Sanitaria</span></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn pri" data-ir="practica">Practicar</button><button type="button" class="btn" data-ir="escenarios">Cambiar escenario</button></div>
           </div>
         </div>
         <div class="card" style="width:300px;max-width:100%;">
@@ -793,34 +826,13 @@
 
     <!-- ===== Elegir escenario ===== -->
     <section id="vista-escenarios" class="vista">
-      <div class="grid3">
-        <div class="card">
-          <div class="ph" style="height:80px;margin-bottom:10px;">⚗️ Derrame químico</div>
-          <h4 style="margin:0 0 4px;font-size:14px;">Derrame químico en tres comunidades</h4>
-          <p class="legend" style="margin:0 0 10px;">Crisis ambiental · 8 preguntas.</p>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span class="pill">Dirección</span>
-            <button type="button" class="btn pri" data-ir="practica">Empezar</button>
-          </div>
-        </div>
-        <div class="card" style="opacity:.55;">
-          <div class="ph" style="height:80px;margin-bottom:10px;">📦 Retiro de producto</div>
-          <h4 style="margin:0 0 4px;font-size:14px;">Retiro de producto</h4>
-          <p class="legend" style="margin:0 0 10px;">Próximamente.</p>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span class="pill">Dirección</span><span class="btn disabled">Empezar</span>
-          </div>
-        </div>
-        <div class="card" style="opacity:.55;">
-          <div class="ph" style="height:80px;margin-bottom:10px;">🔒 Incidente de seguridad</div>
-          <h4 style="margin:0 0 4px;font-size:14px;">Incidente de seguridad</h4>
-          <p class="legend" style="margin:0 0 10px;">Próximamente.</p>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span class="pill">Planta</span><span class="btn disabled">Empezar</span>
-          </div>
-        </div>
+      <div class="filtros-temas">
+        <div class="pills-filtro" id="filtro-categorias" role="tablist" aria-label="Filtrar por categoría"></div>
+        <input type="search" id="buscar-tema" placeholder="Buscar escenario…" aria-label="Buscar escenario" />
       </div>
-      <div class="note"><b>Nota:</b> por ahora hay un solo escenario real. El catálogo de temas lo va a configurar el administrador del cliente.</div>
+      <div class="grid3" id="grilla-temas"></div>
+      <p class="legend" id="temas-vacio" style="display:none;">Ningún escenario coincide con la búsqueda.</p>
+      <div class="note"><b>Nota:</b> cada tema trae su contexto, óptica institucional, público, mensajes clave y líneas rojas. Los mensajes clave y las líneas rojas alimentan la nota de <b>Coherencia</b> («Disciplina de mensaje»). Más adelante los configurará el administrador del cliente; hoy vienen de ejemplo y son ficticios.</div>
     </section>
 
     <!-- ===== Mi progreso ===== -->
@@ -972,6 +984,15 @@
           <button type="button" class="btn ghost" id="boton-voz-entrevistador" title="Activa o desactiva que el entrevistador lea las preguntas en voz alta">🔊 Voz del entrevistador: activada</button>
           <span class="legend" id="voz-entrevistador-info">Usa audífonos: así el micrófono no capta la voz del entrevistador.</span>
         </div>
+        <details class="briefing" id="briefing-tema" open>
+          <summary><span class="label" style="margin:0;">Tu escenario</span> <b id="brief-titulo">–</b> <span class="legend" id="brief-cambiar-wrap">· <a href="#" id="brief-cambiar">cambiar</a></span></summary>
+          <p class="brief-contexto" id="brief-contexto"></p>
+          <div class="brief-meta" id="brief-meta"></div>
+          <div class="brief-cols">
+            <div class="brief-col ok"><div class="label">Mensajes clave (sostener)</div><ul id="brief-mensajes"></ul></div>
+            <div class="brief-col no"><div class="label">Líneas rojas (nunca decir)</div><ul id="brief-lineas"></ul></div>
+          </div>
+        </details>
         <div id="pregunta-actual">Presiona "Comenzar entrevista" para empezar.</div>
         <div id="barra-carga" class="barra-carga"></div>
         <textarea id="campo-respuesta" placeholder="Escribe aquí tu respuesta, o usa el micrófono..."></textarea>
@@ -993,7 +1014,14 @@
   <section id="panel-resultados">
     <!-- v53: pantalla de transición mientras corren los análisis (maqueta u5) -->
     <div class="card" id="pantalla-analizando">
-      <div class="analizando-icono"><span>◷</span></div>
+      <div class="analizando-icono">
+        <!-- v54: barra de carga circular en el borde del círculo -->
+        <svg class="anillo-carga" viewBox="0 0 68 68" aria-hidden="true">
+          <circle class="anillo-fondo" cx="34" cy="34" r="31"></circle>
+          <circle class="anillo-progreso" id="anillo-progreso" cx="34" cy="34" r="31"></circle>
+        </svg>
+        <span>◷</span>
+      </div>
       <div class="analizando-titulo">Estamos preparando tu informe</div>
       <div class="analizando-sub">Suele tardar unos segundos.</div>
       <div class="analizando-lista">
@@ -1077,14 +1105,14 @@
       <div class="modal-bloque">
         <h3>Tu rol</h3>
         <div class="modal-situacion">
-          <p>Eres el <b>vocero de una empresa</b> tras un <b>derrame químico</b> que afectó el agua de tres comunidades. Un <b>periodista IA</b> te hará <b><span id="beta-num-preguntas">5</span> preguntas</b> y repreguntará si evades. Puedes hablar o escribir.</p>
+          <p>Eres el <b>vocero de una empresa</b> en una crisis: <b id="beta-tema">derrame químico en tres comunidades</b> (puedes elegir otro escenario). Un <b>periodista IA</b> te hará <b><span id="beta-num-preguntas">5</span> preguntas</b> y repreguntará si evades. Puedes hablar o escribir.</p>
         </div>
       </div>
 
       <div class="modal-bloque">
         <h3>Qué se evalúa</h3>
         <div class="modal-evalua">
-          <div><b>Contenido</b>Claridad, transparencia y manejo de la presión.</div>
+          <div><b>Contenido</b>Claridad, transparencia, manejo de la presión y disciplina de mensaje.</div>
           <div><b>Voz</b>Tono, ritmo, pausas y volumen (si hablas).</div>
           <div><b>Expresión</b>Serenidad y presencia ante la cámara.</div>
         </div>
@@ -1862,11 +1890,125 @@
   // Pide la siguiente pregunta. Si falla por algo pasajero (límite, red, error temporal) reintenta
   // una vez sola; si sigue fallando, muestra el motivo real y un botón para reintentar SIN perder
   // la entrevista (tu respuesta ya quedó guardada en la conversación).
+  // v54: paciencia con la IA. Los errores pasajeros (lentitud, límite, caída momentánea) se reintentan solos.
+  // ================================================================
+  // v54: TEMAS CONFIGURABLES. El catálogo viene de /api/temas (lo que en el producto final configura el
+  // administrador del cliente). Si el servidor no responde, se usa esta copia de respaldo (la misma).
+  // ================================================================
+  const TEMAS_RESPALDO = [{"id": "derrame", "titulo": "Derrame químico en tres comunidades", "icono": "⚗️", "categoria": "Sanitaria", "publico": "Dirección", "nivel": "Difícil", "duracion": "≈ 8 min", "resumen": "Eres el vocero tras un derrame que afectó el agua de tres comunidades. Entrevista de 8 preguntas.", "contexto": "Industria química. Hace dos días hubo un derrame en la planta de tu empresa que contaminó el agua potable de tres comunidades (Villa Los Aromos, Las Canteras y El Esfuerzo). Hay familias sin agua de la llave, vecinos molestos y la autoridad sanitaria investiga. Eres el vocero de la empresa en una entrevista en vivo.", "optica": "Empática", "optica_detalle": "Cercana y humana: primero las personas afectadas, luego los datos técnicos.", "mensajes_clave": ["La prioridad es la salud de las familias y que vuelvan a tener agua segura.", "La empresa asume su responsabilidad y cubrirá los costos de los afectados.", "Informaremos con datos verificados y en plazos concretos.", "Trabajamos junto a la autoridad sanitaria."], "lineas_rojas": ["Especular sobre la causa antes del informe técnico.", "Minimizar el daño o culpar a los vecinos.", "Dar cifras o plazos que no estén confirmados.", "Negar hechos documentados (por ejemplo, alertas internas previas)."]}, {"id": "retiro", "titulo": "Retiro de producto", "icono": "📦", "categoria": "Reputacional", "publico": "Dirección", "nivel": "Intermedio", "duracion": "≈ 6 min", "resumen": "Eres el vocero ante la prensa tras detectar un defecto en un producto. Entrevista de 8 preguntas.", "contexto": "Electrodomésticos. Tu empresa anunció hoy el retiro del hervidor eléctrico HX-200 porque el termostato puede fallar y sobrecalentarlo. Hay reportes de clientes con quemaduras leves y la prensa pregunta por qué no se avisó antes. Eres el vocero de la empresa en una entrevista en vivo.", "optica": "Formal", "optica_detalle": "Sobria e institucional: hechos, instrucciones claras y compromisos verificables.", "mensajes_clave": ["Por seguridad, quienes tengan el HX-200 deben dejar de usarlo hoy mismo.", "La devolución es total o con cambio, en cualquier tienda y sin boleta.", "Hay un canal de atención 24/7 para resolver dudas y casos.", "Habrá una investigación con un informe público."], "lineas_rojas": ["Minimizar el riesgo («es muy poco probable», «es un caso aislado»).", "Culpar a los clientes por mal uso.", "Culpar al proveedor o especular sobre la causa antes de la investigación.", "Dar cifras de incidentes que no estén confirmadas."]}, {"id": "datos", "titulo": "Incidente de seguridad", "icono": "🔒", "categoria": "Operativa", "publico": "Planta", "nivel": "Difícil", "duracion": "≈ 5 min", "resumen": "Filtración de datos de clientes. Debes informar sin alarmar. Entrevista de 8 preguntas.", "contexto": "Servicios. Tu empresa confirmó que un ataque informático expuso datos personales de clientes (nombre, RUT, correo y teléfono). La empresa dice que no se filtraron claves ni datos de tarjetas. Hay clientes recibiendo llamadas sospechosas. Eres el vocero de la empresa en una entrevista en vivo.", "optica": "Técnica", "optica_detalle": "Precisa y calmada: qué pasó, qué datos sí y cuáles no, y qué debe hacer cada cliente.", "mensajes_clave": ["Qué datos se expusieron y cuáles no (claves y tarjetas no).", "Qué deben hacer los clientes: no entregar claves por teléfono y desconfiar de llamadas o correos sospechosos.", "El incidente está contenido y trabajamos con peritos externos.", "Hay un canal de ayuda y se avisará a cada cliente afectado."], "lineas_rojas": ["Afirmar que «no hay ningún riesgo».", "Culpar al proveedor de tecnología.", "Dar detalles técnicos de la vulnerabilidad.", "Especular sobre quiénes son los atacantes."]}];
+  const CLAVE_ESCENARIO = "voxready_escenario"; // ("voxready_tema" ya es el tema claro/oscuro)
+  let temasDisponibles = TEMAS_RESPALDO.slice();
+  let temaElegido = (() => { try { return localStorage.getItem(CLAVE_ESCENARIO) || "derrame"; } catch (e) { return "derrame"; } })();
+  let temaEntrevista = null; // el tema con que empezó la entrevista en curso (no cambia a mitad)
+  let filtroCategoria = "Todos";
+  function temaPorId(id) { return temasDisponibles.find((t) => t.id === id) || temasDisponibles[0]; }
+  function temaActual() { return temaPorId(temaEntrevista || temaElegido); }
+  function elegirTema(id) {
+    if (!temasDisponibles.some((t) => t.id === id)) return;
+    temaElegido = id;
+    try { localStorage.setItem(CLAVE_ESCENARIO, id); } catch (e) { /* nada */ }
+    pintarTemas();
+  }
+  function _el(tag, clase, texto) { const e = document.createElement(tag); if (clase) e.className = clase; if (texto != null) e.textContent = texto; return e; }
+  function pintarTemas() {
+    const elegido = temaPorId(temaElegido);
+    // Filtros por categoría
+    const cats = ["Todos", ...new Set(temasDisponibles.map((t) => t.categoria))];
+    const fc = document.getElementById("filtro-categorias");
+    fc.textContent = "";
+    cats.forEach((c) => {
+      const b = _el("button", c === filtroCategoria ? "on" : "", c);
+      b.type = "button"; b.setAttribute("role", "tab"); b.setAttribute("aria-selected", c === filtroCategoria);
+      b.addEventListener("click", () => { filtroCategoria = c; pintarTemas(); });
+      fc.appendChild(b);
+    });
+    // Tarjetas
+    const q = (document.getElementById("buscar-tema").value || "").trim().toLowerCase();
+    const grilla = document.getElementById("grilla-temas");
+    grilla.textContent = "";
+    const visibles = temasDisponibles.filter((t) => (filtroCategoria === "Todos" || t.categoria === filtroCategoria) &&
+      (!q || (t.titulo + " " + t.resumen + " " + t.categoria + " " + t.publico).toLowerCase().includes(q)));
+    visibles.forEach((t) => {
+      const card = _el("div", "card tarjeta-tema" + (t.id === elegido.id ? " elegido" : ""));
+      card.dataset.tema = t.id;
+      const ph = _el("div", "ph"); ph.appendChild(_el("span", "ico", t.icono)); ph.appendChild(_el("span", "", t.categoria));
+      card.appendChild(ph);
+      card.appendChild(_el("h4", "", t.titulo));
+      card.appendChild(_el("p", "legend", t.resumen));
+      const meta = _el("div", "meta");
+      [t.duracion, t.nivel, "Óptica " + t.optica.toLowerCase()].forEach((x) => meta.appendChild(_el("span", "tagm", x)));
+      card.appendChild(meta);
+      const pie = _el("div", "pie");
+      pie.appendChild(_el("span", "pill", t.publico));
+      const b = _el("button", "btn pri", t.id === elegido.id ? "Practicar" : "Empezar");
+      b.type = "button";
+      b.addEventListener("click", () => { elegirTema(t.id); irVista("practica"); });
+      pie.appendChild(b);
+      card.appendChild(pie);
+      grilla.appendChild(card);
+    });
+    document.getElementById("temas-vacio").style.display = visibles.length ? "none" : "block";
+    // Inicio: «Escenario para ti»
+    document.getElementById("inicio-tema-titulo").textContent = elegido.titulo;
+    document.getElementById("inicio-tema-resumen").textContent = elegido.resumen;
+    const im = document.getElementById("inicio-tema-meta"); im.textContent = "";
+    [elegido.duracion, elegido.nivel, elegido.categoria].forEach((x) => im.appendChild(_el("span", "tagm", x)));
+    document.getElementById("beta-tema").textContent = elegido.titulo.charAt(0).toLowerCase() + elegido.titulo.slice(1);
+    pintarBriefing();
+  }
+  function pintarBriefing() {
+    const t = temaActual();
+    document.getElementById("brief-titulo").textContent = t.titulo;
+    document.getElementById("brief-contexto").textContent = t.contexto;
+    const m = document.getElementById("brief-meta"); m.textContent = "";
+    [["Óptica institucional", t.optica + " — " + t.optica_detalle], ["Público", t.publico], ["Nivel", t.nivel + " · " + t.duracion]]
+      .forEach(([k, v]) => { const sp = _el("span", "tagm"); sp.appendChild(_el("b", "", k + ": ")); sp.appendChild(document.createTextNode(v)); m.appendChild(sp); });
+    const lm = document.getElementById("brief-mensajes"), ll = document.getElementById("brief-lineas");
+    lm.textContent = ""; ll.textContent = "";
+    t.mensajes_clave.forEach((x) => lm.appendChild(_el("li", "", x)));
+    t.lineas_rojas.forEach((x) => ll.appendChild(_el("li", "", x)));
+    document.getElementById("brief-cambiar-wrap").style.display = temaEntrevista ? "none" : "";
+  }
+  document.getElementById("buscar-tema").addEventListener("input", pintarTemas);
+  document.getElementById("brief-cambiar").addEventListener("click", (e) => { e.preventDefault(); irVista("escenarios"); });
+  async function cargarTemas() {
+    try {
+      const r = await fetch(`${URL_BACKEND}/temas`);
+      if (!r.ok) throw new Error("status " + r.status);
+      const d = await r.json();
+      if (Array.isArray(d.temas) && d.temas.length && d.temas.every((t) => t.id && t.titulo && Array.isArray(t.mensajes_clave) && Array.isArray(t.lineas_rojas))) {
+        temasDisponibles = d.temas;
+        if (!temasDisponibles.some((t) => t.id === temaElegido)) temaElegido = d.por_defecto || temasDisponibles[0].id;
+      }
+    } catch (e) { /* sin servidor: se queda con la copia de respaldo */ }
+    pintarTemas();
+  }
+
+  const REINTENTOS_IA = 5;
+  const ESPERA_REINTENTO_MS = [2000, 4000, 7000, 10000];
+  const ES_PASAJERO = (status) => [408, 425, 429, 500, 502, 503, 504].includes(status);
+  // fetch que espera: reintenta solo si el servidor se demoró o falló de forma pasajera (no si la petición es inválida)
+  async function fetchPaciente(url, opciones, alReintentar) {
+    let ultimo = null;
+    for (let i = 1; i <= REINTENTOS_IA; i++) {
+      try {
+        const r = await fetch(url, opciones);
+        if (!ES_PASAJERO(r.status) || i === REINTENTOS_IA) return r;
+        ultimo = r;
+      } catch (e) {
+        if (i === REINTENTOS_IA) throw e;
+      }
+      if (alReintentar) alReintentar(i + 1);
+      await esperar(ESPERA_REINTENTO_MS[Math.min(i - 1, ESPERA_REINTENTO_MS.length - 1)]);
+    }
+    return ultimo;
+  }
+
   async function pedirPreguntaAlBackend(intento = 1) {
     quitarBotonReintentoPregunta();
     preguntaActual.textContent = intento === 1
       ? "El entrevistador está preparando la siguiente pregunta..."
-      : "Hubo un problema pasajero, reintentando...";
+      : "La IA está tardando más de lo normal. Seguimos esperando tu pregunta…"; // v54: no es un error, solo se demora
     botonResponder.disabled = true; // evita mandar dos respuestas mientras la IA piensa
     const carga = iniciarCarga(barraCarga, "pregunta", FASES_PREGUNTA, 6);
     const sid = idSesion;
@@ -1878,7 +2020,7 @@
       const respuesta = await fetch(`${URL_BACKEND}/entrevistar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ historial, estado: estadoPeriodista }), // v51: el servidor no guarda nada: el estado viaja con la conversación
+        body: JSON.stringify({ historial, estado: estadoPeriodista, tema: temaActual().id }), // v51 (+ v54: tema): el servidor no guarda nada: el estado viaja con la conversación
       });
       let datos = {};
       try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON (por ejemplo, una página de error) */ }
@@ -1910,8 +2052,10 @@
     iaPensando = false;
     carga.terminar(false);
     if (sid !== idSesion) return false;
-    if (pasajero && intento < 2) {
-      await esperar(3000);
+    // v54: si la IA se demora o falla de forma pasajera, se sigue esperando y se reintenta sola (hasta 5 veces)
+    if (pasajero && intento < REINTENTOS_IA) {
+      await esperar(ESPERA_REINTENTO_MS[Math.min(intento - 1, ESPERA_REINTENTO_MS.length - 1)]);
+      if (sid !== idSesion) return false;
       return pedirPreguntaAlBackend(intento + 1);
     }
 
@@ -2156,8 +2300,8 @@
       const r = await fetchConTiempo(`${URL_BACKEND}/entrevistar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ historial, estado: estadoPeriodista, cierre: true }),
-      }, 20000);
+        body: JSON.stringify({ historial, estado: estadoPeriodista, cierre: true, tema: temaActual().id }),
+      }, 140000); // v54: se espera lo que tarde la IA (Vercel corta a los 150 s)
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.pregunta) {
         texto = String(d.pregunta).trim();
@@ -2205,6 +2349,9 @@
     estadoPeriodista = null; tonoPregunta = ""; // v51
     numPregunta = 0;
     entrevistaActiva = true;
+    temaEntrevista = temaElegido; // v54: el tema queda fijo hasta terminar o reiniciar
+    pintarBriefing();
+    document.getElementById("briefing-tema").open = false;
 
     iniciarAnalisisVoz();    // mide tu voz EN EL NAVEGADOR (no se sube ningún audio)
     iniciarGrabacionCara();  // registra la expresión facial durante la entrevista
@@ -2360,9 +2507,9 @@
     avisar("");
     try {
       if (!blob || blob.size < 1500) { avisar("No alcancé a grabar tu voz. Vuelve a presionar 🎤 Hablar o escribe tu respuesta."); return; }
-      const r = await fetchConTiempo(`${URL_BACKEND}/transcribir`, {
+      const r = await fetchConTiempo(`${URL_BACKEND}/transcribir?tema=${encodeURIComponent(temaActual().id)}`, {
         method: "POST", headers: { "Content-Type": blob.type || "audio/webm" }, body: blob,
-      }, 30000);
+      }, 90000); // v54
       const d = await r.json().catch(() => ({}));
       if (sid !== idSesion || mio !== idGrabacion) return; // se reinició mientras tanto
       if (!r.ok) {
@@ -2702,6 +2849,27 @@
       destino.appendChild(tp);
     }
 
+    if (d.disciplina && Array.isArray(d.disciplina.mensajes)) { // v54: mensajes clave y líneas rojas (verificados por código)
+      const caja = _el("div", "disciplina");
+      const col = (titulo, lista, bien) => {
+        const c = _el("div", "brief-col " + (bien ? "ok" : "no"));
+        c.appendChild(_el("div", "label", titulo));
+        const ul = _el("ul");
+        lista.forEach((x) => {
+          const marcado = bien ? x.cubierto : x.cruzada;
+          const li = _el("li", "", (bien ? (marcado ? "✓ " : "○ ") : (marcado ? "✕ " : "✓ ")) + x.texto);
+          if (x.cita) li.appendChild(_el("span", "cita", "«" + x.cita + "»"));
+          ul.appendChild(li);
+        });
+        c.appendChild(ul);
+        return c;
+      };
+      const nm = d.disciplina.mensajes.filter((x) => x.cubierto).length, nl = (d.disciplina.lineas_rojas || []).filter((x) => x.cruzada).length;
+      caja.appendChild(col(`Mensajes clave instalados: ${nm} de ${d.disciplina.mensajes.length}`, d.disciplina.mensajes, true));
+      caja.appendChild(col(nl ? `Líneas rojas cruzadas: ${nl}` : "Líneas rojas: ninguna cruzada", d.disciplina.lineas_rojas || [], false));
+      destino.appendChild(caja);
+    }
+
     (d.areas || []).forEach((a) => {
       const div = document.createElement("div");
       div.className = "area";
@@ -2938,7 +3106,7 @@
     const carga = iniciarCarga(barra, "informe_final", ["Reuniendo tus 3 evaluaciones", "El coach está cruzando contenido, voz e imagen", "Redactando tu informe final"], 20);
     let ok = false;
     try {
-      const respuesta = await fetch(`${URL_BACKEND}/informe_final`, {
+      const respuesta = await fetchPaciente(`${URL_BACKEND}/informe_final`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2997,11 +3165,11 @@
     const carga = iniciarCarga(seccion.barra, tarea.clave, tarea.fases, tarea.esperado);
     let ok = false;
     try {
-      const respuesta = await fetch(`${URL_BACKEND}${tarea.url}`, {
+      const respuesta = await fetchPaciente(`${URL_BACKEND}${tarea.url}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tarea.cuerpo),
-      });
+      }); // v54: si la IA se demora, se espera y reintenta sola
       let datos = {};
       try { datos = await respuesta.json(); } catch (e) { /* respuesta sin JSON */ }
       if (sid !== idSesion) return; // se reinició mientras tanto
@@ -3047,7 +3215,7 @@
     const tareas = [
       {
         titulo: "Contenido de tus respuestas", corto: "Contenido", url: "/evaluar", clavePuntaje: "puntaje_global",
-        fuente: "contenido", clave: "eval_contenido", esperado: 20, cuerpo: { conversacion: historial.slice(1) }, // se omite el "Estoy listo para empezar"
+        fuente: "contenido", clave: "eval_contenido", esperado: 20, cuerpo: { conversacion: historial.slice(1), tema: temaActual().id }, // se omite el "Estoy listo para empezar"
         fases: ["Enviando tu entrevista", "Analizando lo que respondiste", "Redactando el informe"],
       },
     ];
@@ -3081,9 +3249,29 @@
       contenedorInformes.appendChild(aviso);
     }
     // v53: pantalla "Estamos preparando tu informe" con el estado de cada análisis (· en espera, … en curso, ✓ listo)
+    // v54: anillo de carga = etapas terminadas + avance estimado de las que están en curso (según lo que suelen tardar)
+    const ESPERADO_FASE = { contenido: 20, voz: 15, cara: 15, final: 20 };
+    const progresoFase = {};
+    const anillo = document.getElementById("anillo-progreso");
+    const pintarAnillo = () => {
+      const ahora = performance.now();
+      const total = ["contenido", "voz", "cara", "final"].reduce((suma, f) => {
+        const e = progresoFase[f];
+        if (!e) return suma;
+        if (e.fin) return suma + 1;
+        const t = (ahora - e.inicio) / 1000;
+        return suma + 0.9 * (1 - Math.exp(-t / ESPERADO_FASE[f]));
+      }, 0) / 4;
+      anillo.style.strokeDashoffset = String(194.8 * (1 - Math.min(1, total)));
+    };
+    anillo.style.transition = "none"; anillo.style.strokeDashoffset = "194.8"; void anillo.offsetWidth; anillo.style.transition = "";
+    const relojAnillo = setInterval(pintarAnillo, 200);
     const faseEstado = (fase, simbolo, clase) => {
       const el = document.querySelector(`#pantalla-analizando [data-fase="${fase}"] .analizando-estado`);
       if (el) { el.textContent = simbolo; el.className = "analizando-estado" + (clase ? " " + clase : ""); }
+      if (simbolo === "…") progresoFase[fase] = { inicio: performance.now() };
+      else if (simbolo !== "·") progresoFase[fase] = { inicio: 0, fin: true };
+      pintarAnillo();
     };
     ["contenido", "voz", "cara", "final"].forEach((f) => faseEstado(f, "·", ""));
     if (!tareas.some((t) => t.fuente === "voz")) faseEstado("voz", "sin datos", "");
@@ -3096,12 +3284,14 @@
         if (sid === idSesion) faseEstado(t.fuente, informesCrudos[t.fuente] ? "✓" : "✕", informesCrudos[t.fuente] ? "ok" : "mal");
       });
     }));
-    if (sid !== idSesion) { document.body.classList.remove("analizando"); return; }
+    if (sid !== idSesion) { clearInterval(relojAnillo); document.body.classList.remove("analizando"); return; }
     faseEstado("final", "…", "");
     await generarInformeFinal();
-    if (sid !== idSesion) { document.body.classList.remove("analizando"); return; }
+    if (sid !== idSesion) { clearInterval(relojAnillo); document.body.classList.remove("analizando"); return; }
     faseEstado("final", informeFinalDatos ? "✓" : "✕", informeFinalDatos ? "ok" : "mal");
-    await esperar(600); // que se alcance a ver el último ✓
+    pintarAnillo();
+    await esperar(600); // que se alcance a ver el último ✓ y el anillo completo
+    clearInterval(relojAnillo);
     document.body.classList.remove("analizando");
     iaEvaluando = false;
     document.getElementById("boton-pdf").style.display = "inline-block";
@@ -3154,6 +3344,7 @@
       fecha: ahora,
       expira: ahora + DIAS_GUARDADO * MS_DIA,
       version: VERSION_APP,
+      tema: temaActual().id, tema_titulo: temaActual().titulo, // v54
       transcripcion: historial.slice(1),
       informes: informesCrudos,
       final: informeFinalDatos,
@@ -4686,6 +4877,7 @@
     entrevistaMostrada = null;
     ESTADO_FINAL.generando = false;
     entrevistaActiva = false;
+    temaEntrevista = null; pintarBriefing(); document.getElementById("briefing-tema").open = true; // v54
     iaPensando = false;
     iaEvaluando = false;
 
@@ -4720,7 +4912,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "53";
+  const VERSION_APP = "54";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -4743,6 +4935,7 @@
   const modalBeta = document.getElementById("modal-beta");
   const botonEntendido = document.getElementById("boton-entendido");
   document.getElementById("beta-num-preguntas").textContent = MAX_PREGUNTAS; // siempre coincide con la entrevista real
+  pintarTemas(); cargarTemas(); // v54
 
   function abrirModalBeta() {
     modalBeta.style.display = "flex";

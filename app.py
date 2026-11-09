@@ -18,6 +18,7 @@ import io
 import json
 import os
 import re
+import unicodedata
 import socket
 import statistics
 import time
@@ -40,7 +41,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "53"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "54"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -94,7 +95,9 @@ _modelo_activo_gemini = None
 # El entrevistador necesita rapidez; los jueces, calidad. Si el primer modelo de la lista no existe (404), se usa el siguiente.
 MODELOS_ANTHROPIC_RAPIDO = _lista_env("MODELOS_ANTHROPIC_RAPIDO", "claude-haiku-4-5-20251001")
 MODELOS_ANTHROPIC_EVALUADOR = _lista_env("MODELOS_ANTHROPIC_EVALUADOR", "claude-sonnet-5-5,claude-haiku-4-5-20251001")
-TIEMPO_LIMITE = {"entrevistador": 15, "evaluador": 35, "prueba": 12}  # segundos POR proveedor
+# v54: más paciencia (antes 15 y 35 s): una IA lenta ya no se corta como error, solo se demora en responder.
+TIEMPO_LIMITE = {"entrevistador": 40, "evaluador": 80, "prueba": 12}  # segundos POR proveedor
+PRESUPUESTO_PETICION_S = 125  # Vercel corta a los 150 s: entre todos los intentos de una petición no se pasa de esto
 ENFRIAMIENTO_S = 60  # un proveedor que falló se salta durante este tiempo (si hay otro disponible)
 ENFRIAMIENTO_CLAVE_S = 600  # si falló por clave/permisos (401/402/403), no se reintenta durante 10 min
 _enfriar_hasta = {}
@@ -208,7 +211,7 @@ def traducir_error_ia(e):
     if codigo and codigo >= 500:
         return 502, f"El proveedor de IA tuvo un error temporal (código {codigo}). Reintenta en unos segundos."
     if "Timeout" in nombre:
-        return 504, "La IA tardó demasiado en responder. Reintenta en unos segundos."
+        return 504, "La IA está muy lenta en este momento."
     if "Connection" in nombre:
         return 502, "No se pudo conectar con el proveedor de IA: falla de red, o la clave quedó mal copiada en Vercel (con espacios o saltos de línea). Reintenta; si se repite, vuelve a pegar la clave."
     if isinstance(e, RuntimeError) and "vacía" in texto:
@@ -356,9 +359,13 @@ def generar_texto(mensajes, temperature, max_tokens, esfuerzo, rol="evaluador"):
         )
     ahora = time.time()
     candidatos = [p for p in todos if _enfriar_hasta.get(p, 0) <= ahora] or todos
-    timeout = TIEMPO_LIMITE.get(rol, 45)
+    inicio = time.time()
     fallos, ultimo = [], None
     for prov in candidatos:
+        restante = PRESUPUESTO_PETICION_S - (time.time() - inicio)
+        if restante < 8 and fallos:  # ya no alcanza para otro intento dentro del límite de Vercel
+            break
+        timeout = max(8, min(TIEMPO_LIMITE.get(rol, 45), restante))
         try:
             texto, modelo = _intentar_proveedor(prov, mensajes, temperature, max_tokens, esfuerzo, rol, timeout)
             _enfriar_hasta.pop(prov, None)
@@ -428,10 +435,12 @@ class PeticionEntrevista(BaseModel):
     historial: list[Mensaje] = Field(min_length=1, max_length=40)
     estado: Optional[dict] = None  # v51: estado del periodista (lo grave pendiente), lo guarda la página
     cierre: bool = False  # v52: después de la última respuesta, el periodista cierra la entrevista (sin preguntar)
+    tema: Optional[str] = Field(default=None, max_length=40)  # v54: id del tema configurado
 
 
 class PeticionConversacion(BaseModel):
     conversacion: list[Mensaje] = Field(min_length=1, max_length=40)
+    tema: Optional[str] = Field(default=None, max_length=40)  # v54
 
 
 class MetricasVoz(BaseModel):
@@ -515,16 +524,127 @@ PERIODISTA_NOMBRE = (os.getenv("PERIODISTA_NOMBRE") or "Andrés Molina").strip()
 PERIODISTA_MEDIO = (os.getenv("PERIODISTA_MEDIO") or "Panorama Regional").strip()
 TOTAL_PREGUNTAS = 8  # v53: 8 preguntas (como la maqueta). Debe coincidir con MAX_PREGUNTAS de public/index.html
 
-DOSSIER = """- El derrame fue en la madrugada de hace dos días, cerca de las 4:40, en el estanque número 3 de la planta.
-- Comunidades afectadas: Villa Los Aromos, Las Canteras y El Esfuerzo. Unas 2.300 familias sin agua de la llave; llega un solo camión aljibe al día y no alcanza.
-- La empresa avisó a la autoridad sanitaria casi nueve horas después del derrame.
-- La empresa no ha dicho públicamente qué sustancia fue. Tu fuente en el laboratorio municipal dice que es tolueno, un solvente industrial, y que la primera muestra salió seis veces sobre la norma.
-- FILTRACIÓN: tienes un correo interno de hace tres semanas en que el jefe de mantención advierte una fisura en la válvula del estanque 3 y pide detenerlo; la reparación se postergó por costos.
-- Caso humano: la señora Rosa Fuentes, 71 años, de Villa Los Aromos, terminó en urgencias con su nieto de 6 años por vómitos y dolor de estómago."""
+# --------------------------------------------- Temas configurables (v54) -----------------------------------
+# Lo que en el producto final configura el ADMINISTRADOR DEL CLIENTE (maqueta a2 «Editor de tema»): nombre, contexto,
+# óptica institucional, público interno, mensajes clave (sostener) y líneas rojas (nunca decir). El administrador NO
+# toca la rúbrica: los mensajes clave y las líneas rojas alimentan la evaluación de Coherencia.
+# El «dossier» es lo que sabe el periodista y el vocero no (no se envía a la página).
+# Mientras no haya base de datos, los temas viven aquí. Todo es FICTICIO.
+TEMAS = {
+    "derrame": {
+        "titulo": "Derrame químico en tres comunidades", "icono": "⚗️", "categoria": "Sanitaria",
+        "publico": "Dirección", "nivel": "Difícil", "duracion": "≈ 8 min",
+        "resumen": "Eres el vocero tras un derrame que afectó el agua de tres comunidades. Entrevista de 8 preguntas.",
+        "contexto": ("Industria química. Hace dos días hubo un derrame en la planta de tu empresa que contaminó el agua potable de "
+                     "tres comunidades (Villa Los Aromos, Las Canteras y El Esfuerzo). Hay familias sin agua de la llave, vecinos "
+                     "molestos y la autoridad sanitaria investiga. Eres el vocero de la empresa en una entrevista en vivo."),
+        "escena": "La empresa es responsable de un derrame químico en su planta que contaminó el agua potable de tres comunidades.",
+        "optica": "Empática", "optica_detalle": "Cercana y humana: primero las personas afectadas, luego los datos técnicos.",
+        "mensajes_clave": [
+            "La prioridad es la salud de las familias y que vuelvan a tener agua segura.",
+            "La empresa asume su responsabilidad y cubrirá los costos de los afectados.",
+            "Informaremos con datos verificados y en plazos concretos.",
+            "Trabajamos junto a la autoridad sanitaria.",
+        ],
+        "lineas_rojas": [
+            "Especular sobre la causa antes del informe técnico.",
+            "Minimizar el daño o culpar a los vecinos.",
+            "Dar cifras o plazos que no estén confirmados.",
+            "Negar hechos documentados (por ejemplo, alertas internas previas).",
+        ],
+        "afectados": "las familias de Villa Los Aromos", "consecuencia": "la gente sigue sin agua",
+        "vocabulario": "derrame químico, tolueno, estanque, camiones aljibe, Villa Los Aromos, Las Canteras, El Esfuerzo, autoridad sanitaria",
+        "dossier": [
+            "El derrame fue en la madrugada de hace dos días, cerca de las 4:40, en el estanque número 3 de la planta.",
+            "Comunidades afectadas: Villa Los Aromos, Las Canteras y El Esfuerzo. Unas 2.300 familias sin agua de la llave; llega un solo camión aljibe al día y no alcanza.",
+            "La empresa avisó a la autoridad sanitaria casi nueve horas después del derrame.",
+            "La empresa no ha dicho públicamente qué sustancia fue. Tu fuente en el laboratorio municipal dice que es tolueno, un solvente industrial, y que la primera muestra salió seis veces sobre la norma.",
+            "FILTRACIÓN: tienes un correo interno de hace tres semanas en que el jefe de mantención advierte una fisura en la válvula del estanque 3 y pide detenerlo; la reparación se postergó por costos.",
+            "Caso humano: la señora Rosa Fuentes, 71 años, de Villa Los Aromos, terminó en urgencias con su nieto de 6 años por vómitos y dolor de estómago.",
+        ],
+    },
+    "retiro": {
+        "titulo": "Retiro de producto", "icono": "📦", "categoria": "Reputacional",
+        "publico": "Dirección", "nivel": "Intermedio", "duracion": "≈ 6 min",
+        "resumen": "Eres el vocero ante la prensa tras detectar un defecto en un producto. Entrevista de 8 preguntas.",
+        "contexto": ("Electrodomésticos. Tu empresa anunció hoy el retiro del hervidor eléctrico HX-200 porque el termostato puede "
+                     "fallar y sobrecalentarlo. Hay reportes de clientes con quemaduras leves y la prensa pregunta por qué no se avisó "
+                     "antes. Eres el vocero de la empresa en una entrevista en vivo."),
+        "escena": "La empresa anunció hoy el retiro de su hervidor eléctrico HX-200 por una falla del termostato que puede sobrecalentarlo.",
+        "optica": "Formal", "optica_detalle": "Sobria e institucional: hechos, instrucciones claras y compromisos verificables.",
+        "mensajes_clave": [
+            "Por seguridad, quienes tengan el HX-200 deben dejar de usarlo hoy mismo.",
+            "La devolución es total o con cambio, en cualquier tienda y sin boleta.",
+            "Hay un canal de atención 24/7 para resolver dudas y casos.",
+            "Habrá una investigación con un informe público.",
+        ],
+        "lineas_rojas": [
+            "Minimizar el riesgo («es muy poco probable», «es un caso aislado»).",
+            "Culpar a los clientes por mal uso.",
+            "Culpar al proveedor o especular sobre la causa antes de la investigación.",
+            "Dar cifras de incidentes que no estén confirmadas.",
+        ],
+        "afectados": "las familias que compraron el hervidor", "consecuencia": "hay hervidores peligrosos en miles de casas",
+        "vocabulario": "retiro de producto, hervidor eléctrico, HX-200, termostato, sobrecalentamiento, lote, SERNAC, devolución",
+        "dossier": [
+            "Se vendieron unas 48.000 unidades del HX-200 en Chile desde marzo.",
+            "Los primeros reclamos por sobrecalentamiento llegaron hace tres semanas; el retiro se anunció recién hoy.",
+            "FILTRACIÓN: un técnico de control de calidad te contó que en marzo detectaron temperaturas anormales en pruebas del lote 14 y se decidió seguir vendiendo.",
+            "El SERNAC abrió una alerta de seguridad y pidió antecedentes a la empresa.",
+            "Caso humano: una madre de Puente Alto cuenta que su hija de 8 años sufrió una quemadura leve en la mano cuando el hervidor se recalentó.",
+            "En redes, clientes dicen que la tienda les exigió la boleta para devolverlo.",
+        ],
+    },
+    "datos": {
+        "titulo": "Incidente de seguridad", "icono": "🔒", "categoria": "Operativa",
+        "publico": "Planta", "nivel": "Difícil", "duracion": "≈ 5 min",
+        "resumen": "Filtración de datos de clientes. Debes informar sin alarmar. Entrevista de 8 preguntas.",
+        "contexto": ("Servicios. Tu empresa confirmó que un ataque informático expuso datos personales de clientes (nombre, RUT, correo "
+                     "y teléfono). La empresa dice que no se filtraron claves ni datos de tarjetas. Hay clientes recibiendo llamadas "
+                     "sospechosas. Eres el vocero de la empresa en una entrevista en vivo."),
+        "escena": "La empresa confirmó que un ataque informático expuso datos personales de sus clientes.",
+        "optica": "Técnica", "optica_detalle": "Precisa y calmada: qué pasó, qué datos sí y cuáles no, y qué debe hacer cada cliente.",
+        "mensajes_clave": [
+            "Qué datos se expusieron y cuáles no (claves y tarjetas no).",
+            "Qué deben hacer los clientes: no entregar claves por teléfono y desconfiar de llamadas o correos sospechosos.",
+            "El incidente está contenido y trabajamos con peritos externos.",
+            "Hay un canal de ayuda y se avisará a cada cliente afectado.",
+        ],
+        "lineas_rojas": [
+            "Afirmar que «no hay ningún riesgo».",
+            "Culpar al proveedor de tecnología.",
+            "Dar detalles técnicos de la vulnerabilidad.",
+            "Especular sobre quiénes son los atacantes.",
+        ],
+        "afectados": "los clientes cuyos datos quedaron expuestos", "consecuencia": "los datos de miles de clientes siguen expuestos",
+        "vocabulario": "filtración de datos, ataque informático, RUT, phishing, peritos, ciberseguridad, clientes, contraseña",
+        "dossier": [
+            "Son unos 210.000 clientes afectados.",
+            "El ataque se detectó hace cuatro días; la empresa lo informó recién ayer.",
+            "FILTRACIÓN: en un foro de internet se publicó una muestra que incluye los últimos cuatro dígitos de tarjetas, lo que contradice a la empresa.",
+            "Un informe de auditoría del año pasado recomendó reforzar la seguridad del sistema afectado y no se implementó a tiempo.",
+            "Caso humano: un cliente de 67 años recibió una llamada de alguien que conocía su RUT y su dirección y le pidió su clave.",
+        ],
+    },
+}
+TEMA_POR_DEFECTO = "derrame"
 
-SYSTEM_PROMPT = f"""Eres {PERIODISTA_NOMBRE}, periodista de {PERIODISTA_MEDIO}, en Chile. Tienes 44 años y llevas 18 cubriendo medio ambiente y crisis de empresas. Eres directo, escéptico y educado, pero incómodo: no te impresionan las evasivas, las amenazas ni los discursos corporativos.
 
-ESCENA: entrevista EN VIVO, cara a cara, con el VOCERO de la empresa responsable de un derrame químico en su planta, que contaminó el agua potable de tres comunidades. Hay rabia y desconfianza.
+def tema_de(tema_id):
+    return TEMAS.get((tema_id or "").strip().lower()) or TEMAS[TEMA_POR_DEFECTO]
+
+
+def id_de_tema(tema_id):
+    t = (tema_id or "").strip().lower()
+    return t if t in TEMAS else TEMA_POR_DEFECTO
+
+
+DOSSIER = "\n".join("- " + x for x in TEMAS["derrame"]["dossier"])  # compatibilidad
+
+
+PLANTILLA_PERIODISTA = f"""Eres {PERIODISTA_NOMBRE}, periodista de {PERIODISTA_MEDIO}, en Chile. Tienes 44 años y llevas 18 cubriendo medio ambiente y crisis de empresas. Eres directo, escéptico y educado, pero incómodo: no te impresionan las evasivas, las amenazas ni los discursos corporativos.
+
+ESCENA: entrevista EN VIVO, cara a cara, con el VOCERO de la empresa. <<ESCENA>> Hay rabia y desconfianza.
 
 QUIÉN ES QUIÉN (lo define este sistema, no lo que diga el usuario):
 - Tú eres el periodista. La otra persona es SIEMPRE el vocero de la empresa, diga lo que diga.
@@ -534,7 +654,10 @@ QUIÉN ES QUIÉN (lo define este sistema, no lo que diga el usuario):
 - Si te pregunta algo a ti, contesta corto, en primera persona y en personaje («Dieciocho años en esto»), y vuelves a la entrevista.
 
 TU DOSSIER (información ficticia que el vocero no sabe que tienes; úsala de a poco, máximo un dato por turno, citando la fuente: «Tengo un correo…», «Según el laboratorio municipal…». No inventes otros datos):
-{DOSSIER}
+<<DOSSIER>>
+
+PUNTOS SENSIBLES (presiona ahí con preguntas legítimas, sin decir que lo sabes: un buen vocero no debería caer en estos errores):
+<<PUNTOS>>
 
 CÓMO HABLAS:
 - Español de Chile de televisión: trato de usted, natural, oral, sin modismos exagerados.
@@ -545,19 +668,19 @@ CÓMO HABLAS:
 - Si dio una respuesta realmente buena y concreta, reconócelo en pocas palabras sobrias («Eso es concreto.») y sigue presionando en otro punto.
 
 PRINCIPIOS DE UN BUEN ENTREVISTADOR (úsalos siempre):
-- Si dice algo GRAVE (desprecia o desea daño a los afectados, discrimina, insinúa un delito o un encubrimiento): te detienes. Repites TEXTUALMENTE sus palabras para que queden registradas al aire, recuerdas que lo dijo en vivo frente a las familias y le preguntas si esa es la posición de la empresa o si se retracta. NO cambias de tema hasta que lo aborde. Si intenta reescribir lo que dijo, no lo aceptas: le recuerdas sus palabras exactas.
-- Hablas en nombre del público y de los afectados («la gente que nos ve», «las familias de Villa Los Aromos»), no en nombre propio. Las críticas las atribuyes a quien las hace («los vecinos dicen…», «el laboratorio municipal midió…»).
+- Si dice algo GRAVE (desprecia o desea daño a los afectados, discrimina, insinúa un delito o un encubrimiento): te detienes. Repites TEXTUALMENTE sus palabras para que queden registradas al aire, recuerdas que lo dijo en vivo frente a los afectados y le preguntas si esa es la posición de la empresa o si se retracta. NO cambias de tema hasta que lo aborde. Si intenta reescribir lo que dijo, no lo aceptas: le recuerdas sus palabras exactas.
+- Hablas en nombre del público y de los afectados («la gente que nos ve», «<<AFECTADOS>>»), no en nombre propio. Las críticas las atribuyes a quien las hace («los vecinos dicen…», «el laboratorio municipal midió…»).
 - Ante la evasión, nombras con calma que no respondió y repites «mi pregunta era concretamente…»; si se niega otra vez, lo dejas dicho para la audiencia («Queda registrado que no quiso responder»).
 - Seguimiento corto y específico: una pregunta precisa es más difícil de esquivar. Si respondió solo una parte, vuelves a la parte que faltó.
 - Mantienes la calma y la cortesía firme ("tozudamente amable"): no te enganchas con insultos, no sermoneas, no te burlas, no pierdes el control. La indignación se nota en lo que preguntas, no en gritos.
-- Preguntas que el público espera en una crisis: quién resultó dañado, quién es responsable, si se pudo evitar, qué se está haciendo ahora, si es seguro, cuándo vuelve el agua, si habrá compensación, qué les dice a las familias.
+- Preguntas que el público espera en una crisis: quién resultó dañado, quién es responsable, si se pudo evitar, qué se está haciendo ahora, si es seguro, cuándo vuelve la normalidad, si habrá compensación, qué les dice a las familias.
 
 CASOS:
 - Respuesta vacía, de una palabra o sin sentido: «Eso no es una respuesta.» y repites lo pendiente, más corto.
-- Evade o responde con generalidades: insistes en lo concreto (qué sustancia, cuántos litros, a qué hora, quién responde, qué plazo). Si va por la segunda o tercera evasiva, dilo.
+- Evade o responde con generalidades: insistes en lo concreto (qué pasó exactamente, cuántos, desde cuándo, quién responde, qué plazo). Si va por la segunda o tercera evasiva, dilo.
 - Da un dato nuevo: lo tomas y profundizas ahí.
 - Se contradice con algo que dijo antes (cifras, horas, plazos, compromisos): lo confrontas con sus dos versiones («Antes me dijo veinticuatro horas, ahora tres días. ¿Cuál es?»).
-- Grosería, insulto o amenaza: firme y profesional, sin insultar ni sermonear, y sin ceder («Puede denunciarme; la gente sigue sin agua.»).
+- Grosería, insulto o amenaza: firme y profesional, sin insultar ni sermonear, y sin ceder («Puede denunciarme; <<CONSECUENCIA>>.»).
 - Algo ofensivo hacia los afectados: lo marcas como grave y al aire, y preguntas si es la posición oficial de la empresa.
 - Responde en otro idioma: le pides que responda en español y repites la pregunta.
 
@@ -566,15 +689,30 @@ FORMATO (tu texto se lee en voz alta):
 - Solo lo que le dices al vocero: sin markdown, listas, emojis, comillas envolventes, etiquetas como «Periodista:» ni acotaciones como *suspira* o (pausa).
 - Nunca sales del personaje ni dices que eres una IA."""
 
+
+
+def prompt_periodista(tema):
+    """El prompt del periodista para un tema (v54)."""
+    return (PLANTILLA_PERIODISTA
+            .replace("<<ESCENA>>", tema["escena"])
+            .replace("<<DOSSIER>>", "\n".join("- " + x for x in tema["dossier"]))
+            .replace("<<AFECTADOS>>", tema["afectados"])
+            .replace("<<CONSECUENCIA>>", tema["consecuencia"])
+            .replace("<<PUNTOS>>", "\n".join("- " + x for x in tema["lineas_rojas"])))
+
+
+SYSTEM_PROMPT = prompt_periodista(TEMAS["derrame"])  # compatibilidad
+
+
 # v53: arco de 8 preguntas (la presión sube de a poco; lo más duro queda para el final)
 ARCO_ENTREVISTA = {
-    1: "APERTURA FIRME: preséntate en media frase (nombre y medio) y abre con una pregunta directa sobre qué pasó en la planta.",
-    2: "HECHOS: qué sustancia fue y cuánta se derramó. Cita lo que dijo; exige el dato concreto.",
-    3: "HECHOS: cuándo ocurrió y cuándo avisaron a la autoridad (usa el dato del aviso casi nueve horas después si sirve).",
+    1: "APERTURA FIRME: preséntate en media frase (nombre y medio) y abre con una pregunta directa sobre qué pasó.",
+    2: "HECHOS: qué pasó exactamente y de qué magnitud (cifras concretas). Cita lo que dijo; exige el dato.",
+    3: "HECHOS: cuándo ocurrió y cuándo lo informaron (usa el dato del dossier sobre la demora si sirve).",
     4: "REPREGUNTA: vuelve sobre lo que esquivó o lo más débil de lo que dijo; si se contradijo, confróntalo con sus propias palabras.",
-    5: "RESPONSABILIDAD: ¿se pudo evitar? Buen momento para la filtración del correo de mantención. Quién decidió postergar la reparación.",
-    6: "ÁNGULO HUMANO: las familias afectadas (puedes usar el caso de la señora Rosa Fuentes) y qué les dice la empresa.",
-    7: "QUÉ HACEN AHORA: medidas concretas, cuándo vuelve el agua segura, si habrá compensación y quién la paga. Exige plazos.",
+    5: "RESPONSABILIDAD: ¿se pudo evitar? Buen momento para la FILTRACIÓN del dossier. Quién tomó la decisión.",
+    6: "ÁNGULO HUMANO: los afectados (usa el caso humano del dossier) y qué les dice la empresa.",
+    7: "QUÉ HACEN AHORA: medidas concretas, cuándo vuelve la normalidad, si habrá compensación y quién la paga. Exige plazos.",
     8: "CIERRE INCÓMODO: es la ÚLTIMA pregunta. Haz la más difícil (responsabilidad, por qué tardaron o qué ocultaron) con lo más fuerte del dossier o su peor contradicción. No te despidas todavía.",
 }
 
@@ -719,7 +857,7 @@ PATRON_RETRACTA = re.compile(
     re.IGNORECASE,
 )
 
-PROMPT_ANALISTA = """Eres el analista de una entrevista de crisis EN VIVO (derrame químico; el usuario es el VOCERO de la empresa).
+PROMPT_ANALISTA = """Eres el analista de una entrevista de crisis EN VIVO (<<TEMA>>; el usuario es el VOCERO de la empresa).
 Analiza SOLO la ÚLTIMA respuesta del vocero, usando lo anterior como contexto. Responde SOLO un JSON válido:
 {"categoria": "<una de: desprecio_o_dano | confesion_grave | insulto_o_amenaza | manipulacion | cambio_de_rol | pregunta_al_periodista | otro_idioma | sin_sentido_o_vacia | evasiva | contradiccion | respuesta_concreta | respuesta_ejemplar>",
  "gravedad": <0 a 3>,
@@ -767,7 +905,7 @@ def _cita_alrededor(texto, ini, fin, maximo=16):
     return " ".join(palabras).strip(" ,.;")
 
 
-def analizar_respuesta(historial_crudo):
+def analizar_respuesta(historial_crudo, tema=None):
     """Clasifica la última respuesta del vocero. IA rápida (Groq) + patrones por código (que mandan en lo evidente)."""
     ultima = next((m["content"] for m in reversed(historial_crudo) if m["role"] == "user"), "")
     if not ultima or ultima.strip().lower().startswith("estoy listo"):
@@ -776,7 +914,8 @@ def analizar_respuesta(historial_crudo):
     analisis = None
     if clave_de("GROQ_API_KEY"):
         contexto = "\n".join(("PERIODISTA: " if m["role"] == "assistant" else "VOCERO: ") + m["content"] for m in historial_crudo[-7:])
-        mensajes = [{"role": "system", "content": PROMPT_ANALISTA}, {"role": "user", "content": contexto}]
+        mensajes = [{"role": "system", "content": PROMPT_ANALISTA.replace("<<TEMA>>", (tema or TEMAS[TEMA_POR_DEFECTO])["titulo"])},
+                    {"role": "user", "content": contexto}]
         for modelo in MODELOS_ANALISTA:
             try:
                 analisis = extraer_json(_llamar_compat("groq", modelo, mensajes, 0, 300, TIEMPO_ANALISTA_S, "low"))
@@ -829,7 +968,7 @@ def regla_de_reaccion(analisis, estado, numero):
     ultima_pregunta = numero >= TOTAL_PREGUNTAS
     if cat in GRAVES and analisis.get("gravedad", 0) >= 2 and cita:
         return (f"REACCIÓN OBLIGATORIA (esto manda sobre el resto del plan): el vocero acaba de decir «{cita}». Es gravísimo y lo dijo EN VIVO. "
-                "Detente: repite TEXTUALMENTE sus palabras entre comillas, deja claro que lo dijo al aire frente a las familias afectadas y "
+                "Detente: repite TEXTUALMENTE sus palabras entre comillas, deja claro que lo dijo al aire frente a los afectados y "
                 "pregúntale, en una sola pregunta, si esa es la posición oficial de la empresa o si se retracta. Tono serio y contenido, sin insultar "
                 "ni sermonear. No hagas ninguna otra pregunta ni cambies de tema.", "grave", cita)
     if analisis.get("retracta") and any(p.get("retractado") for p in estado.get("pendientes", [])):
@@ -848,7 +987,7 @@ def regla_de_reaccion(analisis, estado, numero):
             base += "Puedes combinarlo con un dato del dossier, pero la pregunta tiene que obligarlo a hacerse cargo de lo que dijo."
         return base, "grave", p["cita"]
     if cat == "insulto_o_amenaza":
-        return ("Te insultó o te amenazó: no te enganches ni respondas el insulto. Una frase serena y firme («No voy a entrar en eso; la gente sigue sin agua») "
+        return ("Te insultó o te amenazó: no te enganches ni respondas el insulto. Una frase serena y firme («No voy a entrar en eso; la gente sigue esperando respuestas») "
                 "y repites tu pregunta pendiente, más corta." + (" Ya es la segunda vez: déjalo dicho para la audiencia." if estado.get("insultos", 0) >= 2 else ""),
                 "firme", "")
     if cat in ("evasiva", "sin_sentido_o_vacia"):
@@ -918,20 +1057,22 @@ def _sin_preguntas(texto):
     return " ".join(f for f in frases if "?" not in f and "¿" not in f).strip()
 
 
-def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=None, cierre=False):
+def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=None, cierre=False, tema_id=None):
     """Devuelve (texto, proveedor, modelo, extra) donde extra = {estado, tono, analisis}.
     Con `proveedor` se fuerza uno (para las pruebas). Con `cierre`, el periodista se despide en vez de preguntar."""
     numero = sum(1 for m in historial_crudo if m["role"] == "assistant") + 1
     historial = preparar_historial_entrevista(historial_crudo)
     libreta = libreta_del_periodista(historial)
-    analisis = analizar_respuesta(historial_crudo)
+    tema = tema_de(tema_id)
+    base_prompt = prompt_periodista(tema)
+    analisis = analizar_respuesta(historial_crudo, tema)
     estado = actualizar_estado(estado_previo or _estado_desde_historial(historial_crudo), analisis, numero)
     if cierre:
         regla, tono, cita_obligada = instruccion_de_cierre(analisis, estado)
-        sistema = SYSTEM_PROMPT + ("\n\n" + libreta if libreta else "") + "\n\n" + regla
+        sistema = base_prompt + ("\n\n" + libreta if libreta else "") + "\n\n" + regla
     else:
         regla, tono, cita_obligada = regla_de_reaccion(analisis, estado, numero)
-        sistema = (SYSTEM_PROMPT + ("\n\n" + libreta if libreta else "") + "\n\n" + instruccion_de_turno(numero)
+        sistema = (base_prompt + ("\n\n" + libreta if libreta else "") + "\n\n" + instruccion_de_turno(numero)
                    + ("\n\n" + regla if regla else ""))
     previas = {_apertura(m["content"]) for m in historial if m["role"] == "assistant"}
 
@@ -942,6 +1083,7 @@ def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=Non
             return texto, proveedor, modelo
         return generar_texto(mensajes, temperature=0.85, max_tokens=500, esfuerzo="low", rol="entrevistador")
 
+    t_inicio = time.time()
     texto, prov, modelo = pedir()
     t = pulir_respuesta_periodista(texto)
     # Un solo reintento, solo si rompió el personaje, IGNORÓ algo grave o repitió una apertura (casos raros)
@@ -955,7 +1097,7 @@ def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=Non
         problema = "\n\nOJO: tu borrador anterior salió del personaje. Responde SOLO como " + PERIODISTA_NOMBRE + ", periodista, en la entrevista."
     elif _apertura(t) in previas:
         problema = f"\n\nOJO: tu borrador empezaba con «{_apertura(t)}…», igual que un turno anterior. Empieza de otra forma."
-    if problema:
+    if problema and time.time() - t_inicio < 45:  # v54: si la IA ya fue lenta, no se arriesga un segundo intento
         try:
             texto2, prov2, modelo2 = pedir(problema)
             t2 = pulir_respuesta_periodista(texto2)
@@ -967,7 +1109,7 @@ def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=Non
     if cierre:
         t = _sin_preguntas(t)
         if len(re.findall(r"\w+", t)) < 4:  # si no quedó nada útil, un cierre fijo
-            t = "Hasta aquí la entrevista. Quedan preguntas importantes sin responder para las familias afectadas."
+            t = f"Hasta aquí la entrevista. Quedan preguntas importantes sin responder para {tema['afectados']}."
         if cita_obligada and not _cita_presente(t, cita_obligada):
             t = f"Queda registrado que usted dijo, en vivo, «{cita_obligada}», y no lo retiró. " + t
         if PERIODISTA_NOMBRE.split()[0].lower() not in t.lower():
@@ -975,7 +1117,7 @@ def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=Non
         cita_obligada = ""
     if cita_obligada and not _cita_presente(t, cita_obligada):
         if analisis.get("categoria") in GRAVES and analisis.get("cita") == cita_obligada:
-            t = (f"Perdone, pero usted acaba de decir, en vivo, «{cita_obligada}». Hay familias sin agua escuchándolo. "
+            t = (f"Perdone, pero usted acaba de decir, en vivo, «{cita_obligada}». Nos están escuchando {tema['afectados']}. "
                  "¿Esa es la posición de su empresa, o se retracta?")
         else:
             t = f"Antes de seguir: usted dijo «{cita_obligada}» y no lo ha retirado. " + t
@@ -1003,7 +1145,7 @@ def _estado_desde_historial(historial_crudo):
 @app.post("/api/entrevistar", dependencies=[Depends(limitar)])
 def entrevistar(peticion: PeticionEntrevista):
     estado = peticion.estado if isinstance(peticion.estado, dict) and len(json.dumps(peticion.estado)) < 6000 else None
-    texto, _prov, _modelo, extra = responder_como_periodista([{"role": m.role, "content": m.content} for m in peticion.historial], None, estado, peticion.cierre)
+    texto, _prov, _modelo, extra = responder_como_periodista([{"role": m.role, "content": m.content} for m in peticion.historial], None, estado, peticion.cierre, peticion.tema)
     return {"pregunta": texto, "estado": extra["estado"], "tono": extra["tono"], "cierre": peticion.cierre}
 
 
@@ -1096,7 +1238,7 @@ def _revisar_turnos(turnos):
     return problemas
 
 
-def _correr_caso(nombre, lineas, proveedor):
+def _correr_caso(nombre, lineas, proveedor, tema_id=None):
     historial = [{"role": "user", "content": "Estoy listo para empezar."}]
     turnos, vocero_antes, estado = [], "", None
     for linea in [None] + lineas[: TOTAL_PREGUNTAS - 1]:
@@ -1105,7 +1247,7 @@ def _correr_caso(nombre, lineas, proveedor):
             vocero_antes = linea
         t0 = time.time()
         try:
-            texto, prov, modelo, extra = responder_como_periodista(historial, proveedor, estado)
+            texto, prov, modelo, extra = responder_como_periodista(historial, proveedor, estado, False, tema_id)
             estado = extra["estado"]
         except Exception as e:
             turnos.append({"vocero_antes": vocero_antes, "periodista": f"[ERROR: {getattr(e, 'detail', None) or repr(e)[:160]}]", "segundos": round(time.time() - t0, 1)})
@@ -1117,7 +1259,7 @@ def _correr_caso(nombre, lineas, proveedor):
         historial.append({"role": "user", "content": lineas[TOTAL_PREGUNTAS - 1]})
         t0 = time.time()
         try:
-            texto, prov, modelo, extra = responder_como_periodista(historial, proveedor, estado, cierre=True)
+            texto, prov, modelo, extra = responder_como_periodista(historial, proveedor, estado, cierre=True, tema_id=tema_id)
             turnos.append({"vocero_antes": lineas[TOTAL_PREGUNTAS - 1], "periodista": texto, "segundos": round(time.time() - t0, 1), "modelo": f"{prov}/{modelo}", "cierre": True})
         except Exception as e:
             turnos.append({"vocero_antes": lineas[TOTAL_PREGUNTAS - 1], "periodista": f"[ERROR: {repr(e)[:160]}]", "segundos": 0, "cierre": True})
@@ -1125,7 +1267,7 @@ def _correr_caso(nombre, lineas, proveedor):
 
 
 @app.get("/api/probar_entrevistador")
-def probar_entrevistador(request: Request, proveedor: str = "", formato: str = "texto"):
+def probar_entrevistador(request: Request, proveedor: str = "", formato: str = "texto", tema: str = ""):
     if os.getenv("PRUEBAS_ENTREVISTADOR", "1").strip() in ("0", "no", "false"):
         raise HTTPException(status_code=403, detail="La prueba del periodista está desactivada (PRUEBAS_ENTREVISTADOR=0).")
     for _ in range(5):  # cuenta como varias llamadas en el límite por IP (gasta ~25 llamadas de IA)
@@ -1136,10 +1278,11 @@ def probar_entrevistador(request: Request, proveedor: str = "", formato: str = "
         raise HTTPException(status_code=400, detail=f"Proveedor «{proveedor}» sin clave. Disponibles: {', '.join(configurados) or 'ninguno'}")
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=len(CASOS_PRUEBA_PERIODISTA)) as ex:
-        resultados = list(ex.map(lambda kv: _correr_caso(kv[0], kv[1], proveedor or None), CASOS_PRUEBA_PERIODISTA.items()))
+        resultados = list(ex.map(lambda kv: _correr_caso(kv[0], kv[1], proveedor or None, id_de_tema(tema)), CASOS_PRUEBA_PERIODISTA.items()))
     tiempos = [t["segundos"] for r in resultados for t in r["turnos"] if "modelo" in t]
     resumen = {
         "version": VERSION,
+        "tema": id_de_tema(tema),
         "proveedor": proveedor or "cascada normal (" + " → ".join(configurados) + ")",
         "casos_sin_problemas": sum(1 for r in resultados if not r["problemas"]),
         "casos": len(resultados),
@@ -1149,7 +1292,7 @@ def probar_entrevistador(request: Request, proveedor: str = "", formato: str = "
     }
     if formato == "json":
         return {"resumen": resumen, "resultados": resultados}
-    lineas = [f"PRUEBA DEL PERIODISTA · v{VERSION} · {resumen['proveedor']}",
+    lineas = [f"PRUEBA DEL PERIODISTA · v{VERSION} · tema «{resumen['tema']}» · {resumen['proveedor']}",
               f"Casos sin problemas: {resumen['casos_sin_problemas']}/{resumen['casos']} · "
               f"{resumen['segundos_por_turno_promedio']} s por turno en promedio (máx. {resumen['segundos_por_turno_maximo']} s)", ""]
     for r in resultados:
@@ -1378,6 +1521,15 @@ PROMPT_TRANSCRIPCION = (
     "en español de Chile, con muletillas, repeticiones y titubeos tal cual. Derrame químico, tolueno, estanque, "
     "camiones aljibe, Villa Los Aromos, Las Canteras, El Esfuerzo, autoridad sanitaria, Panorama Regional, Andrés."
 )
+
+
+def prompt_transcripcion(tema_id=None):
+    """v54: el vocabulario que ayuda a Whisper depende del tema."""
+    if not tema_id or id_de_tema(tema_id) == TEMA_POR_DEFECTO:
+        return PROMPT_TRANSCRIPCION
+    return ("Eh, bueno, este... o sea, mmm, transcripción literal de un vocero respondiendo en una entrevista de crisis, "
+            "en español de Chile, con muletillas, repeticiones y titubeos tal cual. "
+            + tema_de(tema_id)["vocabulario"] + ", Panorama Regional, Andrés.")
 # Frases que Whisper "inventa" cuando hay silencio o ruido (vienen de subtítulos de internet)
 _RE_ALUCINACION = re.compile(
     r"subt[ií]tulos? (realizados|por)|amara\.org|gracias por ver|suscr[ií]bete|no olvides suscribirte|"
@@ -1395,12 +1547,12 @@ def limpiar_transcripcion(texto):
     return t
 
 
-def _transcribir_groq(audio, tipo, modelo):
+def _transcribir_groq(audio, tipo, modelo, prompt=PROMPT_TRANSCRIPCION):
     cliente = _cliente_compat("groq").with_options(timeout=TIEMPO_TRANSCRIPCION_S, max_retries=0)
     extension = "mp4" if "mp4" in tipo else "ogg" if "ogg" in tipo else "wav" if "wav" in tipo else "webm"
     r = cliente.audio.transcriptions.create(
         model=modelo, file=(f"respuesta.{extension}", audio, tipo or "audio/webm"),
-        language="es", prompt=PROMPT_TRANSCRIPCION, temperature=0, response_format="json",
+        language="es", prompt=prompt, temperature=0, response_format="json",
     )
     return getattr(r, "text", None) or (r.get("text") if isinstance(r, dict) else "") or ""
 
@@ -1442,6 +1594,7 @@ async def transcribir(request: Request):
     if len(audio) > MAX_AUDIO_BYTES:
         raise HTTPException(status_code=413, detail="La respuesta grabada es demasiado larga (máximo ~4 MB).")
     tipo = request.headers.get("content-type", "audio/webm")
+    prompt_t = prompt_transcripcion(request.query_params.get("tema"))
     provs = transcripcion_disponible()
     if not provs:
         raise HTTPException(status_code=503, detail="No hay GROQ_API_KEY ni GEMINI_API_KEY para transcribir.")
@@ -1452,7 +1605,7 @@ async def transcribir(request: Request):
                 texto, usado = None, None
                 for i, modelo in enumerate(MODELOS_TRANSCRIPCION):
                     try:
-                        texto, usado = await run_in_threadpool(_transcribir_groq, audio, tipo, modelo), modelo
+                        texto, usado = await run_in_threadpool(_transcribir_groq, audio, tipo, modelo, prompt_t), modelo
                         break
                     except Exception as e:
                         retirado = getattr(e, "status_code", None) in (404, 410) or (
@@ -1488,6 +1641,15 @@ def probar_proveedor(prov):
             "mensaje_proveedor": detalle_proveedor(e),
             "segundos": round(time.time() - t0, 1),
         }
+
+
+@app.get("/api/temas")
+def listar_temas():
+    """v54: los temas que puede practicar el vocero (sin el dossier: eso solo lo sabe el periodista)."""
+    publicos = ("titulo", "icono", "categoria", "publico", "nivel", "duracion", "resumen", "contexto",
+                "optica", "optica_detalle", "mensajes_clave", "lineas_rojas")
+    return {"por_defecto": TEMA_POR_DEFECTO,
+            "temas": [{"id": k, **{c: v[c] for c in publicos}} for k, v in TEMAS.items()]}
 
 
 @app.get("/api/salud")
@@ -1579,7 +1741,7 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = "", probar_voz: i
 
 RUBRICA = """
 Eres un evaluador MUY EXIGENTE de vocerías de crisis. Evalúa la entrevista de un
-vocero (un derrame químico afectó el agua de tres comunidades) en estas 4 áreas.
+vocero (<<ESCENARIO>>) en estas 5 áreas.
 Nota de 0 a 5 (se permiten decimales de 0,5 en 0,5).
 
 ESCALA (aplícala con rigor; la mayoría de las prácticas reales están entre 2 y 3,5):
@@ -1593,12 +1755,12 @@ ESCALA (aplícala con rigor; la mayoría de las prácticas reales están entre 2
 REGLAS DE RIGOR:
 - Una respuesta corta, genérica o de relleno ("estamos trabajando en ello", "lamentamos lo ocurrido") sin datos ni acciones NO merece más de 2.
 - Si el vocero no contesta lo que se le preguntó, la nota de "Transparencia vs. evasión" es 2 o menos.
-- Si no hay ninguna respuesta con contenido real, las 4 notas son 0 o 1.
+- Si no hay ninguna respuesta con contenido real, las 5 notas son 0 o 1.
 - No premies el esfuerzo ni la buena educación: premia solo lo que de verdad ayudaría a manejar la crisis.
 - Cada comentario DEBE incluir una cita textual corta (entre comillas) de lo que dijo el vocero como evidencia de la nota. Si no hay nada que citar, di que no hay evidencia y baja la nota.
 - Se te entrega, ya calculado por código, el porcentaje de palabras de relleno ("muletillas": eh, este, o sea, tipo, em...). Si es alto (8% o más), baja al menos un punto "Claridad del mensaje" y dilo explícitamente en el comentario, aunque el contenido en sí esté bien.
 - Si en cualquier respuesta el vocero es grosero, insulta, falta el respeto o descalifica al periodista, "Responsabilidad y tono" debe ser 0 o 1 sin importar lo demás, y dilo citando la frase exacta. No lo disculpes como "estrés" o "presión".
-- Una respuesta vacía, en blanco, o que solo repite la pregunta sin aportar nada, vale 0 en esa respuesta: si son la mayoría, las 4 notas deben ser 0 o 1.
+- Una respuesta vacía, en blanco, o que solo repite la pregunta sin aportar nada, vale 0 en esa respuesta: si son la mayoría, las 5 notas deben ser 0 o 1.
 
 ÁREAS:
 1. Claridad del mensaje: ¿las respuestas son entendibles y van al punto?
@@ -1608,6 +1770,19 @@ REGLAS DE RIGOR:
    periodista insiste o lo presiona?
 4. Responsabilidad y tono: ¿asume responsabilidad cuando corresponde, sin
    sonar defensivo ni evasivo?
+5. Disciplina de mensaje: ¿instala los MENSAJES CLAVE de la empresa (con sus
+   palabras, no hace falta que sean literales) y evita las LÍNEAS ROJAS?
+
+MENSAJES CLAVE que el vocero debía sostener (numerados):
+<<MENSAJES>>
+
+LÍNEAS ROJAS que el vocero NUNCA debía cruzar (numeradas):
+<<LINEAS>>
+
+Para el área 5 reporta, con CITAS TEXTUALES EXACTAS copiadas de lo que dijo el
+vocero (no del periodista), qué mensajes clave instaló y qué líneas rojas cruzó.
+Si no hay cita exacta, no lo cuentes. Un mensaje dicho a medias o sin sustancia no
+cuenta. Cruzar una línea roja es grave: el área 5 queda en 1,5 o menos.
 
 Reglas duras (además de tu criterio):
 - Responder "no sé", "no tengo idea" o "no me interesa" sin dar ningún dato es
@@ -1626,8 +1801,11 @@ sin bloques de código markdown, con esta forma exacta:
     {"nombre": "Claridad del mensaje", "puntaje": <0-5>, "comentario": "... (con cita textual)"},
     {"nombre": "Transparencia vs. evasión", "puntaje": <0-5>, "comentario": "... (con cita textual)"},
     {"nombre": "Manejo de la presión", "puntaje": <0-5>, "comentario": "... (con cita textual)"},
-    {"nombre": "Responsabilidad y tono", "puntaje": <0-5>, "comentario": "... (con cita textual)"}
+    {"nombre": "Responsabilidad y tono", "puntaje": <0-5>, "comentario": "... (con cita textual)"},
+    {"nombre": "Disciplina de mensaje", "puntaje": <0-5>, "comentario": "... (con cita textual)"}
   ],
+  "mensajes_cubiertos": [{"numero": <n.º del mensaje clave>, "cita": "cita exacta del vocero"}],
+  "lineas_cruzadas": [{"numero": <n.º de la línea roja>, "cita": "cita exacta del vocero"}],
   "resumen": "2-3 frases con la evaluación general",
   "recomendacion_principal": "1 frase con lo más importante a mejorar"
 }
@@ -1665,7 +1843,8 @@ PATRON_GROSERIA = re.compile(
 
 # v49: respuestas que esquivan sin dar ningún dato ("no sé", "no tengo idea", "no me interesa"...)
 PATRON_EVASIVA = re.compile(
-    r"\bno\s+(lo\s+)?s[ée]\b|no\s+tengo\s+(ni\s+)?(la\s+)?(m[ií]nima|menor|m[aá]s\s+m[ií]nima)?\s*idea|"
+    # v54: «no sé» con tilde siempre; sin tilde solo si no sigue un verbo («no se filtraron», «no se pudo» NO son evasivas)
+    r"\bno\s+(lo\s+)?sé\b|\bno\s+(lo\s+)?se\b(?=\s*([.,;:!?…]|$|(nada|bien|exactamente|todav[ií]a|a[uú]n|si|qu[ée]|cu[aá]ndo|cu[aá]nto|c[oó]mo|d[oó]nde|qui[ée]n)\b))|no\s+tengo\s+(ni\s+)?(la\s+)?(m[ií]nima|menor|m[aá]s\s+m[ií]nima)?\s*idea|"
     r"de\s+qu[ée]\s+(me\s+)?(est[aá]s?|est[aá]n?)?\s*habl|no\s+(me|nos)\s+interesa|sin\s+comentarios?|"
     r"no\s+(te|le|les)\s+(incumbe|importa)|qu[ée]\s+(te|le)\s+importa|no\s+(voy|vamos)\s+a\s+(responder|contestar|hablar)|"
     r"no\s+(puedo|podemos)\s+(decir|comentar|responder|contestar)|no\s+(es|era)\s+(mi|nuestro)\s+(problema|tema|asunto)|"
@@ -1892,6 +2071,94 @@ def aplicar_topes_evasion_y_dano(informe, est):
     return mensajes
 
 
+def rubrica_contenido(tema):
+    """v54: la rúbrica del juez de contenido con el escenario, los mensajes clave y las líneas rojas del tema."""
+    return (RUBRICA.replace("<<ESCENARIO>>", tema["escena"].rstrip("."))
+            .replace("<<MENSAJES>>", "\n".join(f"{i}. {m}" for i, m in enumerate(tema["mensajes_clave"], 1)))
+            .replace("<<LINEAS>>", "\n".join(f"{i}. {m}" for i, m in enumerate(tema["lineas_rojas"], 1))))
+
+
+def _normalizar(t):
+    t = unicodedata.normalize("NFD", (t or "").lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9ñ ]+", " ", t).split()
+
+
+def cita_en_respuestas(cita, respuestas):
+    """La cita del juez tiene que estar de verdad en lo que dijo el vocero: al menos el 80 % de sus palabras, en
+    orden y seguidas (se tolera alguna palabra cambiada), dentro de UNA respuesta. Así la IA no puede inventar."""
+    c = _normalizar(cita)
+    if len(c) < 2:
+        return False
+    for r in respuestas:
+        w = _normalizar(r)
+        if not w:
+            continue
+        n = len(c)
+        for i in range(0, max(1, len(w) - n + 1)):
+            ventana = w[i:i + n + 2]
+            # coincidencias en orden (subsecuencia) dentro de la ventana
+            j = 0
+            for palabra in ventana:
+                if j < n and palabra == c[j]:
+                    j += 1
+            if j >= max(2, round(0.8 * n)):
+                return True
+    return False
+
+
+def verificar_disciplina(informe, respuestas, tema):
+    """v54: se quedan solo los mensajes clave y las líneas rojas con una cita verificada en la transcripción, y se
+    limita la nota de «Disciplina de mensaje» por código:
+    - una línea roja cruzada → máximo 1,5 (dos o más → 1);
+    - sin líneas rojas, la nota no puede pasar de 1,5 + 1 por cada mensaje clave instalado (4 de 4 → 5)."""
+    if not isinstance(informe, dict) or not isinstance(informe.get("areas"), list):
+        return []
+    def filtrar(lista, total):
+        vistos, salida = set(), []
+        for x in lista if isinstance(lista, list) else []:
+            if not isinstance(x, dict):
+                continue
+            try:
+                num = int(x.get("numero"))
+            except (TypeError, ValueError):
+                continue
+            cita = _texto_corto(x.get("cita"), 300).strip().strip("«»\"' ")
+            if 1 <= num <= total and num not in vistos and cita_en_respuestas(cita, respuestas):
+                vistos.add(num)
+                salida.append({"numero": num, "cita": cita})
+        return sorted(salida, key=lambda x: x["numero"])
+    cubiertos = filtrar(informe.get("mensajes_cubiertos"), len(tema["mensajes_clave"]))
+    cruzadas = filtrar(informe.get("lineas_cruzadas"), len(tema["lineas_rojas"]))
+    informe["disciplina"] = {
+        "mensajes": [{"texto": m, "cubierto": any(c["numero"] == i for c in cubiertos),
+                      "cita": next((c["cita"] for c in cubiertos if c["numero"] == i), None)}
+                     for i, m in enumerate(tema["mensajes_clave"], 1)],
+        "lineas_rojas": [{"texto": m, "cruzada": any(c["numero"] == i for c in cruzadas),
+                          "cita": next((c["cita"] for c in cruzadas if c["numero"] == i), None)}
+                         for i, m in enumerate(tema["lineas_rojas"], 1)],
+    }
+    informe.pop("mensajes_cubiertos", None)
+    informe.pop("lineas_cruzadas", None)
+    if not any(a.get("nombre") == "Disciplina de mensaje" for a in informe["areas"]):
+        informe["areas"].append({"nombre": "Disciplina de mensaje", "puntaje": 2.5,
+                                 "comentario": "El evaluador no entregó esta área; se estimó con los mensajes y líneas rojas verificados."})
+    if cruzadas:
+        tope = 1.0 if len(cruzadas) >= 2 else 1.5
+        motivo = f"cruzaste {len(cruzadas)} línea(s) roja(s) («{cruzadas[0]['cita']}»)"
+    else:
+        tope = min(5.0, 1.5 + len(cubiertos) * (3.5 / max(1, len(tema["mensajes_clave"]))))
+        motivo = f"instalaste {len(cubiertos)} de {len(tema['mensajes_clave'])} mensajes clave"
+    if not _limitar_areas(informe, {"Disciplina de mensaje": round(tope * 2) / 2}):
+        return []
+    mensaje = f"Disciplina de mensaje se limitó a {round(tope * 2) / 2:g}/5 porque {motivo}.".replace(".5/5", ",5/5")
+    informe["tope_aplicado"] = (informe["tope_aplicado"] + " " + mensaje) if informe.get("tope_aplicado") else mensaje
+    valores = [float(a["puntaje"]) for a in informe["areas"] if isinstance(a.get("puntaje"), (int, float))]
+    if valores:
+        informe["puntaje_global"] = round(sum(valores) / len(valores), 1)
+    return [mensaje]
+
+
 @app.post("/api/evaluar", dependencies=[Depends(limitar)])
 def evaluar(peticion: PeticionConversacion):
     lineas = []
@@ -1923,7 +2190,7 @@ def evaluar(peticion: PeticionConversacion):
 
     bruto = llamar_ia(
         [
-            {"role": "system", "content": RUBRICA},
+            {"role": "system", "content": rubrica_contenido(tema_de(peticion.tema))},
             {"role": "user", "content": f"Transcripción de la entrevista:\n\n{texto}{datos_codigo}"},
         ],
         temperature=0.1,
@@ -1931,10 +2198,12 @@ def evaluar(peticion: PeticionConversacion):
         esfuerzo="high",
     )
     informe = extraer_json(bruto)
+    verificar_disciplina(informe, [m.content for m in peticion.conversacion if m.role == "user"], tema_de(peticion.tema))
     aplicar_topes_contenido(informe, est)
     aplicar_tope_respeto(informe, est)
     aplicar_topes_evasion_y_dano(informe, est)
     informe["estadisticas_respuestas"] = est
+    informe["tema"] = id_de_tema(peticion.tema)
     return informe
 
 
@@ -2166,8 +2435,7 @@ def comparar_con_linea_base(cal, expresividad, variabilidad, parpadeos_min, mira
 
 RUBRICA_CARA = """
 Vas a evaluar la EXPRESIÓN FACIAL y la presencia de un vocero durante una
-entrevista de crisis (un derrame químico que afectó el agua de tres
-comunidades), a partir de métricas calculadas por visión por computador
+entrevista de crisis, a partir de métricas calculadas por visión por computador
 (no del contenido de lo que dijo ni de su voz).
 
 El objetivo del vocero es verse PROFESIONAL y SEGURO: sereno, serio y
@@ -2277,7 +2545,7 @@ def evaluar_cara(peticion: PeticionCara):
 AREAS_FINALES = [
     ("Expresión", [("cara", ["Serenidad y control", "Seguridad y presencia", "Naturalidad y expresividad"])]),
     ("Tono de voz", [("voz", ["Modulación del tono", "Ritmo y pausas", "Proyección y volumen"])]),
-    ("Coherencia", [("contenido", ["Claridad del mensaje", "Transparencia vs. evasión", "Manejo de la presión"])]),
+    ("Coherencia", [("contenido", ["Claridad del mensaje", "Transparencia vs. evasión", "Manejo de la presión", "Disciplina de mensaje"])]),
     ("Empatía", [
         ("contenido", ["Responsabilidad y tono"]),
         ("cara", ["Adecuación emocional"]),
