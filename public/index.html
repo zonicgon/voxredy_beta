@@ -188,6 +188,19 @@
   #pantalla-login .login-cambiar { text-align: center; font-size: 13px; margin: 0; color: var(--l-muted); }
   #pantalla-login .login-cambiar a { color: var(--l-accent2); font-weight: 600; text-decoration: none; }
   #pantalla-login .login-cambiar a:hover { text-decoration: underline; }
+  #pantalla-login .login-rapido { display: flex; flex-direction: column; gap: 8px; }
+  #pantalla-login .login-rapido button {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer;
+    background: transparent; border: 1px solid var(--l-line, #DDE3EA); border-radius: 10px; padding: 9px 12px;
+    font: inherit; color: inherit; box-shadow: none; margin: 0;
+  }
+  #pantalla-login .login-rapido button:hover { border-color: var(--l-accent); }
+  #pantalla-login .login-rapido .ava {
+    flex: 0 0 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--l-accent); color: #fff; font-weight: 700; font-size: 13px;
+  }
+  #pantalla-login .login-rapido .nom { font-weight: 600; font-size: 14px; line-height: 1.2; }
+  #pantalla-login .login-rapido .rol { font-size: 12px; color: var(--l-muted); }
   #pantalla-login .login-nota { font-size: 11px; color: var(--l-muted); text-align: center; margin: 16px 0 0; line-height: 1.45; }
   #sesion-usuario { font-size: 13px; color: #C9D6E3; white-space: nowrap; }
 
@@ -633,6 +646,10 @@
       <p class="login-err" id="login-aviso"></p>
       <div class="login-divider">¿Primera vez?</div>
       <p class="login-cambiar"><a href="#" id="ir-a-registro">Crear una cuenta</a></p>
+
+      <!-- v52: accesos rápidos de la beta (usuarios ya creados, para entrar sin escribir la contraseña) -->
+      <div class="login-divider">Acceso rápido (beta)</div>
+      <div class="login-rapido" id="login-rapido"></div>
     </div>
 
     <div id="registro-form" style="display:none;">
@@ -698,7 +715,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v51</span> · Beta</p>
+      <p><span class="version" id="version-app">v52</span> · Beta</p>
     </div>
     <div class="role">Usuario final (vocero)</div>
     <div class="navitem" data-vista="inicio"><span class="n">1</span> Inicio / mis prácticas</div>
@@ -1064,6 +1081,23 @@
   function correoValido(c) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c); }
   function normalizarCorreo(c) { return limpiarTexto(c).toLowerCase(); }
 
+  // v52: usuarios ya creados para la beta (entran con un clic desde «Acceso rápido»). Para agregar uno, súmalo a esta lista.
+  // Ojo: son cuentas de DEMOSTRACIÓN; cuando haya base de datos y login real, esta lista se quita.
+  const USUARIOS_DEMO = [
+    { nombre: "Bryan", apellido: "Retamales", correo: "bryan.retamales@voxready.demo", contrasena: "voxready", rol: "Vocero · usuario final" },
+  ];
+  (function sembrarUsuariosDemo() {
+    const lista = leerUsuarios();
+    let cambio = false;
+    USUARIOS_DEMO.forEach((d) => {
+      if (!lista.some((u) => u.correo === d.correo)) {
+        lista.push({ nombre: d.nombre, apellido: d.apellido, correo: d.correo, contrasena: d.contrasena, creado: Date.now(), demo: true });
+        cambio = true;
+      }
+    });
+    if (cambio) guardarUsuarios(lista);
+  })();
+
   const pantallaLogin = document.getElementById("pantalla-login");
   const loginForm = document.getElementById("login-form");
   const registroForm = document.getElementById("registro-form");
@@ -1091,6 +1125,28 @@
   });
 
   // Abre la página ya con la sesión activa (al iniciar sesión, al registrarse o al recargar la página)
+  // Botones de acceso rápido
+  (function pintarAccesoRapido() {
+    const cont = document.getElementById("login-rapido");
+    if (!cont) return;
+    USUARIOS_DEMO.forEach((d) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      const ava = document.createElement("span"); ava.className = "ava"; ava.textContent = (d.nombre[0] + d.apellido[0]).toUpperCase();
+      const txt = document.createElement("span");
+      const nom = document.createElement("div"); nom.className = "nom"; nom.textContent = `Entrar como ${d.nombre} ${d.apellido}`;
+      const rol = document.createElement("div"); rol.className = "rol"; rol.textContent = d.rol;
+      txt.append(nom, rol);
+      b.append(ava, txt);
+      b.addEventListener("click", () => {
+        const u = leerUsuarios().find((x) => x.correo === d.correo) || d;
+        ocultarAviso(loginAviso);
+        entrarConSesion(u);
+      });
+      cont.appendChild(b);
+    });
+  })();
+
   function entrarConSesion(usuario) {
     try { localStorage.setItem(CLAVE_SESION, normalizarCorreo(usuario.correo)); } catch (e) { /* nada */ }
     pantallaLogin.style.display = "none";
@@ -2036,8 +2092,43 @@
       }
     }
     datosCara = datosCaraSesion();
-    preguntaActual.textContent = "Entrevista completa. Presiona el botón para ver tu evaluación.";
+    // v52: el entrevistador CIERRA la entrevista (reacciona a tu última respuesta y se despide) y lo dice en voz alta
+    const sigue = await cerrarEntrevista();
+    if (!sigue) return; // se reinició mientras cerraba
+    avisar("Entrevista completa. Presiona «Ver mi evaluación completa».");
     botonEvaluar.style.display = "inline-block";
+  }
+
+  const FASES_CIERRE = ["Enviando tu última respuesta", "El entrevistador está cerrando la entrevista"];
+  async function cerrarEntrevista() {
+    const sid = idSesion;
+    preguntaActual.textContent = "El entrevistador está cerrando la entrevista…";
+    const carga = iniciarCarga(barraCarga, "pregunta", FASES_CIERRE, 6);
+    iaPensando = true;
+    let texto = "";
+    try {
+      const r = await fetchConTiempo(`${URL_BACKEND}/entrevistar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historial, estado: estadoPeriodista, cierre: true }),
+      }, 20000);
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.pregunta) {
+        texto = String(d.pregunta).trim();
+        if (d.estado && typeof d.estado === "object") estadoPeriodista = d.estado;
+        tonoPregunta = d.tono || "";
+      }
+    } catch (e) { /* sin conexión: se usa un cierre fijo */ }
+    iaPensando = false;
+    carga.terminar(!!texto);
+    if (sid !== idSesion) return false;
+    if (!texto) { texto = "Hasta aquí la entrevista. Muchas gracias por su tiempo."; tonoPregunta = "firme"; }
+    historial.push({ role: "assistant", content: texto });
+    agregarAlHistorialVisual("assistant", texto);
+    preguntaActual.textContent = texto;
+    preguntaParaLeer = texto;
+    await leerPreguntaEntrevistador(texto, MAX_PREGUNTAS + 1, false);
+    return sid === idSesion;
   }
 
   // Nombre y apellido: se piden antes de empezar y se guardan junto con la entrevista
@@ -4541,7 +4632,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "51";
+  const VERSION_APP = "52";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;

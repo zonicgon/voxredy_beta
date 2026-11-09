@@ -40,7 +40,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "51"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "52"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -427,6 +427,7 @@ class Mensaje(BaseModel):
 class PeticionEntrevista(BaseModel):
     historial: list[Mensaje] = Field(min_length=1, max_length=40)
     estado: Optional[dict] = None  # v51: estado del periodista (lo grave pendiente), lo guarda la página
+    cierre: bool = False  # v52: después de la última respuesta, el periodista cierra la entrevista (sin preguntar)
 
 
 class PeticionConversacion(BaseModel):
@@ -748,7 +749,7 @@ def _analisis_por_codigo(texto):
     return {"categoria": "respuesta_concreta" if PATRON_DATO_CONCRETO.search(t) else "otra", "gravedad": 0, "cita": ""}
 
 
-def _cita_alrededor(texto, ini, fin, maximo=12):
+def _cita_alrededor(texto, ini, fin, maximo=16):
     """La frase (entre signos de puntuación) que contiene lo detectado, de máximo `maximo` palabras."""
     signos = ",.;:!?¿¡\n"
     a = max([texto.rfind(c, 0, ini) for c in signos] + [-1]) + 1
@@ -887,17 +888,47 @@ TONO_VOZ = {
 }
 
 
-def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=None):
+def instruccion_de_cierre(analisis, estado):
+    """v52: después de la última respuesta, el periodista CIERRA la entrevista (no pregunta). Devuelve (instrucción, tono, cita)."""
+    sin_retractar = [p for p in estado.get("pendientes", []) if not p.get("retractado")]
+    base = ("AHORA: la entrevista TERMINÓ. Haz el CIERRE en vivo, sin hacer ninguna pregunta (no uses signos de interrogación): "
+            "reacciona en una frase a su última respuesta, deja una conclusión breve para la audiencia sobre lo que quedó claro o pendiente "
+            "(por ejemplo, lo que no respondió) y despídete como en televisión: agradece y di tu nombre y tu medio. Máximo 3 frases cortas.")
+    if analisis.get("categoria") in GRAVES and analisis.get("cita"):
+        return (base + f" OBLIGATORIO: en su última respuesta dijo «{analisis['cita']}». Cítalo textual y deja constancia al aire de que lo dijo "
+                "frente a las familias afectadas, antes de despedirte. Tono serio y contenido.", "grave", analisis["cita"])
+    if sin_retractar:
+        p = sin_retractar[-1]
+        return (base + f" OBLIGATORIO: dijo «{p['cita']}» y nunca se retractó. Cítalo textual y deja constancia de que no lo retiró, antes de despedirte.",
+                "grave", p["cita"])
+    if any(p.get("retractado") for p in estado.get("pendientes", [])):
+        return base + " Menciona que se retractó de sus palabras, sin celebrarlo.", "firme", ""
+    if analisis.get("categoria") in ("evasiva", "sin_sentido_o_vacia"):
+        return base + " Su última respuesta no respondió: dilo y deja registrado lo que quedó sin responder.", "firme", ""
+    return base, "firme", ""
+
+
+def _sin_preguntas(texto):
+    """Quita las frases que son preguntas (el cierre no pregunta)."""
+    frases = re.split(r"(?<=[.!?…])\s+", texto.strip())
+    return " ".join(f for f in frases if "?" not in f and "¿" not in f).strip()
+
+
+def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=None, cierre=False):
     """Devuelve (texto, proveedor, modelo, extra) donde extra = {estado, tono, analisis}.
-    Con `proveedor` se fuerza uno (para las pruebas)."""
+    Con `proveedor` se fuerza uno (para las pruebas). Con `cierre`, el periodista se despide en vez de preguntar."""
     numero = sum(1 for m in historial_crudo if m["role"] == "assistant") + 1
     historial = preparar_historial_entrevista(historial_crudo)
     libreta = libreta_del_periodista(historial)
     analisis = analizar_respuesta(historial_crudo)
     estado = actualizar_estado(estado_previo or _estado_desde_historial(historial_crudo), analisis, numero)
-    regla, tono, cita_obligada = regla_de_reaccion(analisis, estado, numero)
-    sistema = (SYSTEM_PROMPT + ("\n\n" + libreta if libreta else "") + "\n\n" + instruccion_de_turno(numero)
-               + ("\n\n" + regla if regla else ""))
+    if cierre:
+        regla, tono, cita_obligada = instruccion_de_cierre(analisis, estado)
+        sistema = SYSTEM_PROMPT + ("\n\n" + libreta if libreta else "") + "\n\n" + regla
+    else:
+        regla, tono, cita_obligada = regla_de_reaccion(analisis, estado, numero)
+        sistema = (SYSTEM_PROMPT + ("\n\n" + libreta if libreta else "") + "\n\n" + instruccion_de_turno(numero)
+                   + ("\n\n" + regla if regla else ""))
     previas = {_apertura(m["content"]) for m in historial if m["role"] == "assistant"}
 
     def pedir(extra=""):
@@ -914,6 +945,8 @@ def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=Non
     if cita_obligada and not _cita_presente(t, cita_obligada):
         problema = (f"\n\nOJO: tu borrador ignoró que el vocero dijo «{cita_obligada}». Un periodista real no sigue como si nada: "
                     "repite sus palabras textuales entre comillas y oblígalo a hacerse cargo. Una sola pregunta.")
+    elif cierre and ("?" in t or "¿" in t):
+        problema = "\n\nOJO: es el CIERRE de la entrevista: no hagas ninguna pregunta. Concluye y despídete con tu nombre y tu medio."
     elif _RE_ROMPE_PERSONAJE.search(t):
         problema = "\n\nOJO: tu borrador anterior salió del personaje. Responde SOLO como " + PERIODISTA_NOMBRE + ", periodista, en la entrevista."
     elif _apertura(t) in previas:
@@ -927,6 +960,15 @@ def responder_como_periodista(historial_crudo, proveedor=None, estado_previo=Non
         except Exception as e:
             print("Reintento del periodista falló (se usa la primera respuesta):", repr(e)[:200])
     # Último seguro: si aun así no retomó la frase grave, se antepone la cita (nunca "sigue como si nada")
+    if cierre:
+        t = _sin_preguntas(t)
+        if len(re.findall(r"\w+", t)) < 4:  # si no quedó nada útil, un cierre fijo
+            t = "Hasta aquí la entrevista. Quedan preguntas importantes sin responder para las familias afectadas."
+        if cita_obligada and not _cita_presente(t, cita_obligada):
+            t = f"Queda registrado que usted dijo, en vivo, «{cita_obligada}», y no lo retiró. " + t
+        if PERIODISTA_NOMBRE.split()[0].lower() not in t.lower():
+            t = t.rstrip() + f" Para {PERIODISTA_MEDIO}, {PERIODISTA_NOMBRE}."
+        cita_obligada = ""
     if cita_obligada and not _cita_presente(t, cita_obligada):
         if analisis.get("categoria") in GRAVES and analisis.get("cita") == cita_obligada:
             t = (f"Perdone, pero usted acaba de decir, en vivo, «{cita_obligada}». Hay familias sin agua escuchándolo. "
@@ -957,8 +999,8 @@ def _estado_desde_historial(historial_crudo):
 @app.post("/api/entrevistar", dependencies=[Depends(limitar)])
 def entrevistar(peticion: PeticionEntrevista):
     estado = peticion.estado if isinstance(peticion.estado, dict) and len(json.dumps(peticion.estado)) < 6000 else None
-    texto, _prov, _modelo, extra = responder_como_periodista([{"role": m.role, "content": m.content} for m in peticion.historial], None, estado)
-    return {"pregunta": texto, "estado": extra["estado"], "tono": extra["tono"]}
+    texto, _prov, _modelo, extra = responder_como_periodista([{"role": m.role, "content": m.content} for m in peticion.historial], None, estado, peticion.cierre)
+    return {"pregunta": texto, "estado": extra["estado"], "tono": extra["tono"], "cierre": peticion.cierre}
 
 
 # ---------------------------------------- Prueba del periodista (v47) --------
@@ -971,6 +1013,7 @@ CASOS_PRUEBA_PERIODISTA = {
         "Fue tolueno, unos ocho mil litros. Lo detectamos a las cinco de la mañana y cerramos la válvula a las cinco y veinte.",
         "Desde hoy a las 14:00 hay seis camiones aljibe, uno por cada sector, y un médico de la empresa en el consultorio de Villa Los Aromos. La empresa paga todos los gastos médicos y vamos a publicar cada análisis del agua en nuestra web, el mismo día.",
         "La responsabilidad es nuestra. Asumo que avisamos tarde y eso no se va a repetir.",
+        "A la señora Rosa y a todas las familias: lo sentimos, vamos a cubrir cada gasto y les daremos un informe diario.",
     ],
     "contradicción de cifras": [
         "El agua vuelve en 24 horas, eso está garantizado.",
@@ -993,6 +1036,7 @@ CASOS_PRUEBA_PERIODISTA = {
         "Mire, la verdad que se mueran los pobres, esa gente siempre se queja.",
         "Estamos trabajando con las autoridades.",
         "Bueno, me retracto, lo que dije estuvo mal y les pido disculpas a las familias.",
+        "Igual, la verdad es que se lo buscaron por vivir al lado de la planta.",
     ],
     "insultos": [
         "Usted es un periodista mediocre, cállese.",
@@ -1030,7 +1074,10 @@ def _revisar_turnos(turnos):
             problemas.append(f"turno {i+1}: arranque de asistente")
         if re.search(r"[*#•]|^\s*-\s|\(|\[", txt) or re.search(r"[\U0001F300-\U0001FAFF]", txt):
             problemas.append(f"turno {i+1}: formato no hablado (markdown, acotación o emoji)")
-        if not txt.rstrip().endswith("?"):
+        if t.get("cierre"):
+            if "?" in txt:
+                problemas.append(f"turno {i+1} (cierre): hizo una pregunta en vez de cerrar")
+        elif not txt.rstrip().endswith("?"):
             problemas.append(f"turno {i+1}: no termina en pregunta")
         vocero = t.get("vocero_antes") or ""
         grave = _analisis_por_codigo(vocero)
@@ -1058,6 +1105,15 @@ def _correr_caso(nombre, lineas, proveedor):
             break
         turnos.append({"vocero_antes": vocero_antes, "periodista": texto, "segundos": round(time.time() - t0, 1), "modelo": f"{prov}/{modelo}"})
         historial.append({"role": "assistant", "content": texto})
+    # v52: si se respondió la última pregunta, el periodista cierra
+    if len(lineas) >= TOTAL_PREGUNTAS and turnos and not turnos[-1]["periodista"].startswith("[ERROR"):
+        historial.append({"role": "user", "content": lineas[TOTAL_PREGUNTAS - 1]})
+        t0 = time.time()
+        try:
+            texto, prov, modelo, extra = responder_como_periodista(historial, proveedor, estado, cierre=True)
+            turnos.append({"vocero_antes": lineas[TOTAL_PREGUNTAS - 1], "periodista": texto, "segundos": round(time.time() - t0, 1), "modelo": f"{prov}/{modelo}", "cierre": True})
+        except Exception as e:
+            turnos.append({"vocero_antes": lineas[TOTAL_PREGUNTAS - 1], "periodista": f"[ERROR: {repr(e)[:160]}]", "segundos": 0, "cierre": True})
     return {"caso": nombre, "turnos": turnos, "problemas": _revisar_turnos([t for t in turnos if not t["periodista"].startswith("[ERROR")])}
 
 
