@@ -41,7 +41,7 @@ try:  # en local lee el archivo .env; en Vercel las variables ya vienen del pane
 except ImportError:
     pass
 
-VERSION = "57"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
+VERSION = "58"  # súbela aquí y en public/index.html (VERSION_APP) cada vez que cambies algo
 # NVIDIA retira modelos gratuitos con frecuencia. Por eso hay un modelo principal y respaldos:
 # si el principal responde 404 (ya no existe), se prueba el siguiente automáticamente.
 # Se cambian SIN tocar código, con variables de entorno en Vercel:
@@ -54,6 +54,7 @@ _modelo_activo = None  # el último que funcionó (por instancia del servidor)
 BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 
 app = FastAPI(title="VoxReady", version=VERSION)
+import base_datos  # v58: conexión a la base de datos (Neon); sin DATABASE_URL / JWT_SECRET, la página sigue como maqueta
 
 # ---------------------------------------------------------------- IA ---------
 # Varios proveedores con RESPALDO: si el primero falla (caída, límite, lentitud, saldo),
@@ -1194,10 +1195,19 @@ def _estado_desde_historial(historial_crudo):
     return {"pendientes": pendientes}
 
 
+def tema_de_la_peticion(request, tema_id, tema_def):
+    """v58: con base de datos y sesión iniciada, el tema completo (con lo que sabe el periodista) sale de la base;
+    si no, se usa la definición que manda la página (maqueta) o el tema de ejemplo por su id."""
+    if tema_def is not None:
+        return tema_def
+    return base_datos.definicion_para_entrevista(request.headers.get("authorization"), tema_id)
+
+
 @app.post("/api/entrevistar", dependencies=[Depends(limitar)])
-def entrevistar(peticion: PeticionEntrevista):
+def entrevistar(peticion: PeticionEntrevista, request: Request):
     estado = peticion.estado if isinstance(peticion.estado, dict) and len(json.dumps(peticion.estado)) < 6000 else None
-    texto, _prov, _modelo, extra = responder_como_periodista([{"role": m.role, "content": m.content} for m in peticion.historial], None, estado, peticion.cierre, peticion.tema, peticion.tema_def)
+    tema_def = tema_de_la_peticion(request, peticion.tema, peticion.tema_def)
+    texto, _prov, _modelo, extra = responder_como_periodista([{"role": m.role, "content": m.content} for m in peticion.historial], None, estado, peticion.cierre, peticion.tema, tema_def)
     return {"pregunta": texto, "estado": extra["estado"], "tono": extra["tono"], "cierre": peticion.cierre}
 
 
@@ -1788,6 +1798,7 @@ def salud(request: Request, probar_ia: int = 0, modelos: str = "", probar_voz: i
     info = {
         "estado": "ok",
         "version": VERSION,
+        "base_de_datos": base_datos.estado(),  # v58
         "clave_configurada": bool(configurados),
         "proveedores": configurados,
         "claves": estado_claves(),
@@ -2296,7 +2307,8 @@ def verificar_disciplina(informe, respuestas, tema):
 
 
 @app.post("/api/evaluar", dependencies=[Depends(limitar)])
-def evaluar(peticion: PeticionConversacion):
+def evaluar(peticion: PeticionConversacion, request: Request):
+    tema_def = tema_de_la_peticion(request, peticion.tema, peticion.tema_def)
     lineas = []
     for m in peticion.conversacion:
         quien = "Entrevistador" if m.role == "assistant" else "Vocero"
@@ -2326,7 +2338,7 @@ def evaluar(peticion: PeticionConversacion):
 
     bruto = llamar_ia(
         [
-            {"role": "system", "content": rubrica_contenido(tema_de(peticion.tema, peticion.tema_def))},
+            {"role": "system", "content": rubrica_contenido(tema_de(peticion.tema, tema_def))},
             {"role": "user", "content": f"Transcripción de la entrevista:\n\n{texto}{datos_codigo}"},
         ],
         temperature=0.1,
@@ -2334,12 +2346,12 @@ def evaluar(peticion: PeticionConversacion):
         esfuerzo="high",
     )
     informe = extraer_json(bruto)
-    verificar_disciplina(informe, [m.content for m in peticion.conversacion if m.role == "user"], tema_de(peticion.tema, peticion.tema_def))
+    verificar_disciplina(informe, [m.content for m in peticion.conversacion if m.role == "user"], tema_de(peticion.tema, tema_def))
     aplicar_topes_contenido(informe, est)
     aplicar_tope_respeto(informe, est)
     aplicar_topes_evasion_y_dano(informe, est)
     informe["estadisticas_respuestas"] = est
-    informe["tema"] = "personalizado" if peticion.tema_def is not None else id_de_tema(peticion.tema)
+    informe["tema"] = "personalizado" if tema_def is not None and peticion.tema not in TEMAS else id_de_tema(peticion.tema)
     return informe
 
 
@@ -2931,6 +2943,11 @@ def informe_final(peticion: PeticionFinal):
         "por_que_esta_prioridad": _texto_corto(redactado.get("por_que_esta_prioridad"), 400),
         "fuentes_disponibles": disponibles,
     }
+
+
+# v58: rutas de la base de datos (cuentas, escenarios, entrevistas, retención, borrados, panel)
+base_datos.configurar(TEMAS, VERSION, limitar)
+app.include_router(base_datos.router)
 
 
 # --------------------------------------------- Página web en local ------------

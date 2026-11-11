@@ -146,6 +146,33 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v58 — La página se conecta a la base de datos (Neon)
+- **Archivos nuevos o cambiados:** `base_datos.py` (nuevo, va junto a `app.py`), `app.py`, `public/index.html` y `requirements.txt` (agrega `psycopg[binary]`). Hay que subir **los cuatro**.
+- **Variables en Vercel:** `DATABASE_URL` (la crea sola la integración con Neon) y `JWT_SECRET` (texto largo y aleatorio). Opcionales:
+  - `ACCESO_DEMO=0` apaga los botones de acceso rápido.
+  - `RESEND_API_KEY` y `CORREO_REMITENTE` activan el código de recuperación por correo. Sin ellos, «¿Olvidaste tu contraseña?» avisa que no está configurado.
+- **La página elige sola:** si el servidor tiene la base configurada (`GET /api/bd/estado`), usa Neon. Si no, sigue como maqueta en el navegador.
+  - Se ve en la barra lateral, junto a la versión: **«Base de datos»** o **«Maqueta (navegador)»**.
+  - En **Diagnóstico** aparece la fila «Base de datos», por ejemplo: «Conectada · 11 tablas · 3 escenarios · N usuarios».
+- **Rutas nuevas** (`base_datos.py`):
+  - Cuentas: `/api/auth/registrar`, `entrar`, `demo`, `yo`, `codigo`, `restablecer`.
+  - Temas: `/api/escenarios` (listar, guardar, `/{id}/activo`, `/{id}/restaurar`, `DELETE` = archivar).
+  - Entrevistas: `/api/sesiones` (crear, `/{id}/avance`, `/{id}/incompleta`, `/{id}/completar`, listar y borrar).
+  - Resto: `/api/agenda`, `/api/organizacion` (+ `/retencion`), `/api/cuenta/borrado`, `/api/borrados` (+ `/{id}/procesar`) y `/api/panel`.
+  - `/api/salud` informa el estado de la base.
+- **Seguridad:**
+  - Contraseñas con PBKDF2-SHA256 (390 000 vueltas) calculadas en el servidor.
+  - Token firmado (HS256, 7 días) con `JWT_SECRET`. Cada ruta revisa el usuario, el rol y la organización.
+  - Un vocero no puede crear temas ni ver el panel (403). No puede tocar entrevistas ajenas (404). Si su cuenta se borra, el token deja de servir.
+- **Lo que sabe el periodista ya no pasa por la página:** con base de datos, la página manda solo el id del tema con el token, y el servidor lee el tema completo desde Neon en `/api/entrevistar` y `/api/evaluar`. El vocero nunca recibe el dossier; el admin sí lo ve y lo edita en el Editor de tema.
+- **Cuentas demo:** Bryan Retamales (vocero) y Carlos Ruiz (admin) se crean solas en la base la primera vez que se usan, ya sea con el acceso rápido o escribiendo la contraseña `voxready`.
+- **No se migran** las cuentas ni las entrevistas que estaban en el navegador (maqueta): con la base se parte de cero.
+- **Purga:** las entrevistas vencidas se borran cada vez que alguien abre sus entrevistas o el panel (`purge_expired_sessions()`). No hace falta configurar un Cron.
+- **Probado** contra PostgreSQL 16 cargado con `voxready_neon.sql`:
+  - 30 pruebas de la API y 19 de punta a punta en el navegador, con la base real y la IA simulada.
+  - Todas las pruebas anteriores, en modo maqueta.
+- **Pendiente:** probarlo contra Neon en Vercel.
+
 ### v57 — Script de la base de datos v2.1 (Neon) alineado con la página
 - Nueva carpeta **`base_de_datos/`**:
   - **`voxready_neon.sql`**: lo que se pega en el SQL Editor de Neon. Crea todo: 11 tablas, la organización demo y los escenarios de ejemplo. Borra y vuelve a crear las tablas de VoxReady, así que sirve aunque ya se haya corrido la v2.0. Hay que correrlo **antes** de tener datos reales.

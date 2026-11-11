@@ -645,6 +645,9 @@
   .opcion-radio input { margin-top: 3px; }
   #tema-vista-previa { margin-top: 14px; }
   .login-err.ok { color: #1e7a4f; }
+  body.bd-remota .solo-maqueta, body:not(.bd-remota) .solo-bd { display: none !important; }
+  .modo-bd { font-size: 10.5px; border-radius: 999px; padding: 1px 7px; border: 1px solid var(--line2); color: var(--muted); white-space: nowrap; }
+  body.bd-remota .modo-bd { color: #1e7a4f; border-color: #9fd3b6; }
   .login-maqueta { font-size: 12px; background: var(--note, #fff7e6); border: 1px dashed var(--noteline, #e6c27a); border-radius: 6px; padding: 8px 10px; margin: 10px 0 0; }
   .login-maqueta:empty { display: none; }
   /* 50/50 (u4): entrevistador y tu cámara del mismo tamaño; abajo, el subtítulo y los controles */
@@ -833,7 +836,8 @@
       <p class="login-cambiar"><a href="#" id="recuperar-volver">Volver a iniciar sesión</a></p>
     </div>
 
-    <p class="login-nota">Maqueta de la base de datos: las cuentas (con la contraseña cifrada) se guardan por ahora en este navegador. Cuando se conecte la base, se guardarán en el servidor.</p>
+    <p class="login-nota solo-maqueta">Maqueta de la base de datos: las cuentas (con la contraseña cifrada) se guardan por ahora en este navegador. Cuando se conecte la base, se guardarán en el servidor.</p>
+    <p class="login-nota solo-bd">Tu cuenta y tus entrevistas se guardan en la base de datos de VoxReady, con la contraseña cifrada.</p>
   </div>
 </div>
 
@@ -875,7 +879,7 @@
         <img src="VoxReady_logo.png" alt="VoxReady" style="height:34px;display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
         <span class="logo" style="display:none;">Vox<span>Ready</span></span>
       </span>
-      <p><span class="version" id="version-app">v57</span> · Beta</p>
+      <p><span class="version" id="version-app">v58</span> · Beta · <span class="modo-bd" id="modo-bd">…</span></p>
     </div>
     <div id="nav-vocero">
     <div class="role">Usuario final (vocero)</div>
@@ -982,7 +986,7 @@
       <div class="fila-titulo" style="margin-top:22px;"><div class="label" style="margin:0;">Voceros</div></div>
       <div class="tabla-scroll"><table class="wf" id="tabla-voceros"></table></div>
       <p class="estado" id="panel-aviso"></p>
-      <div class="note"><b>Nota:</b> la tabla muestra el público interno y la retención porque son las decisiones que el admin toca a diario. El admin ve el uso y el promedio global, pero no cómo se evalúa ni las notas de cada vocero. <b>Maqueta sin base de datos:</b> este panel solo ve lo que pasó en este navegador.</div>
+      <div class="note"><b>Nota:</b> la tabla muestra el público interno y la retención porque son las decisiones que el admin toca a diario. El admin ve el uso y el promedio global, pero no cómo se evalúa ni las notas de cada vocero. <span class="solo-maqueta"><b>Maqueta sin base de datos:</b> este panel solo ve lo que pasó en este navegador.</span></div>
     </section>
 
     <!-- ===== v56: Admin del cliente · a2 Editor de tema ===== -->
@@ -1135,7 +1139,7 @@
             respuestas y métricas numéricas de mi voz y mi expresión. Mi nombre, la
             transcripción y mi evaluación se guardan en mi cuenta según la política de mi
             organización (hoy <span class="dias-retencion">30</span> días) y puedo verlas o borrarlas en «Mis entrevistas».
-            En esta versión de prueba, mi cuenta se guarda en este navegador. Si uso el botón
+            <span class="solo-maqueta">En esta versión de prueba, mi cuenta se guarda en este navegador.</span> Si uso el botón
             de hablar, el audio de esa respuesta se envía al servidor para convertirlo
             en texto (Whisper, en Groq) y no se guarda en ningún lado.
           </label>
@@ -1293,7 +1297,7 @@
   <div class="modal-caja">
     <div class="modal-cab">
       <h2 id="modal-mis-titulo">Mis entrevistas</h2>
-      <p>Se guardan en tu cuenta <span class="dias-retencion">30</span> días (la política de tu organización) y luego se borran solas. En esta maqueta, tu cuenta vive en este navegador.</p>
+      <p>Se guardan en tu cuenta <span class="dias-retencion">30</span> días (la política de tu organización) y luego se borran solas. <span class="solo-maqueta">En esta maqueta, tu cuenta vive en este navegador.</span></p>
     </div>
     <div class="modal-cuerpo">
       <div id="mis-lista"></div>
@@ -1334,7 +1338,7 @@
           <div><b>Voz</b>Tono, ritmo, pausas y volumen (si hablas).</div>
           <div><b>Expresión</b>Serenidad y presencia ante la cámara.</div>
         </div>
-        <p style="margin-top:10px;">Las notas son <b>estimaciones automáticas</b> y pueden tener errores. Tu video y audio se procesan en tu navegador y <b>no se guardan</b>. La transcripción y tu evaluación se guardan en <b>tu cuenta</b> (<span class="dias-retencion">30</span> días, según la política de tu organización) y las ves o borras en «Mis entrevistas». En esta maqueta, la cuenta vive en este navegador.</p>
+        <p style="margin-top:10px;">Las notas son <b>estimaciones automáticas</b> y pueden tener errores. Tu video y audio se procesan en tu navegador y <b>no se guardan</b>. La transcripción y tu evaluación se guardan en <b>tu cuenta</b> (<span class="dias-retencion">30</span> días, según la política de tu organización) y las ves o borras en «Mis entrevistas». <span class="solo-maqueta">En esta maqueta, la cuenta vive en este navegador.</span></p>
       </div>
     </div>
 
@@ -1358,7 +1362,7 @@
   // Para conectar la base real se cambia SOLO este bloque: todas las funciones ya son async y devuelven lo
   // mismo que devolvería la API del servidor. El resto de la página no cambia.
   // ================================================================
-  const BD = (() => {
+  const BD_LOCAL = (() => {
     const CLAVE = "voxready_bd_v1";
     const CLAVE_SESION_ACTIVA = "voxready_sesion"; // id del usuario con la sesión abierta (en la base real: un token)
     const TABLAS = ["organization", "app_user", "scenario", "scenario_item", "session", "report", "area_score",
@@ -1854,6 +1858,111 @@
     };
   })();
 
+  // ================================================================
+  // v58: CAPA DE DATOS REMOTA — la misma interfaz que BD_LOCAL, pero contra la base real (Neon) por la API
+  // de base_datos.py. Se usa sola cuando el servidor tiene DATABASE_URL y JWT_SECRET (ver /api/bd/estado).
+  // ================================================================
+  const BD_REMOTO = (() => {
+    const CLAVE_TOKEN = "voxready_token";
+    let usuario = null;
+    const token = () => { try { return localStorage.getItem(CLAVE_TOKEN) || ""; } catch (e) { return ""; } };
+    function error(msg) { const e = new Error(msg); e.esDeUsuario = true; return e; }
+    function guardarSesion(d) {
+      usuario = d.usuario;
+      try { localStorage.setItem(CLAVE_TOKEN, d.token); localStorage.setItem("voxready_sesion", d.usuario.id); } catch (e) { /* nada */ }
+      return usuario;
+    }
+    function olvidar() {
+      usuario = null;
+      try { localStorage.removeItem(CLAVE_TOKEN); localStorage.removeItem("voxready_sesion"); } catch (e) { /* nada */ }
+    }
+    async function api(metodo, ruta, cuerpo, opciones) {
+      const op = opciones || {};
+      const cab = { "Content-Type": "application/json" };
+      if (token()) cab.Authorization = "Bearer " + token();
+      let r;
+      try {
+        r = await fetch(URL_BACKEND + ruta, { method: metodo, headers: cab, keepalive: !!op.keepalive,
+                                              body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo) });
+      } catch (e) { throw error("No hay conexión con el servidor. Revisa tu internet y prueba de nuevo."); }
+      let d = {};
+      try { d = await r.json(); } catch (e) { /* sin JSON */ }
+      if (r.status === 401 && token() && !op.esLogin) { // la sesión venció o la cuenta ya no existe
+        olvidar();
+        setTimeout(() => location.reload(), 1500);
+        throw error("Tu sesión venció. Vuelve a iniciar sesión.");
+      }
+      if (!r.ok) throw error(typeof d.detail === "string" ? d.detail : `El servidor respondió con un error (${r.status}).`);
+      return d;
+    }
+    return {
+      async abrir() {
+        if (!token()) return;
+        try { usuario = (await api("GET", "/auth/yo", undefined, { esLogin: true })).usuario; }
+        catch (e) { olvidar(); }
+      },
+      async sincronizarTemasBase() { /* los temas ya están en la base */ },
+      async escenarios(o) { if (!usuario) return []; return (await api("GET", "/escenarios" + (o && o.incluirInactivos ? "?inactivos=1" : ""))).escenarios; },
+      async guardarEscenario(d) { return (await api("POST", "/escenarios", d)).escenario; },
+      async activarEscenario(id, activo) { await api("POST", `/escenarios/${encodeURIComponent(id)}/activo`, { activo: !!activo }); },
+      async eliminarEscenario(id) { await api("DELETE", `/escenarios/${encodeURIComponent(id)}`); },
+      async restaurarEscenario(id) { return (await api("POST", `/escenarios/${encodeURIComponent(id)}/restaurar`)).escenario; },
+      async iniciarSesion(correo, contrasena) { return guardarSesion(await api("POST", "/auth/entrar", { correo, contrasena }, { esLogin: true })); },
+      async entrarComoDemo(correo) { return guardarSesion(await api("POST", "/auth/demo", { correo }, { esLogin: true })); },
+      async registrar(d) {
+        if (String(d.contrasena || "").length < 6) throw error("La contraseña debe tener al menos 6 caracteres.");
+        return guardarSesion(await api("POST", "/auth/registrar", d, { esLogin: true }));
+      },
+      async usuarioActual() { return usuario; },
+      async cerrarSesion() { olvidar(); },
+      async pedirCodigoRecuperacion(correo) { await api("POST", "/auth/codigo", { correo }, { esLogin: true }); return { codigo: null }; },
+      async cambiarContrasenaConCodigo(correo, codigo, nueva) { await api("POST", "/auth/restablecer", { correo, codigo, nueva }, { esLogin: true }); },
+      async crearSesion(d) { return (await api("POST", "/sesiones", d)).id; },
+      async guardarAvance(id, transcripcion) { await api("PUT", `/sesiones/${id}/avance`, { transcripcion }); },
+      async marcarIncompleta(id) { return api("POST", `/sesiones/${id}/incompleta`, undefined, { keepalive: true }).catch(() => { /* nada */ }); },
+      async completarSesion(id, d) { return api("POST", `/sesiones/${id}/completar`, d); },
+      async misSesiones() { return (await api("GET", "/sesiones")).sesiones; },
+      async borrarSesion(id) { await api("DELETE", `/sesiones/${id}`); },
+      async borrarMisSesiones() { await api("DELETE", "/sesiones"); },
+      async agenda() { return (await api("GET", "/agenda")).fecha; },
+      async fijarAgenda(fecha) { await api("PUT", "/agenda", { fecha }); },
+      async organizacion() { return api("GET", "/organizacion"); },
+      async guardarRetencion(d) { return api("PUT", "/organizacion/retencion", d); },
+      async solicitarBorradoCuenta() { await api("POST", "/cuenta/borrado"); },
+      async miSolicitudBorrado() { return (await api("GET", "/cuenta/borrado")).solicitud; },
+      async solicitudesBorrado() { return (await api("GET", "/borrados")).solicitudes; },
+      async procesarBorrado(id) { await api("POST", `/borrados/${id}/procesar`); },
+      async panelCliente() { return api("GET", "/panel"); },
+      token,
+      LIMITES: { titulo: 80, contexto: 1500, item: 220, dossier: 300, maxItems: 8, maxDossier: 10 },
+    };
+  })();
+
+  // La página usa la base real si el servidor la tiene configurada; si no (o sin servidor), la maqueta del navegador.
+  const BD = {};
+  async function elegirBD() {
+    let remota = false;
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 8000);
+      const r = await fetch(`${URL_BACKEND}/bd/estado`, { signal: ctl.signal });
+      clearTimeout(t);
+      const d = await r.json();
+      remota = r.ok && d && d.disponible === true;
+    } catch (e) { remota = false; }
+    Object.assign(BD, remota ? BD_REMOTO : BD_LOCAL, { remoto: remota });
+    document.body.classList.toggle("bd-remota", remota);
+    const modo = document.getElementById("modo-bd");
+    if (modo) { modo.textContent = remota ? "Base de datos" : "Maqueta (navegador)"; modo.title = remota ? "Las cuentas y entrevistas se guardan en la base de datos del servidor." : "Sin base de datos: todo se guarda en este navegador."; }
+    return remota;
+  }
+  // Cabeceras para las llamadas a la IA: con base de datos, el token permite al servidor leer el tema completo
+  function cabecerasIA() {
+    const c = { "Content-Type": "application/json" };
+    if (BD.remoto && BD.token && BD.token()) c.Authorization = "Bearer " + BD.token();
+    return c;
+  }
+
 
   // ================================================================
   // Inicio de sesión (v56): usa la capa de datos BD. Contraseñas cifradas (PBKDF2), rol vocero / admin del
@@ -2020,6 +2129,7 @@
   document.body.style.overflow = "hidden"; // bloquea el scroll de atrás mientras se ve el login
   const BD_LISTA = (async () => {
     try {
+      await elegirBD();
       await BD.abrir(USUARIOS_DEMO);
       const u = await BD.usuarioActual();
       if (u) entrarConSesion(u);
@@ -2735,6 +2845,7 @@
   // Lo que se manda al servidor: los temas de ejemplo sin cambios van solo por id; los propios (o editados), completos
   function temaParaServidor() {
     const t = temaActual();
+    if (BD.remoto) return { tema: t.id };
     if (t.base_id && !t.modificado) return { tema: t.base_id };
     return {
       tema: t.base_id || "personalizado",
@@ -2785,7 +2896,7 @@
     try {
       const respuesta = await fetch(`${URL_BACKEND}/entrevistar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: cabecerasIA(),
         body: JSON.stringify({ historial, estado: estadoPeriodista, ...temaParaServidor() }), // v51 (+ v54: tema): el servidor no guarda nada: el estado viaja con la conversación
       });
       let datos = {};
@@ -3066,7 +3177,7 @@
     try {
       const r = await fetchConTiempo(`${URL_BACKEND}/entrevistar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: cabecerasIA(),
         body: JSON.stringify({ historial, estado: estadoPeriodista, cierre: true, ...temaParaServidor() }),
       }, 140000); // v54: se espera lo que tarde la IA (Vercel corta a los 150 s)
       const d = await r.json().catch(() => ({}));
@@ -3886,7 +3997,7 @@
     try {
       const respuesta = await fetchPaciente(`${URL_BACKEND}/informe_final`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: cabecerasIA(),
         body: JSON.stringify({
           contenido: informesCrudos.contenido || null,
           voz: informesCrudos.voz || null,
@@ -3945,7 +4056,7 @@
     try {
       const respuesta = await fetchPaciente(`${URL_BACKEND}${tarea.url}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: cabecerasIA(),
         body: JSON.stringify(tarea.cuerpo),
       }); // v54: si la IA se demora, se espera y reintenta sola
       let datos = {};
@@ -5678,7 +5789,7 @@
   document.getElementById("boton-nueva").addEventListener("click", () => reiniciarEntrevista(false));
 
   // ---------- Versión (cámbiala aquí y en app.py cada vez que subas cambios) ----------
-  const VERSION_APP = "57";
+  const VERSION_APP = "58";
   (async function mostrarVersion() {
     const el = document.getElementById("version-app");
     el.textContent = "v" + VERSION_APP;
@@ -5857,6 +5968,18 @@
           agregar("Servidor (Vercel)", desajuste ? "aviso" : "ok",
             `Responde en ${ms} ms · servidor v${datos.version} · página v${VERSION_APP} · región ${datos.region || "?"}`,
             desajuste ? "La página y el servidor son de versiones distintas: sube y despliega todos los archivos, y recarga con Ctrl+F5." : "");
+          // v58: la base de datos (Neon)
+          const bdd = datos.base_de_datos;
+          if (bdd && bdd.conectada) {
+            agregar("Base de datos", "ok", `Conectada · ${bdd.tablas} tablas · ${bdd.escenarios} escenarios · ${bdd.usuarios} usuarios · ${bdd.ms} ms` +
+              (BD.remoto ? " · la página la está usando" : " · OJO: esta página está en modo maqueta (recarga con Ctrl+F5)"));
+          } else if (bdd && bdd.configurada) {
+            agregar("Base de datos", "mal", bdd.detalle || "Configurada, pero no conecta",
+              "Revisa en Vercel que DATABASE_URL sea la de Neon y que hayas corrido voxready_neon.sql en el SQL Editor de Neon.");
+          } else {
+            agregar("Base de datos", "aviso", "Sin base de datos: la página funciona como maqueta (todo en este navegador)" + (bdd && bdd.detalle ? ` · ${bdd.detalle}` : ""),
+              "Para conectarla: en Vercel agrega DATABASE_URL (de Neon) y JWT_SECRET, y vuelve a desplegar.");
+          }
         } else {
           agregar("Servidor (Vercel)", "mal", `El servidor respondió con error HTTP ${r.status}`, ayudaHTTP(r.status, !/json/.test(tipo)));
         }
@@ -6474,7 +6597,8 @@
     document.getElementById("tema-afectados").value = t ? t.afectados || "" : "";
     const origen = document.getElementById("tema-origen");
     origen.textContent = !t ? "Tema nuevo. Completa el nombre, el contexto, al menos un mensaje clave y una línea roja."
-      : t.base_id ? `Tema de ejemplo de VoxReady${t.modificado ? " (editado por tu organización)" : ""}. Tiene información reservada del periodista que no se muestra aquí; si agregas datos propios abajo, reemplazan esa información.`
+      : t.base_id ? `Tema de ejemplo de VoxReady${t.modificado ? " (editado por tu organización)" : ""}.` +
+          ((t.dossier || []).length ? " Lo que sabe el periodista está abajo, en «Para el periodista»." : " Tiene información reservada del periodista que no se muestra aquí; si agregas datos propios abajo, reemplazan esa información.")
       : `Tema propio de tu organización · creado el ${fechaCorta(t.creado)}.`;
     document.getElementById("tema-dossier-ayuda").textContent = t && t.base_id && !(t.dossier || []).length
       ? "Vacío = el periodista usa la información reservada que trae este tema de ejemplo."
