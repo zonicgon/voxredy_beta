@@ -146,6 +146,113 @@ Cada vez que cambies algo, sube el número en DOS lugares: `VERSION` en `app.py`
 - **Nota de seguridad:** esto es solo una carcasa de interfaz para probar el flujo. Las contraseñas se guardan tal cual en el navegador (no están cifradas) — no sirve todavía para datos reales de clientes; eso se resuelve cuando se conecte la base de datos y el backend valide las cuentas.
 - Hay que subir **app.py y public/index.html** juntos.
 
+### v57 — Script de la base de datos v2.1 (Neon) alineado con la página
+- Nueva carpeta **`base_de_datos/`**:
+  - **`voxready_neon.sql`**: lo que se pega en el SQL Editor de Neon. Crea todo: 11 tablas, la organización demo y los escenarios de ejemplo. Borra y vuelve a crear las tablas de VoxReady, así que sirve aunque ya se haya corrido la v2.0. Hay que correrlo **antes** de tener datos reales.
+  - **`esquema.sql`** (solo las tablas), **`datos_iniciales.sql`** (organización + escenarios) y **`pruebas.sql`** (12 pruebas que se deshacen solas).
+  - **`generar_sql.py`**: genera los escenarios desde `TEMAS` de `app.py`. Hay que volver a correrlo cada vez que cambien los temas: `python base_de_datos/generar_sql.py`.
+- **Cambios frente a la v2.0:**
+  - `client.retention_days` y `retention_mode` (`full` / `scores_only`).
+  - En `scenario`: `template_slug`, `is_modified`, `languages`, `retention_days`, `sort_order` y el estado `inactive`.
+  - En `session`: el estado `abandoned` (incompleta), `scenario_title` y `retention_mode`, más la regla «solo notas ⇒ sin transcripción».
+  - `app_user.next_session_date` (agenda).
+  - Tablas nuevas `deletion_request` (la constancia queda sin datos personales) y `password_reset` (solo el hash del código, 15 minutos, máximo 5 intentos).
+  - La purga también borra las entrevistas abandonadas sin respuestas y los códigos vencidos.
+  - Escenarios actualizados a v55: sin la línea roja que revelaba el dossier, filtración en telecomunicaciones, SERNAC y el dato de la ANCI.
+- **Probado en PostgreSQL 16:** encima de la v2.0 original, solo, y corrido dos veces seguidas. Las 12 pruebas pasan.
+- **Página:** «Eliminar tema» ahora **archiva** el tema, igual que la base (un tema con entrevistas no se puede borrar). Deja de verse en el panel y en «Elegir escenario».
+- **Equivalencias página ↔ base**, que se traducen en el bloque `BD`:
+  - `organization` → `client`
+  - `vocero` / `admin` → `spokesperson` / `client_admin`
+  - `mensaje_clave` / `linea_roja` / `dossier` → `key_message` / `red_line` / `dossier`
+  - Sanitaria / Reputacional / Operativa → `health` / `reputational` / `operational`
+  - Intermedio / Difícil → `intermediate` / `hard`
+  - Empática / Formal / Técnica → `empathetic` / `formal` / `technical`
+  - `en_curso` / `incompleta` / `completa` → `in_progress` / `abandoned` / `completed`
+  - `completo` / `solo_notas` → `full` / `scores_only`
+  - Expresión / Tono de voz / Coherencia / Empatía → `expression` / `voice_tone` / `coherence` / `empathy`
+  - `agenda` → `app_user.next_session_date`
+- **Cuentas:** la base no trae usuarios. Se registran desde la página. Para que alguien sea admin: `UPDATE app_user SET role = 'client_admin' WHERE lower(email) = 'carlos.ruiz@voxready.demo';`
+- Hay que subir **app.py y public/index.html** juntos. El SQL se corre aparte, en Neon.
+
+### v56 — Maqueta de la base de datos, pantallas del admin y sesión 50/50
+Todo funciona como si ya hubiera base de datos, pero los datos viven **en este navegador** (`localStorage`, clave `voxready_bd_v1`), ordenados como las tablas del diseño. Para conectar la base real se cambia **solo el bloque `BD`** de `public/index.html` (todas sus funciones ya son `async` y devuelven lo mismo que devolvería la API). El resto de la página no cambia.
+
+- **Capa de datos `BD`** con las tablas `organization`, `app_user`, `scenario`, `scenario_item`, `session`, `report`, `area_score`, más `agenda`, `deletion_request` y `password_reset` (columnas abajo).
+  - Al abrir la página se **migra lo antiguo**: cuentas con contraseña sin cifrar (`voxready_usuarios`), entrevistas (`voxready_entrevistas_v1`) y próxima sesión (`voxready_proxima`). Después se borran esas claves.
+- **Cuentas:**
+  - **Contraseña cifrada** con PBKDF2-SHA256 (100 000 vueltas) y una sal por usuario. Nunca se guarda tal cual.
+  - **Rol** `vocero` o `admin`. Hay 2 cuentas demo: Bryan Retamales (vocero) y **Carlos Ruiz (admin)**, `carlos.ruiz@voxready.demo` / `voxready`.
+  - **¿Olvidaste tu contraseña?** con un código de 6 dígitos que vence en 15 minutos y acepta 5 intentos. En la maqueta, el código se muestra en pantalla; con la base real debe llegar por correo.
+- **Entrevistas en la base:**
+  - Se crea la fila `session` al comenzar y se guarda **pregunta por pregunta**. Si se reinicia o se cierra la pestaña a mitad, queda como **«incompleta»** (si no respondió nada, se borra).
+  - El **consentimiento** se registra con hora y versión del texto (`consentimiento_aceptado_en`, `consentimiento_version`).
+  - «Mis entrevistas», Inicio, Mi progreso y la agenda leen de la base. Cada usuario ve solo las suyas.
+- **Menú por rol:** el vocero ve sus 6 pantallas y el admin las suyas (a1–a3). El admin no puede abrir las pantallas del vocero.
+- **a1 Panel del cliente:**
+  - Temas activos, voceros, sesiones de los últimos 30 días y nota global media.
+  - Tabla de temas con público, idiomas, retención, sesiones y estado: Editar y Activar/Desactivar. «+ Nuevo tema».
+  - Tabla de voceros con sus sesiones y su última práctica, sin sus notas.
+- **a2 Editor de tema:**
+  - Campos: nombre, contexto, óptica, público, categoría, nivel, ícono y retención propia.
+  - Listas editables de **mensajes clave** y **líneas rojas** (máximo 8 cada una).
+  - Opcional, «Para el periodista»: a quién afecta y **lo que sabe el periodista** (máximo 10 datos, el vocero no los ve).
+  - «Vista previa de una sesión» con el briefing tal como lo verá el vocero.
+  - Los temas de ejemplo se pueden editar y **restaurar**. Los propios se pueden eliminar. Siempre debe quedar al menos un tema activo.
+  - Si el tema editado no trae datos propios, el periodista usa la información reservada del tema de ejemplo.
+- **a3 Política de retención:**
+  - Qué se conserva: transcripción + informes + notas, o **solo las notas** (sin transcripción ni comentarios que citan al vocero).
+  - Plazo de 30, 90 o 180 días, o personalizado de 1 a 365.
+  - **Solicitudes de borrado:** el vocero las pide en «Mi cuenta y mis datos» y el admin las procesa. Se borra la cuenta con todo; queda constancia de que se procesó, sin datos personales.
+  - Como VoxReady no graba video ni audio, la opción «video + audio» de la maqueta se cambió por lo que sí se guarda.
+- **Servidor:** `/api/entrevistar` y `/api/evaluar` aceptan `tema_def` (la definición de un tema propio, con límites de tamaño) y `/api/transcribir` acepta `&vocab=`.
+  - Los temas de ejemplo sin cambios siguen yendo solo por id.
+  - Cuando haya base de datos, el servidor leerá el tema por su id y `tema_def` sobrará.
+- **u4 Sesión 50/50:**
+  - Mientras dura la entrevista, el entrevistador (Andrés Molina, con su estado: hablando, preparando la pregunta, escuchando) y tu cámara se ven lado a lado y del mismo tamaño.
+  - Debajo van el subtítulo en vivo, «Pregunta N de 8» con una barra, y la etiqueta «En vivo» con reloj sobre tu video. No se usa «REC» porque no se graba.
+- **Textos de privacidad** actualizados: dicen «tu cuenta» y los días de la política (no «30 días en este navegador»), y aclaran que en esta maqueta la cuenta vive en el navegador.
+- **Límites de la maqueta:**
+  - Cada navegador tiene su propia «base»: el admin solo ve lo que pasó en ese navegador.
+  - No hay correos reales.
+  - La calibración sigue en el dispositivo (12 horas), ahora asociada al id del usuario.
+  - No se hicieron las pantallas del configurador maestro (m1–m3).
+
+**Columnas que usa la maqueta (para crear las tablas):**
+| Tabla | Columnas |
+|---|---|
+| `organization` | id, nombre, retencion_dias, conservar (`completo` / `solo_notas`), creado, actualizado |
+| `app_user` | id, organization_id, nombre, apellido, correo (único), rol (`vocero` / `admin`), password_hash, password_salt, demo, creado |
+| `scenario` | id, organization_id, base_id (tema de ejemplo de origen o null), modificado, activo, orden, titulo, icono, categoria, publico, nivel, duracion, resumen, contexto, optica, optica_detalle, afectados, consecuencia, retencion_dias (null = la de la organización), idiomas, creado, actualizado |
+| `scenario_item` | id, scenario_id, tipo (`mensaje_clave` / `linea_roja` / `dossier`), orden, texto |
+| `session` | id, user_id, organization_id, scenario_id, scenario_titulo, estado (`en_curso` / `incompleta` / `completa`), fecha, expira, version_app, nombre, apellido, consentimiento_aceptado_en, consentimiento_version, transcripcion (JSON), conservado |
+| `report` | id, session_id, judges (JSON: contenido, voz, cara), final (JSON: informe coach), puntaje_global, creado |
+| `area_score` | id, report_id, area, puntaje |
+| `agenda` | user_id, fecha (JSON {y, m, d}) |
+| `deletion_request` | id, user_id, organization_id, nombre, correo, solicitado, estado (`pendiente` / `procesada`), procesado |
+| `password_reset` | correo, codigo, expira, intentos (en la base real: guardar el código cifrado) |
+
+- Hay que subir **app.py y public/index.html** juntos.
+
+### v55 — Segunda repasada a los 3 temas
+- **Error grave arreglado (venía de la v54):** había dos funciones con el mismo nombre (`_normalizar`) y la nueva pisaba a la original. Con eso el periodista podía dejar de citar las frases graves del vocero y fallar al exigir la cita. Se renombró la nueva (`_palabras_sin_tildes`) y se probó la prueba del periodista completa con los 3 temas.
+- **Restos del derrame en los otros temas:** las reglas de reacción y el cierre decían «las familias»; ahora usan los afectados de cada tema («las familias que compraron el hervidor», «los clientes cuyos datos quedaron expuestos»). El periodista ya no cita «el laboratorio municipal» ni «los vecinos» en el retiro o la filtración, y su biografía cubre medio ambiente, consumo y tecnología.
+- **Contenido de los temas pulido:**
+  - Derrame: una línea roja revelaba el correo secreto del dossier («alertas internas previas»). Ahora dice «Negar o minimizar hechos que después se puedan comprobar».
+  - Retiro: el mensaje clave dice cómo reconocer el producto (desenchufarlo; el modelo está impreso en la base) y el contexto aclara que el retiro es voluntario y se informó al SERNAC.
+  - Filtración: la empresa es de telecomunicaciones; el contexto y el mensaje clave ya no afirman que «las tarjetas no» se filtraron, porque el dossier lo contradice. Ahora enseñan a decir solo lo confirmado. Nuevo dato del periodista: la Ley Marco de Ciberseguridad (21.663) pide una alerta temprana a la ANCI en máximo 3 horas para servicios esenciales.
+- **Casos de prueba por tema:** `/api/probar_entrevistador?tema=retiro` y `?tema=datos` usan respuestas propias de cada tema (arco completo, contradicción de cifras, declaración grave, evasión), además de los casos genéricos.
+- **Detección por código para los 3 temas:**
+  - Culpar a los clientes («los clientes lo usaron mal», «es problema de ellos») cuenta como declaración grave.
+  - Las cifras de clientes, unidades, lotes y reclamos cuentan como datos concretos.
+  - La libreta guarda «cinco mil clientes» completo (antes quedaba «mil clientes» y no se notaba la contradicción con «doscientos mil»).
+  - «No puedo dar detalles técnicos, pero…» con explicación ya no cuenta como evasiva: callar los detalles de una vulnerabilidad es lo correcto.
+- **Página:**
+  - El escenario sale en el título del informe (y en el PDF) y en «Mis entrevistas».
+  - Arreglo que venía de antes: después de una evaluación, el informe quedaba pegado bajo todas las vistas. Ahora solo aparece en «Informe tipo coach».
+  - La frase de calibración ya no habla del agua.
+- Hay que subir **app.py y public/index.html** juntos.
+
 ### v54 — Temas configurables, IA lenta sin error y anillo de carga
 - **Temas configurables** (maqueta u2 y a2). Cada tema trae lo que pide el documento: **contexto**, **óptica institucional** (Empática / Formal / Técnica), **público objetivo** (Dirección / Planta…), **mensajes clave** (sostener) y **líneas rojas** (nunca decir), además del dossier que solo conoce el periodista. Hay 3, todos ficticios: *Derrame químico en tres comunidades* (Sanitaria), *Retiro de producto* (Reputacional, hervidor HX-200) e *Incidente de seguridad* (Operativa, filtración de datos de clientes).
   - Viven en `TEMAS` en `app.py` (hasta que haya base de datos y editor del administrador) y la página los pide en `GET /api/temas` (sin el dossier). Si el servidor no responde, la página usa una copia de respaldo.
